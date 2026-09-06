@@ -1814,11 +1814,9 @@
     document.getElementById("mePreviewBtn").addEventListener("click", async () => {
       const channels = meGetOnChannels();
       try {
-        await apiPost("/api/admin/presets", { name: "_preview", channels, description: "temp" });
         await apiPost("/api/admin/master/engage", {});
-        // Wait for FSM to enter MASTER before applying preset
         await new Promise(r => setTimeout(r, 300));
-        await apiPost("/api/admin/master/apply_preset", { preset: "_preview" });
+        await apiPost("/api/admin/master/apply_channels", { channels });
       } catch (e) { console.error("Preview error:", e); }
     });
 

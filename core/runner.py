@@ -596,6 +596,8 @@ class GameRunner:
             asyncio.ensure_future(self._master_toggle_channel(
                 payload.get("board_id", ""), payload.get("channel", 1), payload.get("state", False),
             ))
+        elif action == "master_apply_channels":
+            asyncio.ensure_future(self._master_apply_channels(payload.get("channels", [])))
         elif action == "master_stopwatch":
             self._master_stopwatch(payload.get("action", ""))
         elif action == "dev_trigger":
@@ -613,6 +615,27 @@ class GameRunner:
             log.info("Master: applied preset %r", preset_name)
         except Exception as exc:
             log.error("Master: apply_preset failed: %s", exc)
+
+    async def _master_apply_channels(self, channels: list[int]) -> None:
+        """Apply a raw channel list directly in master mode (no preset name needed)."""
+        if self.state != "MASTER" or not self._resolver or not self.io:
+            log.warning("master_apply_channels: not in MASTER mode")
+            return
+        try:
+            # Build per-board coil arrays from the channel list
+            state = self._resolver._empty_board_state()
+            for ch in channels:
+                try:
+                    board_id, local_idx = self._resolver._channel_to_board(ch)
+                    state[board_id][local_idx] = True
+                except ValueError:
+                    pass
+            for board_id, coils in state.items():
+                board = self.io.get_board(board_id)
+                await board.write_coils(coils)
+            log.info("Master: applied %d channels directly", len(channels))
+        except Exception as exc:
+            log.error("Master: apply_channels failed: %s", exc)
 
     async def _master_toggle_channel(self, board_id: str, channel: int, state: bool) -> None:
         """Toggle a single relay channel on a specific board in master mode."""

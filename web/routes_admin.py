@@ -629,6 +629,15 @@ def register_routes(
         on_action("master_stopwatch", {"action": body.action})
         return {"ok": True, "action": body.action}
 
+    class ApplyChannelsBody(BaseModel):
+        channels: list[int] = Field(default_factory=list)
+
+    @router.post("/api/admin/master/apply_channels", dependencies=[Depends(_require_admin)])
+    async def admin_master_apply_channels(body: ApplyChannelsBody):
+        """Apply a raw channel list directly to hardware (no preset name needed)."""
+        on_action("master_apply_channels", {"channels": body.channels})
+        return {"ok": True, "channels": len(body.channels)}
+
     # ------------------------------------------------------------------
     # Dev — inject FSM events for testing (--fake-all mode only)
     # ------------------------------------------------------------------

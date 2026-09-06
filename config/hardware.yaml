@@ -1,0 +1,61 @@
+# hardware.yaml — physical topology: relay boards, cameras, network
+#
+# Layout: 45 laser curtain strips, 9 rows × 5 strips per row.
+#   Addressing: row(1-9) + strip(1-5) → e.g. "11", "24", "95"
+#   Per row: 1=H-top-left, 2=V-left, 3=H-center, 4=V-right, 5=H-top-right
+#
+# 3 boards × 16 channels (15 used, ch 16 spare).
+# Protocol: Modbus RTU over TCP (transparent mode), port 4196.
+
+relay_boards:
+  - id: SM-NODE-1
+    ip: "172.16.0.101"
+    port: 4196
+    channels: 16
+    timeout_ms: 200
+    note: "segment 1 — rows 1–3 (15 strips, ch 16 spare)"
+
+  - id: SM-NODE-2
+    ip: "172.16.0.102"
+    port: 4196
+    channels: 16
+    timeout_ms: 200
+    note: "segment 2 — rows 4–6 (15 strips, ch 16 spare)"
+
+  - id: SM-NODE-3
+    ip: "172.16.0.103"
+    port: 4196
+    channels: 16
+    timeout_ms: 200
+    note: "segment 3 — rows 7–9 (15 strips, ch 16 spare)"
+
+cameras:
+  - id: cam_a
+    url: "rtsp://scanmania:Passw0rd_@172.16.0.201:8554/9c756e2e9121-0_m"
+    reference_frame: "ref/cam_a.png"
+    note: "ceiling-facing, covers full grid"
+
+network:
+  subnet: "172.16.0.0/24"
+  nuc_ip: "172.16.0.1"
+  web_port: 8000
+
+inputs:
+  id: SM-NODE-TRIG
+  ip: "172.16.0.100"
+  port: 502               # Standard Modbus TCP (not RTU-over-TCP like relay boards)
+  poll_ms: 50
+  timeout_ms: 200
+  num_inputs: 4
+  # Input number → event mapping (0-indexed, matches Opta I1-I4)
+  # 0=start plate, 1=checkpoint 1, 2=checkpoint 2, 3=stop button
+  input_map:
+    0: plate
+    1: cp1
+    2: cp2
+    3: stop
+  note: "Arduino Opta AFX00001 — 4 opto-isolated digital inputs, Modbus TCP"
+
+hazer:
+  board_id: null
+  channel: null

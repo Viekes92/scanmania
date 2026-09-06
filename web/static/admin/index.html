@@ -1,0 +1,2300 @@
+<!DOCTYPE html>
+<!--
+  web/static/admin/index.html — Admin portal.
+
+  Desktop/iPad surface for monitoring, configuration, and manual control.
+  Navigation tabs: Dashboard | Hardware | Beams | Presets | Config | Runs |
+                   Leaderboard | Cloud Sync | Logs | Master Mode.
+  All data loaded via fetch() from /api/admin/* endpoints.
+  WebSocket /ws for live state updates.
+
+  No external dependencies. Plain HTML/CSS/JS. Works in Chromium kiosk mode.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — SCANMANIA</title>
+  <style>
+    /* -----------------------------------------------------------------------
+       Custom properties — neon red heist / dark ops dashboard
+    ----------------------------------------------------------------------- */
+    :root {
+      --bg:          #050507;
+      --surface:     #080d18;
+      --surface2:    #0d1525;
+      --border:      #0d1e3a;
+      --accent:      #264f9a;
+      --accent-glow: rgba(38, 79, 154, 0.6);
+      --accent-dim:  #1a3366;
+      --text:        #e8f0fc;
+      --muted:       #5a7899;
+      --green:       #00ff88;
+      --green-dark:  #005533;
+      --red:         #ff0033;
+      --orange:      #ff8800;
+      --radius:      8px;
+      --tab-h:       44px;
+      --font:        'Courier New', Courier, monospace;
+    }
+
+    /* light mode is removed — heist terminals don't have light mode */
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      background-image:
+        linear-gradient(rgba(38,79,154,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(38,79,154,0.06) 1px, transparent 1px);
+      background-size: 40px 40px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* -----------------------------------------------------------------------
+       Layout — header, tab nav, tab content
+    ----------------------------------------------------------------------- */
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    #header .logo {
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: 6px;
+      font-family: var(--font);
+      color: var(--accent);
+      text-shadow: 0 0 16px var(--accent-glow), 0 0 40px rgba(38,79,154,0.1);
+      text-transform: uppercase;
+    }
+
+    #header .state-pill {
+      font-size: 13px;
+      font-weight: 700;
+      font-family: var(--font);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 5px 14px;
+      border-radius: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    #header .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* -----------------------------------------------------------------------
+       Tab nav
+    ----------------------------------------------------------------------- */
+    #tabNav {
+      display: flex;
+      background: var(--surface);
+      border-bottom: 2px solid var(--border);
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+      position: relative;
+    }
+
+    #tabNav::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 40px;
+      background: linear-gradient(to right, transparent, var(--bg));
+      pointer-events: none;
+    }
+
+    #tabNav::-webkit-scrollbar { display: none; }
+
+    .tab-btn {
+      flex-shrink: 0;
+      height: var(--tab-h);
+      padding: 0 18px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: var(--font);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.12s, border-color 0.12s;
+      margin-bottom: -2px; /* sit on top of nav border */
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+    }
+
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    /* -----------------------------------------------------------------------
+       Tab panels
+    ----------------------------------------------------------------------- */
+    #tabContent {
+      overflow-y: auto;
+      height: calc(100vh - var(--tab-h) - 45px);
+      padding: 20px;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* -----------------------------------------------------------------------
+       Shared component styles
+    ----------------------------------------------------------------------- */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      box-shadow: inset 0 1px 0 rgba(38,79,154,0.05);
+    }
+
+    .card-title {
+      font-size: 11px;
+      font-weight: 700;
+      font-family: var(--font);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--accent-dim);
+      margin-bottom: 12px;
+    }
+
+    .card-title::before {
+      content: "// ";
+      color: var(--accent-dim);
+    }
+
+    .stat-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .stat-box {
+      flex: 1 1 120px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-top: 2px solid var(--accent-dim);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      text-align: center;
+      transition: border-top-color 0.2s;
+    }
+
+    .stat-box:hover {
+      border-top-color: var(--accent);
+    }
+
+    .stat-val {
+      font-size: 36px;
+      font-weight: 900;
+      font-family: var(--font);
+      color: var(--text);
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* LED / status dot */
+    .led {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    .led.ok   { background: var(--green); }
+    .led.warn { background: var(--orange); }
+    .led.err  { background: var(--red); animation: pulse-err 0.8s infinite; }
+
+    @keyframes pulse-err {
+      0%, 100% { opacity: 1; box-shadow: 0 0 6px var(--red); }
+      50%       { opacity: 0.3; box-shadow: none; }
+    }
+
+    /* Fault list */
+    .fault-item {
+      padding: 8px 12px;
+      background: rgba(255, 0, 51, 0.08);
+      border: 1px solid var(--red);
+      border-left: 3px solid var(--red);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 13px;
+      font-family: var(--font);
+      color: var(--red);
+    }
+
+    /* Button styles */
+    .btn {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: var(--font);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: filter 0.1s, box-shadow 0.1s;
+    }
+    .btn:active { filter: brightness(0.8); }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+      border: 2px solid var(--accent);
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+    .btn-primary:hover {
+      box-shadow: 0 0 18px var(--accent-glow);
+    }
+
+    .btn-danger {
+      background: var(--red);
+      color: #000;
+      border: 2px solid var(--red);
+      box-shadow: 0 0 10px rgba(255,0,51,0.3);
+    }
+
+    .btn-warn {
+      background: transparent;
+      color: var(--orange);
+      border: 2px solid var(--orange);
+    }
+    .btn-warn:hover {
+      background: rgba(255,136,0,0.1);
+    }
+
+    .btn-default {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-default:hover {
+      border-color: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    /* Table */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      font-family: var(--font);
+    }
+    .data-table th {
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 10px;
+      font-weight: 700;
+      font-family: var(--font);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--accent-dim);
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .data-table tr:nth-child(odd) td  { background: var(--surface); }
+    .data-table tr:nth-child(even) td { background: var(--surface2); }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr.clickable { cursor: pointer; }
+    .data-table tr.clickable:hover td { background: rgba(38,79,154,0.05); }
+
+    /* Outcome badge */
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 800;
+      font-family: var(--font);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .badge.clean   { background: rgba(0,255,136,0.12); color: var(--green);  border: 1px solid var(--green-dark); }
+    .badge.busted  { background: rgba(255,0,51,0.12);  color: var(--red);    border: 1px solid var(--accent-dim); }
+    .badge.aborted { background: rgba(255,136,0,0.12); color: var(--orange); border: 1px solid #7a4200; }
+    .badge.voided  { background: rgba(85,85,85,0.12);  color: #888;          border: 1px solid #333; }
+
+    /* Run events detail pane */
+    .run-events {
+      display: none;
+      padding: 10px 12px;
+      background: #000;
+      font-size: 12px;
+      font-family: var(--font);
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+    .run-events.open { display: block; }
+
+    /* Log output */
+    #logOutput {
+      background: #000;
+      color: var(--green);
+      font-family: var(--font);
+      font-size: 12px;
+      padding: 14px;
+      height: 420px;
+      overflow-y: auto;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Master mode grid */
+    #presetGrid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .preset-btn {
+      padding: 14px 20px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 700;
+      font-family: var(--font);
+      color: var(--text);
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
+    }
+    .preset-btn:hover   { border-color: var(--accent); color: var(--accent); background: rgba(38,79,154,0.05); }
+    .preset-btn:active  { background: var(--surface); }
+
+    /* Individual channel toggles */
+    #channelGrid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .channel-btn {
+      width: 54px;
+      height: 54px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
+    }
+
+    .channel-btn.on {
+      background: rgba(38, 79, 154, 0.12);
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 8px rgba(38,79,154,0.2);
+    }
+
+    /* Cloud sync info rows */
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      font-family: var(--font);
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-key  { color: var(--muted); font-weight: 600; letter-spacing: 1px; }
+    .info-val  { color: var(--text); font-family: var(--font); }
+
+    /* Leaderboard rank */
+    .rank-1 { color: #ffd700; font-weight: 900; }
+    .rank-2 { color: #c0c0c0; font-weight: 900; }
+    .rank-3 { color: #cd7f32; font-weight: 900; }
+
+    /* Leaderboard time column */
+    .lb-time { font-family: var(--font); color: var(--green); }
+
+    /* Config / presets textarea */
+    .config-editor {
+      width: 100%;
+      min-height: 300px;
+      background: #000;
+      color: var(--green);
+      font-family: var(--font);
+      font-size: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      resize: vertical;
+    }
+
+    .config-editor:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 8px var(--accent-glow);
+    }
+
+    /* Input/select focus — red glow ring */
+    input, select {
+      outline: none;
+      transition: border-color 0.12s, box-shadow 0.12s;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 0 2px rgba(38,79,154,0.25) !important;
+    }
+
+    /* WebSocket status */
+    #wsBar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-family: var(--font);
+      color: var(--muted);
+      letter-spacing: 1px;
+    }
+    .ws-led {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .ws-led.ok  { background: var(--green); }
+    .ws-led.err { background: var(--red); }
+
+    /* Beams placeholder */
+    .beams-placeholder {
+      background: var(--surface2);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      font-family: var(--font);
+    }
+
+    .beams-placeholder a {
+      color: var(--accent);
+      text-decoration: underline;
+    }
+
+    /* Outbox depth — large red if > 0, green if 0 */
+    .outbox-depth-val {
+      font-size: 32px;
+      font-weight: 900;
+      font-family: var(--font);
+    }
+    .outbox-depth-val.nonzero { color: var(--red); text-shadow: 0 0 12px rgba(255,0,51,0.4); }
+    .outbox-depth-val.zero    { color: var(--green); }
+
+    /* Spacing helpers */
+    .mt-8  { margin-top: 8px; }
+    .mt-12 { margin-top: 12px; }
+    .mt-16 { margin-top: 16px; }
+    .flex-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+    /* Master mode status indicator */
+    #masterStatus {
+      font-size: 13px;
+      font-weight: 700;
+      font-family: var(--font);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      padding: 8px 14px;
+      border-radius: 6px;
+      margin-bottom: 14px;
+      display: inline-block;
+    }
+    #masterStatus.active {
+      color: var(--red);
+      background: rgba(255, 0, 51, 0.08);
+      border: 1px solid var(--red);
+      animation: pulse-master 1s infinite;
+    }
+    #masterStatus.inactive {
+      color: var(--muted);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+    }
+    @keyframes pulse-master {
+      0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(255,0,51,0.4); }
+      50%       { opacity: 0.6; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN OVERLAY -->
+  <div id="loginOverlay" style="position:fixed;inset:0;z-index:1000;background:#050507;background-image:linear-gradient(rgba(38,79,154,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(38,79,154,0.06) 1px,transparent 1px);background-size:40px 40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;">
+    <div style="font-family:'Courier New',monospace;font-size:28px;font-weight:900;letter-spacing:8px;color:#264f9a;text-shadow:0 0 20px rgba(38,79,154,0.6);text-transform:uppercase;">SCANMANIA</div>
+    <div style="font-family:'Courier New',monospace;font-size:12px;letter-spacing:3px;color:#5a7899;text-transform:uppercase;">// Admin access</div>
+    <div style="display:flex;flex-direction:column;gap:12px;width:320px;">
+      <input id="loginPwdInput" type="password" placeholder="password" style="width:100%;padding:14px 16px;background:#080d18;border:1px solid #0d1e3a;border-radius:8px;color:#e8f0fc;font-family:'Courier New',monospace;font-size:16px;outline:none;caret-color:#264f9a;letter-spacing:2px;" autocomplete="current-password">
+      <button id="loginBtn" style="width:100%;padding:14px;background:transparent;border:2px solid #264f9a;border-radius:8px;color:#264f9a;font-family:'Courier New',monospace;font-size:14px;font-weight:900;letter-spacing:4px;text-transform:uppercase;cursor:pointer;">LOGIN</button>
+      <div id="loginErr" style="font-family:'Courier New',monospace;font-size:13px;color:#ff0033;text-align:center;min-height:20px;"></div>
+    </div>
+  </div>
+
+  <!-- -----------------------------------------------------------------------
+       HEADER
+  ----------------------------------------------------------------------- -->
+  <div id="header">
+    <span class="logo">SCANMANIA</span>
+    <span class="state-pill" id="headerState">ATTRACT</span>
+    <div class="header-controls">
+      <div id="wsBar">
+        <div class="ws-led" id="wsLed"></div>
+        <span id="wsLbl">connecting…</span>
+      </div>
+      <button class="btn btn-default" id="btnLogout" style="font-size:11px;">Logout</button>
+    </div>
+  </div>
+
+  <!-- -----------------------------------------------------------------------
+       TAB NAV
+  ----------------------------------------------------------------------- -->
+  <div id="tabNav">
+    <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+    <button class="tab-btn"        data-tab="hardware">Hardware</button>
+    <button class="tab-btn"        data-tab="beams">Beams</button>
+    <button class="tab-btn"        data-tab="presets">Maze Editor</button>
+    <button class="tab-btn"        data-tab="config">Config</button>
+    <button class="tab-btn"        data-tab="runs">Runs</button>
+    <button class="tab-btn"        data-tab="leaderboard">Leaderboard</button>
+    <button class="tab-btn"        data-tab="cloudsync">Cloud Sync</button>
+    <button class="tab-btn"        data-tab="logs">Logs</button>
+    <button class="tab-btn"        data-tab="mastermode">Master Mode</button>
+    <button class="tab-btn"        data-tab="dev">Dev</button>
+  </div>
+
+  <!-- -----------------------------------------------------------------------
+       TAB CONTENT
+  ----------------------------------------------------------------------- -->
+  <div id="tabContent">
+
+    <!-- === DASHBOARD === -->
+    <div class="tab-panel active" id="tab-dashboard">
+      <div class="stat-row">
+        <div class="stat-box"><div class="stat-val" id="dState">—</div><div class="stat-label">State</div></div>
+        <div class="stat-box"><div class="stat-val" id="dUptime">—</div><div class="stat-label">Uptime</div></div>
+        <div class="stat-box"><div class="stat-val" id="dRunsToday">—</div><div class="stat-label">Runs today</div></div>
+        <div class="stat-box"><div class="stat-val" id="dClean">—</div><div class="stat-label">Clean</div></div>
+        <div class="stat-box"><div class="stat-val" id="dBusted">—</div><div class="stat-label">Busted</div></div>
+        <div class="stat-box"><div class="stat-val" id="dAborted">—</div><div class="stat-label">Aborted</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Active faults</div>
+        <div id="faultList">
+          <span style="color: var(--muted); font-size: 13px;">No active faults.</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Outbox</div>
+        <div class="info-row">
+          <span class="info-key">Depth</span>
+          <span class="info-val" id="dOutboxDepth">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Last push</span>
+          <span class="info-val" id="dLastPush">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Last error</span>
+          <span class="info-val" id="dLastErr">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- === HARDWARE === -->
+    <div class="tab-panel" id="tab-hardware">
+      <div class="card">
+        <div class="card-title">Relay Boards</div>
+        <table class="data-table" id="boardsTable">
+          <thead>
+            <tr>
+              <th>ID</th><th>IP</th><th>Status</th><th>RTT</th>
+              <th>Mismatches</th><th>Coils (ch 1–16)</th>
+            </tr>
+          </thead>
+          <tbody id="boardsBody">
+            <tr><td colspan="6" style="color:var(--muted)">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Inputs — SM-NODE-TRIG</div>
+        <div id="inputsInfo" style="font-size:13px; color:var(--muted)">Loading…</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Cameras</div>
+        <div id="cameraInfo" style="font-size:13px; color:var(--muted)">Loading…</div>
+      </div>
+    </div>
+
+    <!-- === BEAMS === -->
+    <div class="tab-panel" id="tab-beams">
+      <div class="card" style="overflow-x:auto;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+          <div class="card-title" style="margin:0;">Physical Layout</div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-warn" id="btnUnmaskAll" style="font-size:11px;padding:5px 12px;">Unmask all</button>
+            <button class="btn btn-default" id="btnRefreshBeams" style="font-size:11px;padding:5px 12px;">Refresh</button>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--muted);font-family:var(--font);margin-bottom:12px;line-height:1.6;">
+          Horizontal strips cross the player's path. Vertical strips run along the walls. START at bottom, STOP at top.
+        </p>
+        <div id="gridContainer"></div>
+        <div style="display:flex; gap:18px; margin-top:14px; flex-wrap:wrap;">
+          <span style="font-size:11px;color:var(--muted);">Click strip to mask/unmask</span>
+          <span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#264f9a;"></span> Active</span>
+          <span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#1a1a1a;border:1px solid #333;"></span> Masked</span>
+        </div>
+      </div>
+
+      <div class="card mt-16">
+        <div class="card-title">Masked strips</div>
+        <div id="maskedBeamList" style="font-size:13px; color:var(--muted)">Loading…</div>
+      </div>
+    </div>
+
+    <!-- === MAZE EDITOR + SHOW EDITOR === -->
+    <div class="tab-panel" id="tab-presets">
+
+      <!-- Maze Editor -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div class="card-title" style="margin:0;">Maze Editor</div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <select id="mePresetSelect" style="
+              height:32px;padding:0 10px;font-family:var(--font);font-size:12px;
+              background:var(--surface2);border:1px solid var(--border);border-radius:4px;
+              color:var(--text);cursor:pointer;min-width:140px;
+            "></select>
+            <button class="btn btn-default" id="meLoadBtn" style="font-size:11px;padding:5px 10px;">Load</button>
+            <button class="btn btn-primary" id="mePreviewBtn" style="font-size:11px;padding:5px 10px;">Preview Live</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
+          Click strips to toggle on/off. Preview sends to hardware. Save writes to mazes.yaml.
+        </div>
+        <div id="meGrid"></div>
+        <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-primary" id="meSaveBtn" style="font-size:11px;padding:5px 14px;">Save</button>
+          <button class="btn btn-default" id="meClearBtn" style="font-size:11px;padding:5px 10px;">Clear All</button>
+          <button class="btn btn-default" id="meAllOnBtn" style="font-size:11px;padding:5px 10px;">All On</button>
+          <span id="meSaveMsg" style="font-size:11px;margin-left:8px;"></span>
+        </div>
+      </div>
+
+      <!-- Show Editor -->
+      <div class="card mt-16">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div class="card-title" style="margin:0;">Show Editor</div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-default" id="sePlayBtn" style="font-size:11px;padding:5px 10px;">Play</button>
+            <button class="btn btn-default" id="seStopBtn" style="font-size:11px;padding:5px 10px;">Stop</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+          <input id="seShowName" type="text" placeholder="Show name…"
+            style="flex:1;min-width:140px;height:32px;padding:0 10px;font-family:var(--font);font-size:12px;
+                   background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+          <button class="btn btn-primary" id="seSaveBtn" style="font-size:11px;padding:5px 14px;">Save Show</button>
+          <span id="seSaveMsg" style="font-size:11px;"></span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
+          Build a sequence of presets with timing. Used for attract animations and count-in ramp.
+        </div>
+        <div id="seTimeline" style="display:flex;flex-direction:column;gap:4px;"></div>
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center;">
+          <select id="seAddPreset" style="
+            height:32px;padding:0 10px;font-family:var(--font);font-size:12px;
+            background:var(--surface2);border:1px solid var(--border);border-radius:4px;
+            color:var(--text);min-width:140px;
+          "></select>
+          <input id="seAddHoldMs" type="number" value="300" min="50" max="10000" style="
+            height:32px;padding:0 8px;font-family:var(--font);font-size:12px;
+            background:var(--surface2);border:1px solid var(--border);border-radius:4px;
+            color:var(--text);width:80px;
+          ">
+          <span style="font-size:11px;color:var(--muted);">ms</span>
+          <button class="btn btn-default" id="seAddBtn" style="font-size:11px;padding:5px 10px;">Add Step</button>
+          <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px;margin-left:auto;">
+            <input type="checkbox" id="seLoop" checked> Loop
+          </label>
+        </div>
+      </div>
+
+      <!-- Saved presets list -->
+      <div class="card mt-16">
+        <div class="card-title">Saved Presets</div>
+        <div id="presetList" style="font-size:13px; color:var(--muted)">Loading…</div>
+      </div>
+    </div>
+
+    <!-- === CONFIG === -->
+    <div class="tab-panel" id="tab-config">
+      <div style="display:flex;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px;">
+        <button class="cfg-tab-btn active" data-cfg="game"     style="flex:1;padding:10px;background:var(--surface2);border:none;border-right:1px solid var(--border);color:var(--accent);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;">game.yaml</button>
+        <button class="cfg-tab-btn"        data-cfg="hardware" style="flex:1;padding:10px;background:transparent;border:none;border-right:1px solid var(--border);color:var(--muted);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;">hardware.yaml</button>
+        <button class="cfg-tab-btn"        data-cfg="mazes"    style="flex:1;padding:10px;background:transparent;border:none;border-right:1px solid var(--border);color:var(--muted);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;">mazes.yaml</button>
+        <button class="cfg-tab-btn"        data-cfg="beams"    style="flex:1;padding:10px;background:transparent;border:none;color:var(--muted);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;">beams.json</button>
+      </div>
+
+      <div class="card" id="cfgCard-game">
+        <div class="card-title">game.yaml</div>
+        <textarea class="config-editor" id="cfgEditor-game" style="min-height:400px;"></textarea>
+        <div class="flex-row mt-12">
+          <button class="btn btn-primary" onclick="saveCfg('game')">Save &amp; apply</button>
+          <button class="btn btn-default" onclick="loadCfgFile('game')">Reload</button>
+        </div>
+        <div id="cfgMsg-game" style="font-size:12px;margin-top:8px;font-family:var(--font);"></div>
+      </div>
+
+      <div class="card" id="cfgCard-hardware" style="display:none;">
+        <div class="card-title">hardware.yaml</div>
+        <textarea class="config-editor" id="cfgEditor-hardware" style="min-height:400px;"></textarea>
+        <div class="flex-row mt-12">
+          <button class="btn btn-primary" onclick="saveCfg('hardware')">Save &amp; apply</button>
+          <button class="btn btn-default" onclick="loadCfgFile('hardware')">Reload</button>
+        </div>
+        <div id="cfgMsg-hardware" style="font-size:12px;margin-top:8px;font-family:var(--font);"></div>
+      </div>
+
+      <div class="card" id="cfgCard-mazes" style="display:none;">
+        <div class="card-title">mazes.yaml</div>
+        <textarea class="config-editor" id="cfgEditor-mazes" style="min-height:400px;"></textarea>
+        <div class="flex-row mt-12">
+          <button class="btn btn-primary" onclick="saveCfg('mazes')">Save &amp; apply</button>
+          <button class="btn btn-default" onclick="loadCfgFile('mazes')">Reload</button>
+        </div>
+        <div id="cfgMsg-mazes" style="font-size:12px;margin-top:8px;font-family:var(--font);"></div>
+      </div>
+
+      <div class="card" id="cfgCard-beams" style="display:none;">
+        <div class="card-title">beams.json</div>
+        <textarea class="config-editor" id="cfgEditor-beams" style="min-height:400px;"></textarea>
+        <div class="flex-row mt-12">
+          <button class="btn btn-primary" onclick="saveCfg('beams')">Save &amp; apply</button>
+          <button class="btn btn-default" onclick="loadCfgFile('beams')">Reload</button>
+        </div>
+        <div id="cfgMsg-beams" style="font-size:12px;margin-top:8px;font-family:var(--font);"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Config audit log</div>
+        <table class="data-table" id="auditTable">
+          <thead><tr><th>Time</th><th>Path</th><th>Actor</th></tr></thead>
+          <tbody id="auditBody">
+            <tr><td colspan="3" style="color:var(--muted)">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- === RUNS === -->
+    <div class="tab-panel" id="tab-runs">
+      <div class="flex-row" style="margin-bottom:14px;">
+        <input type="text" id="runSearch" placeholder="Search player…"
+          style="flex:1; min-width:160px; padding:8px 12px; border-radius:6px;
+                 border:1px solid var(--border); background:var(--surface2);
+                 color:var(--text); font-size:13px; font-family:var(--font);">
+        <button class="btn btn-default" id="btnRunRefresh">Refresh</button>
+        <button class="btn btn-default" id="btnExportCsv">Export CSV</button>
+      </div>
+
+      <div class="card" style="padding:0; overflow:hidden;">
+        <table class="data-table" id="runsTable">
+          <thead>
+            <tr>
+              <th>Player</th><th>Outcome</th><th>Elapsed</th>
+              <th>Seg.</th><th>Mode</th><th>Beam</th><th>Date</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="runsBody">
+            <tr><td colspan="8" style="color:var(--muted); padding:16px;">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- === LEADERBOARD === -->
+    <div class="tab-panel" id="tab-leaderboard">
+      <div class="flex-row" style="margin-bottom:14px;">
+        <div style="display:flex;gap:4px;">
+          <button class="btn btn-primary lb-scope-btn" data-scope="daily"      style="font-size:11px;padding:5px 12px;">Daily</button>
+          <button class="btn btn-default lb-scope-btn" data-scope="all"   style="font-size:11px;padding:5px 12px;">All-time</button>
+          <button class="btn btn-default lb-scope-btn" data-scope="activation" style="font-size:11px;padding:5px 12px;">Activation</button>
+        </div>
+        <button class="btn btn-default" id="btnLbRefresh">Refresh</button>
+        <button class="btn btn-default" id="btnLbExportCsv">Export CSV</button>
+      </div>
+
+      <div class="card" style="padding:0; overflow:hidden;">
+        <table class="data-table" id="lbTable">
+          <thead>
+            <tr><th>#</th><th>Player</th><th>Time</th><th>Date</th><th>Mode</th></tr>
+          </thead>
+          <tbody id="lbBody">
+            <tr><td colspan="5" style="color:var(--muted); padding:16px;">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- === CLOUD SYNC === -->
+    <div class="tab-panel" id="tab-cloudsync">
+      <div class="card">
+        <div class="card-title">Status</div>
+        <div class="info-row">
+          <span class="info-key">Outbox depth</span>
+          <span class="info-val" id="syncDepth">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Last successful push</span>
+          <span class="info-val" id="syncLastOk">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Last error</span>
+          <span class="info-val" id="syncLastErr">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Sync paused</span>
+          <span class="info-val" id="syncPaused">—</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Controls</div>
+        <div class="flex-row">
+          <button class="btn btn-primary" id="btnPushNow">Push Now</button>
+          <button class="btn btn-warn"    id="btnPauseResume">Pause / Resume</button>
+          <button class="btn btn-default" id="btnRetryFailed">Retry Failed</button>
+          <button class="btn btn-default" id="btnTestEndpoint">Test Endpoint</button>
+          <button class="btn btn-default" id="btnExportSnapshot">Export Snapshot</button>
+        </div>
+        <div id="syncActionMsg" style="margin-top:12px; font-size:13px; font-family:var(--font);"></div>
+      </div>
+    </div>
+
+    <!-- === LOGS === -->
+    <div class="tab-panel" id="tab-logs">
+      <div class="flex-row" style="margin-bottom:14px;">
+        <select id="logUnit" style="padding:8px 12px; border-radius:6px;
+            border:1px solid var(--border); background:var(--surface2);
+            color:var(--text); font-size:13px; font-family:var(--font);">
+          <option value="scanmania-core">scanmania-core</option>
+          <option value="scanmania-web">scanmania-web</option>
+          <option value="scanmania-vision">scanmania-vision</option>
+          <option value="scanmania-io">scanmania-io</option>
+          <option value="scanmania-sync">scanmania-sync</option>
+          <option value="scanmania-kiosk">scanmania-kiosk</option>
+        </select>
+        <input type="text" id="logFilter" placeholder="Filter…"
+          style="flex:1; min-width:120px; padding:8px 12px; border-radius:6px;
+                 border:1px solid var(--border); background:var(--surface2);
+                 color:var(--text); font-size:13px; font-family:var(--font);">
+        <button class="btn btn-default" id="btnLogTail">Tail (live)</button>
+        <button class="btn btn-default" id="btnLogStop">Stop</button>
+      </div>
+      <pre id="logOutput">Select a unit and press Tail to stream logs.</pre>
+    </div>
+
+    <!-- === MASTER MODE === -->
+    <div class="tab-panel" id="tab-mastermode">
+      <div class="card" style="border-color: var(--red); box-shadow: 0 0 16px rgba(255,0,51,0.1);">
+        <div class="card-title" style="color:var(--red);">Master Mode — direct hardware control</div>
+        <div id="masterStatus" class="inactive">MASTER MODE: INACTIVE</div>
+        <p style="font-size:13px; color:var(--muted); margin-bottom:14px; font-family:var(--font);">
+          Runs performed in master mode are excluded from the leaderboard by default.
+          Exiting returns to SELF_TEST.
+        </p>
+        <div class="flex-row">
+          <button class="btn btn-danger"  id="btnEngageMaster">Engage Master Mode</button>
+          <button class="btn btn-default" id="btnExitMaster">Exit Master Mode</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Preset buttons</div>
+        <div id="presetGrid">
+          <!-- Populated dynamically -->
+          <span style="color:var(--muted); font-size:13px;">Loading presets…</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Individual channel toggles (all boards)</div>
+        <div id="channelGrid">
+          <!-- Populated dynamically from /api/admin/hardware -->
+        </div>
+        <p class="mt-8" style="font-size:11px; color:var(--muted); font-family:var(--font); letter-spacing:1px;">
+          Tap a channel to toggle on/off. Red = on.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Manual stopwatch</div>
+        <div class="flex-row">
+          <button class="btn btn-primary" id="btnSwStart">Start</button>
+          <button class="btn btn-default" id="btnSwStop">Stop</button>
+          <button class="btn btn-default" id="btnSwReset">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- === DEV === -->
+    <div class="tab-panel" id="tab-dev">
+      <div class="card" style="border-color:var(--orange);">
+        <div class="card-title" style="color:var(--orange);">Dev — inject FSM events for testing</div>
+        <div id="devModeWarning" style="font-size:12px;font-weight:700;font-family:var(--font);letter-spacing:1px;color:var(--orange);background:rgba(255,136,0,0.08);border:1px solid var(--orange);border-radius:6px;padding:8px 12px;margin-bottom:12px;">
+          WARNING: Dev triggers inject real FSM events. Use only for testing.
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">
+          Injects events directly into the FSM. Use with <code>--fake-all</code> only. Not for production.
+        </p>
+
+        <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">1. Register player first</div>
+        <div class="flex-row" style="margin-bottom:16px;">
+          <input id="devNickname" type="text" value="Dev Player" placeholder="Nickname"
+            style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid var(--border);
+                   background:var(--surface2);color:var(--text);font-size:13px;font-family:var(--font);">
+          <button class="btn btn-default" id="btnDevRegister">Register Player</button>
+        </div>
+
+        <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">2. Pre-run</div>
+        <div class="flex-row" style="margin-bottom:16px;">
+          <button class="btn btn-default dev-trigger" data-event="PlateHigh">Plate HIGH</button>
+          <button class="btn btn-default dev-trigger" data-event="PlateLow">Plate LOW</button>
+        </div>
+
+        <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">3. Count-in</div>
+        <div class="flex-row" style="margin-bottom:16px;">
+          <button class="btn btn-default dev-trigger" data-event="CountInRequested">Count-in Request</button>
+          <button class="btn btn-default dev-trigger" data-event="RampComplete">Ramp Complete (GO)</button>
+        </div>
+
+        <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">4. In-run</div>
+        <div class="flex-row" style="flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <button class="btn btn-default dev-trigger" data-event="Cp1Pressed">Checkpoint 1</button>
+          <button class="btn btn-default dev-trigger" data-event="Cp2Pressed">Checkpoint 2</button>
+          <button class="btn btn-default dev-trigger" data-event="StopPressed">Stop Button</button>
+        </div>
+        <div class="flex-row" style="margin-bottom:16px;">
+          <input id="devBeamId" type="text" value="b001" placeholder="beam_id"
+            style="width:90px;padding:8px 12px;border-radius:6px;border:1px solid var(--border);
+                   background:var(--surface2);color:var(--text);font-size:13px;font-family:var(--font);">
+          <button class="btn btn-warn" id="btnDevBreak">Beam Break</button>
+        </div>
+
+        <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">5. GM overrides</div>
+        <div class="flex-row" style="flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+          <button class="btn btn-danger dev-trigger" data-event="GmBust">Bust</button>
+          <button class="btn btn-warn dev-trigger" data-event="GmAbort">Abort</button>
+          <button class="btn btn-default dev-trigger" data-event="GmConfirmBreak">Confirm Break</button>
+          <button class="btn btn-default dev-trigger" data-event="GmVetoBreak">Veto Break</button>
+          <button class="btn btn-default dev-trigger" data-event="GmForceReset">Force Reset</button>
+        </div>
+
+        <div id="devMsg" style="font-size:13px;font-family:var(--font);min-height:18px;"></div>
+      </div>
+    </div>
+
+  </div><!-- /#tabContent -->
+
+  <script>
+    /* -----------------------------------------------------------------------
+       Admin portal JS
+       - Tab switching
+       - WebSocket for live state updates
+       - fetch() calls to /api/admin/* for each tab's data
+       - All mutations POST to /api/admin/* (or /api/gm/*)
+    ----------------------------------------------------------------------- */
+    "use strict";
+
+    /* ---- Auth ---- */
+    const loginOverlay = document.getElementById("loginOverlay");
+    const loginPwdInput = document.getElementById("loginPwdInput");
+    const loginBtn = document.getElementById("loginBtn");
+    const loginErr = document.getElementById("loginErr");
+
+    function getAdminPwd() { return sessionStorage.getItem("adminPwd") || ""; }
+
+    async function hashPassword(pwd) {
+      const data = new TextEncoder().encode(pwd);
+      const buf = await crypto.subtle.digest("SHA-256", data);
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function attemptLogin(pwd) {
+      loginErr.textContent = "";
+      loginBtn.disabled = true;
+      loginBtn.textContent = "CHECKING...";
+      try {
+        const hashed = await hashPassword(pwd);
+        const resp = await fetch("/api/admin/login", { method: "POST", headers: { "X-Admin-Password": hashed } });
+        if (resp.ok) {
+          sessionStorage.setItem("adminPwd", hashed);
+          loginOverlay.style.display = "none";
+          loadDashboard();
+        } else if (resp.status === 403) {
+          loginErr.textContent = "Access denied.";
+        } else {
+          loginErr.textContent = "Error " + resp.status;
+        }
+      } catch { loginErr.textContent = "Connection error."; }
+      finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = "LOGIN";
+      }
+    }
+
+    loginBtn.addEventListener("click", () => attemptLogin(loginPwdInput.value));
+    loginPwdInput.addEventListener("keydown", e => { if (e.key === "Enter") attemptLogin(loginPwdInput.value); });
+    document.getElementById("btnLogout").addEventListener("click", () => { sessionStorage.removeItem("adminPwd"); location.reload(); });
+
+    const _storedPwd = getAdminPwd();
+    if (_storedPwd) {
+      // Already hashed — verify directly without re-hashing
+      fetch("/api/admin/login", { method: "POST", headers: { "X-Admin-Password": _storedPwd } })
+        .then(r => {
+          if (r.ok) { loginOverlay.style.display = "none"; loadDashboard(); }
+          else { sessionStorage.removeItem("adminPwd"); loginPwdInput.focus(); }
+        })
+        .catch(() => loginPwdInput.focus());
+    } else { loginPwdInput.focus(); }
+
+    /* ---- Tab switching ---- */
+    const tabBtns   = document.querySelectorAll(".tab-btn");
+    const tabPanels = document.querySelectorAll(".tab-panel");
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.tab;
+        tabBtns.forEach(b => b.classList.toggle("active", b === btn));
+        tabPanels.forEach(p => p.classList.toggle("active", p.id === `tab-${id}`));
+        onTabActivated(id);
+      });
+    });
+
+    let _hwInterval = null;
+    function onTabActivated(id) {
+      // Stop hardware polling when leaving the tab
+      if (_hwInterval) { clearInterval(_hwInterval); _hwInterval = null; }
+
+      switch (id) {
+        case "dashboard":   loadDashboard(); break;
+        case "hardware":
+          loadHardware();  // initial load for structure (cameras, pico)
+          // Live coil updates come via WS at 10Hz — no polling needed
+          break;
+        case "runs":        loadRuns(); break;
+        case "leaderboard": loadLeaderboard(); break;
+        case "cloudsync":   loadSyncStatus(); break;
+        case "config":      loadConfig(); break;
+        case "presets":     loadPresets(); break;
+        case "beams":       loadBeams(); break;
+        case "mastermode":  loadMasterMode(); break;
+        case "dev":         loadDev(); break;
+      }
+    }
+
+    /* -----------------------------------------------------------------------
+       Utility
+    ----------------------------------------------------------------------- */
+    function esc(s) {
+      return String(s || "—")
+        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    function fmtMs(ms) {
+      if (ms == null) return "—";
+      const t = Math.max(0, Math.floor(ms));
+      const m = Math.floor(t / 60000);
+      const s = Math.floor((t % 60000) / 1000);
+      const l = t % 1000;
+      return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}.${String(l).padStart(3,"0")}`;
+    }
+
+    async function apiFetch(path, opts = {}) {
+      const headers = { "X-Admin-Password": getAdminPwd(), ...(opts.headers || {}) };
+      const resp = await fetch(path, { ...opts, headers });
+      if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+      return resp.json();
+    }
+
+    async function apiPost(path, body = {}) {
+      return apiFetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    }
+
+    function showMsg(elId, msg, isErr = false) {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      el.textContent = msg;
+      el.style.color = isErr ? "var(--red)" : "var(--green)";
+      setTimeout(() => { el.textContent = ""; }, 5000);
+    }
+
+    /* -----------------------------------------------------------------------
+       WebSocket — mirror live state into the header
+    ----------------------------------------------------------------------- */
+    const wsLed = document.getElementById("wsLed");
+    const wsLbl = document.getElementById("wsLbl");
+    const headerState = document.getElementById("headerState");
+    let wsDelay = 1000;
+    let ws = null;
+
+    function connectWS() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(`${proto}://${location.host}/ws`);
+      ws.onopen = () => { wsLed.className="ws-led ok"; wsLbl.textContent="live"; wsDelay=1000; };
+      ws.onmessage = (evt) => {
+        let m; try { m = JSON.parse(evt.data); } catch { return; }
+        if (m.state) headerState.textContent = m.state;
+        /* Update master mode active indicator */
+        const masterStatusEl = document.getElementById("masterStatus");
+        if (masterStatusEl) {
+          if (m.state === "MASTER") {
+            masterStatusEl.textContent = "MASTER MODE: ACTIVE";
+            masterStatusEl.className = "active";
+          } else {
+            masterStatusEl.textContent = "MASTER MODE: INACTIVE";
+            masterStatusEl.className = "inactive";
+          }
+        }
+        /* Refresh dashboard stats if on that tab */
+        if (document.getElementById("tab-dashboard").classList.contains("active")) {
+          updateDashboardFromWs(m);
+        }
+        /* Live hardware update from WS */
+        if (m.boards) {
+          updateHardwareFromWs(m.boards);
+          updateMasterChannelsFromWs(m.boards);
+        }
+        if (m.inputs) {
+          renderInputs(m.inputs);
+        }
+        // Update beams grid with live relay states
+        if (m.boards) {
+          updateBeamGridFromWs(m.boards);
+        }
+      };
+      ws.onclose = () => {
+        wsLed.className="ws-led err"; wsLbl.textContent="reconnecting…";
+        setTimeout(connectWS, wsDelay); wsDelay=Math.min(wsDelay*2,10000);
+      };
+      ws.onerror = () => ws.close();
+    }
+
+    connectWS();
+
+    /* -----------------------------------------------------------------------
+       DASHBOARD
+    ----------------------------------------------------------------------- */
+    async function loadDashboard() {
+      try {
+        const d = await apiFetch("/api/admin/status");
+        applyDashboard(d);
+      } catch (e) {
+        console.error("Dashboard load error:", e);
+      }
+    }
+
+    function applyDashboard(d) {
+      document.getElementById("dState").textContent      = d.state      || "—";
+      document.getElementById("dUptime").textContent     = d.uptime     || "—";
+      document.getElementById("dRunsToday").textContent  = d.runs_today ?? "—";
+      const cleanEl = document.getElementById("dClean");
+      cleanEl.textContent = d.clean ?? "—";
+      cleanEl.style.color = "var(--green)";
+      const bustedEl = document.getElementById("dBusted");
+      bustedEl.textContent = d.busted ?? "—";
+      bustedEl.style.color = "var(--red)";
+      const abortedEl = document.getElementById("dAborted");
+      abortedEl.textContent = d.aborted ?? "—";
+      abortedEl.style.color = "var(--orange)";
+      document.getElementById("dOutboxDepth").textContent = d.outbox_depth ?? "—";
+      document.getElementById("dLastPush").textContent   = d.last_push  || "—";
+      document.getElementById("dLastErr").textContent    = d.last_error || "—";
+
+      const faultList = document.getElementById("faultList");
+      const faults = d.faults || [];
+      if (faults.length === 0) {
+        faultList.innerHTML = '<span style="color:var(--muted); font-size:13px;">No active faults.</span>';
+      } else {
+        faultList.innerHTML = faults.map(f => `<div class="fault-item">${esc(f)}</div>`).join("");
+      }
+    }
+
+    function updateDashboardFromWs(m) {
+      if (m.state) document.getElementById("dState").textContent = m.state;
+    }
+
+    function updateMasterChannelsFromWs(boardsMap) {
+      /* Update every channel-btn's on/off class from live coil readback */
+      document.querySelectorAll(".channel-btn").forEach(btn => {
+        const bid = btn.dataset.boardId;
+        const ch = parseInt(btn.dataset.ch, 10);
+        const state = boardsMap[bid];
+        if (state && state.coils && ch >= 1 && ch <= state.coils.length) {
+          btn.classList.toggle("on", state.coils[ch - 1]);
+        }
+      });
+    }
+
+    function updateHardwareFromWs(boardsMap) {
+      /* boardsMap = { "SM-NODE-1": { status, coils: [bool], rtt_ms }, ... } */
+      const tbody = document.getElementById("boardsBody");
+      if (!tbody || !tbody.rows.length) return;
+      for (const row of tbody.rows) {
+        const boardId = row.cells[0]?.textContent?.trim();
+        const state = boardsMap[boardId];
+        if (!state) continue;
+        // Update status LED
+        const statusCell = row.cells[2];
+        if (statusCell) {
+          const led = state.status === "OK" ? "ok" : "err";
+          statusCell.innerHTML = `<span class="led ${led}"></span>${esc(state.status)}`;
+        }
+        // Update RTT
+        const rttCell = row.cells[3];
+        if (rttCell) rttCell.textContent = state.rtt_ms != null ? state.rtt_ms + "ms" : "—";
+        // Update coils
+        const coilCell = row.cells[5];
+        if (coilCell && state.coils) {
+          coilCell.innerHTML = state.coils.map((v, i) =>
+            `${i > 0 && i % 4 === 0 ? '<span style="display:inline-block;width:6px;"></span>' : ''}<span style="display:inline-block;width:28px;height:28px;
+               border-radius:3px;margin:1px;text-align:center;font-size:12px;line-height:28px;
+               background:${v ? "#ff3300" : "var(--surface2)"};
+               border:1px solid ${v ? "#ff3300" : "var(--border)"};
+               color:${v ? "#000" : "var(--muted)"};">${i+1}</span>`
+          ).join("");
+        }
+      }
+    }
+
+    /* -----------------------------------------------------------------------
+       HARDWARE
+    ----------------------------------------------------------------------- */
+    async function loadHardware() {
+      try {
+        const d = await apiFetch("/api/admin/hardware");
+        renderBoards(d.boards || []);
+        // Inputs are updated live via WS (renderInputs)
+        renderCameras(d.cameras || []);
+      } catch (e) {
+        document.getElementById("boardsBody").innerHTML =
+          `<tr><td colspan="6" style="color:var(--red)">${esc(e.message)}</td></tr>`;
+      }
+    }
+
+    function renderBoards(boards) {
+      const tbody = document.getElementById("boardsBody");
+      if (!boards.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">No boards configured.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = boards.map(b => {
+        const coilsHtml = (b.coils || []).map((v, i) =>
+          `${i > 0 && i % 4 === 0 ? '<span style="display:inline-block;width:6px;"></span>' : ''}<span style="display:inline-block;width:28px;height:28px;
+             border-radius:3px;margin:1px;text-align:center;font-size:12px;line-height:28px;
+             background:${v ? "#ff3300" : "var(--surface2)"};
+             border:1px solid ${v ? "#ff3300" : "var(--border)"};
+             color:${v ? "#000" : "var(--muted)"};">${i+1}</span>`
+        ).join("");
+        return `<tr>
+          <td>${esc(b.id)}</td>
+          <td style="font-family:monospace">${esc(b.ip)}</td>
+          <td><span class="led ${b.status === "OK" ? "ok" : "err"}"></span>${esc(b.status)}</td>
+          <td style="font-family:monospace">${b.rtt_ms != null ? b.rtt_ms+"ms" : "—"}</td>
+          <td>${b.mismatch_count ?? "—"}</td>
+          <td>${coilsHtml}</td>
+        </tr>`;
+      }).join("");
+    }
+
+    function renderInputs(inp) {
+      const el = document.getElementById("inputsInfo");
+      if (!inp) { el.textContent = "No data"; return; }
+      const connected = inp.connected;
+      const states = inp.states || {};
+      const names = { plate: "START plate", cp1: "Checkpoint 1", cp2: "Checkpoint 2", stop: "Stop button" };
+      let html = `<div class="info-row"><span class="info-key">Connection</span>
+        <span class="info-val"><span class="led ${connected ? "ok" : "err"}"></span>${connected ? "CONNECTED" : "OFFLINE"}</span></div>`;
+      for (const [id, label] of Object.entries(names)) {
+        const on = states[id] || false;
+        html += `<div class="info-row"><span class="info-key">${label}</span>
+          <span class="info-val" style="color:${on ? "var(--green)" : "var(--muted)"}; font-weight:700;">${on ? "ON" : "OFF"}</span></div>`;
+      }
+      el.innerHTML = html;
+    }
+
+    function renderCameras(cameras) {
+      if (!cameras.length) {
+        document.getElementById("cameraInfo").textContent = "No cameras configured.";
+        return;
+      }
+      document.getElementById("cameraInfo").innerHTML = cameras.map(c => `
+        <div class="info-row"><span class="info-key">${esc(c.id)}</span>
+          <span class="info-val">${c.fps != null ? c.fps+" fps" : "—"} · stalls: ${c.stall_count ?? 0}</span></div>
+      `).join("");
+    }
+
+    /* -----------------------------------------------------------------------
+       RUNS
+    ----------------------------------------------------------------------- */
+    async function loadRuns() {
+      const q = document.getElementById("runSearch").value.trim();
+      try {
+        const d = await apiFetch(`/api/admin/runs?limit=50&q=${encodeURIComponent(q)}`);
+        renderRuns(d.runs || []);
+      } catch (e) {
+        document.getElementById("runsBody").innerHTML =
+          `<tr><td colspan="8" style="color:var(--red)">${esc(e.message)}</td></tr>`;
+      }
+    }
+
+    function renderRuns(runs) {
+      const tbody = document.getElementById("runsBody");
+      if (!runs.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="color:var(--muted); padding:16px;">No runs found.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = runs.map((r, i) => `
+        <tr class="clickable" data-run-idx="${i}">
+          <td>${esc(r.player_nickname)}</td>
+          <td><span class="badge ${esc(r.outcome)}">${esc(r.outcome)}</span></td>
+          <td style="font-family:monospace">${fmtMs(r.elapsed_ms)}</td>
+          <td>${r.segment_reached ?? "—"}</td>
+          <td>${esc(r.detection_mode)}</td>
+          <td>${esc(r.busting_beam_id)}</td>
+          <td style="font-family:monospace">${esc((r.started_at||"").slice(0,16))}</td>
+          <td>
+            ${r.outcome !== "voided"
+              ? `<button class="btn btn-default" style="font-size:10px;padding:4px 8px;"
+                   onclick="voidRun('${r.id}',event)">Void</button>`
+              : `<button class="btn btn-default" style="font-size:10px;padding:4px 8px;"
+                   onclick="unvoidRun('${r.id}',event)">Unvoid</button>`}
+          </td>
+        </tr>
+        <tr id="events-${i}">
+          <td colspan="8" style="padding:0;">
+            <div class="run-events" id="evts-${i}">Loading…</div>
+          </td>
+        </tr>
+      `).join("");
+
+      // Expand/collapse events on row click
+      document.querySelectorAll(".clickable[data-run-idx]").forEach(row => {
+        row.addEventListener("click", (e) => {
+          if (e.target.tagName === "BUTTON") return;
+          const idx = row.dataset.runIdx;
+          const pane = document.getElementById(`evts-${idx}`);
+          const isOpen = pane.classList.contains("open");
+          pane.classList.toggle("open", !isOpen);
+          if (!isOpen && pane.textContent === "Loading…") {
+            const runId = runs[idx].id;
+            apiFetch(`/api/admin/runs/${runId}/events`)
+              .then(d => {
+                pane.textContent = (d.events || [])
+                  .map(ev => `${ev.ts_wall} [${ev.type}] ${ev.source}: ${ev.payload_json || ""}`)
+                  .join("\n") || "(no events)";
+              })
+              .catch(err => { pane.textContent = `Error: ${err.message}`; });
+          }
+        });
+      });
+    }
+
+    async function voidRun(runId, evt) {
+      evt.stopPropagation();
+      const reason = prompt("Void reason:");
+      if (reason === null) return;
+      try {
+        await apiPost(`/api/admin/runs/${runId}/void`, { reason });
+        loadRuns();
+      } catch (e) { alert("Void failed: " + e.message); }
+    }
+
+    async function unvoidRun(runId, evt) {
+      evt.stopPropagation();
+      try {
+        await apiPost(`/api/admin/runs/${runId}/unvoid`, {});
+        loadRuns();
+      } catch (e) { alert("Unvoid failed: " + e.message); }
+    }
+
+    document.getElementById("btnRunRefresh").addEventListener("click", loadRuns);
+    document.getElementById("runSearch").addEventListener("keydown", e => { if (e.key==="Enter") loadRuns(); });
+    document.getElementById("btnExportCsv").addEventListener("click", () => {
+      window.location = "/api/admin/export/runs.csv";
+    });
+
+    /* -----------------------------------------------------------------------
+       LEADERBOARD
+    ----------------------------------------------------------------------- */
+    let lbScope = "daily";
+
+    async function loadLeaderboard() {
+      try {
+        const d = await apiFetch(`/api/admin/leaderboard?scope=${encodeURIComponent(lbScope)}`);
+        renderLeaderboard(d.leaderboard || []);
+      } catch (e) {
+        document.getElementById("lbBody").innerHTML =
+          `<tr><td colspan="5" style="color:var(--red)">${esc(e.message)}</td></tr>`;
+      }
+    }
+
+    function renderLeaderboard(entries) {
+      const tbody = document.getElementById("lbBody");
+      if (!entries.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted); padding:16px;">No clean runs yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = entries.map((e, i) => {
+        const rank = i + 1;
+        const rankClass = rank <= 3 ? `rank-${rank}` : "";
+        return `<tr>
+          <td class="${rankClass}">${rank}</td>
+          <td>${esc(e.player_nickname)}</td>
+          <td class="lb-time">${fmtMs(e.elapsed_ms)}</td>
+          <td style="font-family:monospace">${esc((e.started_at||"").slice(0,10))}</td>
+          <td>${esc(e.detection_mode)}</td>
+        </tr>`;
+      }).join("");
+    }
+
+    document.querySelectorAll(".lb-scope-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        lbScope = btn.dataset.scope;
+        document.querySelectorAll(".lb-scope-btn").forEach(b => {
+          b.className = b === btn ? "btn btn-primary lb-scope-btn" : "btn btn-default lb-scope-btn";
+          b.style.fontSize = "11px";
+          b.style.padding = "5px 12px";
+        });
+        loadLeaderboard();
+      });
+    });
+
+    document.getElementById("btnLbRefresh").addEventListener("click", loadLeaderboard);
+    document.getElementById("btnLbExportCsv").addEventListener("click", () => {
+      window.location = "/api/admin/export/leaderboard.csv";
+    });
+
+    /* -----------------------------------------------------------------------
+       CLOUD SYNC
+    ----------------------------------------------------------------------- */
+    async function loadSyncStatus() {
+      try {
+        const d = await apiFetch("/api/admin/outbox");
+        document.getElementById("syncDepth").textContent   = d.depth ?? "—";
+        document.getElementById("syncLastOk").textContent  = d.last_push_ok_at  || "—";
+        document.getElementById("syncLastErr").textContent = d.last_error || "—";
+        document.getElementById("syncPaused").textContent  = d.paused ? "YES" : "No";
+        document.getElementById("syncPaused").style.color  = d.paused ? "var(--red)" : "var(--green)";
+        document.getElementById("btnPauseResume").textContent = d.paused ? "Resume Backup" : "Pause Backup";
+      } catch (e) {
+        console.error("Sync status error:", e);
+      }
+    }
+
+    document.getElementById("btnPushNow").addEventListener("click", async () => {
+      try {
+        await apiPost("/api/admin/outbox/push");
+        showMsg("syncActionMsg", "Push triggered.");
+        setTimeout(loadSyncStatus, 1500);
+      } catch (e) { showMsg("syncActionMsg", e.message, true); }
+    });
+
+    document.getElementById("btnPauseResume").addEventListener("click", async () => {
+      try {
+        const d = await apiFetch("/api/admin/outbox");
+        await apiPost(d.paused ? "/api/admin/outbox/resume" : "/api/admin/outbox/pause");
+        showMsg("syncActionMsg", d.paused ? "Sync resumed." : "Sync paused.");
+        setTimeout(loadSyncStatus, 800);
+      } catch (e) { showMsg("syncActionMsg", e.message, true); }
+    });
+
+    document.getElementById("btnRetryFailed").addEventListener("click", async () => {
+      try {
+        await apiPost("/api/admin/outbox/reset-backoff");
+        showMsg("syncActionMsg", "Backoff reset on failed rows.");
+      } catch (e) { showMsg("syncActionMsg", e.message, true); }
+    });
+
+    document.getElementById("btnTestEndpoint").addEventListener("click", async () => {
+      try {
+        const d = await apiFetch("/api/admin/outbox/test");
+        showMsg("syncActionMsg", `Endpoint OK: ${JSON.stringify(d.result) || "200"}`);
+      } catch (e) { showMsg("syncActionMsg", `Failed: ${e.message}`, true); }
+    });
+
+    document.getElementById("btnExportSnapshot").addEventListener("click", () => {
+      window.location = "/api/admin/snapshot";
+    });
+
+    /* -----------------------------------------------------------------------
+       CONFIG
+    ----------------------------------------------------------------------- */
+    document.querySelectorAll(".cfg-tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const cfg = btn.dataset.cfg;
+        document.querySelectorAll(".cfg-tab-btn").forEach(b => {
+          b.style.background = "transparent";
+          b.style.color = "var(--muted)";
+        });
+        btn.style.background = "var(--surface2)";
+        btn.style.color = "var(--accent)";
+        ["game","hardware","mazes","beams"].forEach(f => {
+          document.getElementById(`cfgCard-${f}`).style.display = f === cfg ? "" : "none";
+        });
+      });
+    });
+
+    async function loadCfgFile(file) {
+      try {
+        const d = await apiFetch(`/api/admin/config/${file}`);
+        document.getElementById(`cfgEditor-${file}`).value = d.content || "";
+      } catch (e) {
+        document.getElementById(`cfgEditor-${file}`).value = `# Error: ${e.message}`;
+      }
+    }
+
+    async function saveCfg(file) {
+      if (!confirm("Apply changes? This takes effect immediately.")) return;
+      const content = document.getElementById(`cfgEditor-${file}`).value;
+      const msgEl = document.getElementById(`cfgMsg-${file}`);
+      try {
+        await apiPost(`/api/admin/config/${file}`, { content });
+        msgEl.textContent = "Saved.";
+        msgEl.style.color = "var(--green)";
+        loadAuditLog();
+      } catch (e) {
+        msgEl.textContent = e.message;
+        msgEl.style.color = "var(--red)";
+      }
+      setTimeout(() => { msgEl.textContent = ""; }, 5000);
+    }
+
+    async function loadConfig() {
+      await Promise.all(["game","hardware","mazes","beams"].map(f => loadCfgFile(f)));
+      loadAuditLog();
+    }
+
+    async function loadAuditLog() {
+      try {
+        const d = await apiFetch("/api/admin/config/audit");
+        const tbody = document.getElementById("auditBody");
+        const rows = d.entries || [];
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">No changes recorded.</td></tr>';
+        } else {
+          tbody.innerHTML = rows.map(r => `
+            <tr>
+              <td style="font-family:monospace">${esc((r.ts||"").slice(0,16))}</td>
+              <td>${esc(r.path)}</td>
+              <td>${esc(r.actor)}</td>
+            </tr>`).join("");
+        }
+      } catch {}
+    }
+
+    /* -----------------------------------------------------------------------
+       PRESETS
+    ----------------------------------------------------------------------- */
+    /* -----------------------------------------------------------------------
+       MAZE EDITOR
+    ----------------------------------------------------------------------- */
+    const MAZE_NAMES = ["maze_1", "maze_2", "maze_3"];
+    let meStrips = {};
+    let meAllBeams = [];
+    let meCurrentMaze = "maze_1";
+    let meAllPresets = {};
+    let meCurrentDescription = "";
+
+    function meRenderGrid() {
+      const c = document.getElementById("meGrid");
+      const byRow = {};
+      meAllBeams.forEach(b => { (byRow[b.row]||(byRow[b.row]=[])).push(b); });
+      const rowNums = Object.keys(byRow).map(Number).sort((a,b)=>b-a);
+      const W = 360, T = 5, COL = (W - T*2) / 3, VLEN = COL;
+
+      function getS(r,n) { return (byRow[r]||[]).find(b=>b.strip===n)||null; }
+      function sc(s) {
+        if (!s) return {bg:"transparent",op:"0"};
+        const on = meStrips[s.id];
+        return { bg: on ? "#ff3300" : "#1a2233", op: "1" };
+      }
+
+      let h = `<div style="width:${W+50}px;margin:0 auto;">
+        <div style="border:1px solid var(--border);border-radius:6px;padding:16px 24px;background:#060a12;">`;
+
+      for (let ri = 0; ri < rowNums.length; ri++) {
+        const rn = rowNums[ri];
+        const s1=getS(rn,1), s3=getS(rn,3), s5=getS(rn,5);
+        const c1=sc(s1), c3=sc(s3), c5=sc(s5);
+        const s2=getS(rn,2), s4=getS(rn,4);
+        const c2=sc(s2), c4=sc(s4);
+        const plate = ROW_PLATES[rn];
+
+        h += `<div style="display:grid;grid-template-columns:1fr ${T}px 1fr ${T}px 1fr;grid-template-rows:${T}px ${VLEN}px;">`;
+        const hA = (s,cs) => s ? `class="mestrip" data-sid="${s.id}" style="background:${cs.bg};border-radius:1px;cursor:pointer;transition:background .1s;"` : `style=""`;
+        h += `<div ${hA(s1,c1)}></div>`;
+        h += `<div style="background:${c2.bg};border-radius:1px;"></div>`;
+        h += `<div ${hA(s3,c3)}></div>`;
+        h += `<div style="background:${c4.bg};border-radius:1px;"></div>`;
+        h += `<div ${hA(s5,c5)}></div>`;
+        h += `<div></div>`;
+        h += s2?`<div class="mestrip" data-sid="${s2.id}" style="background:${c2.bg};border-radius:1px;cursor:pointer;transition:background .1s;"></div>`:`<div></div>`;
+        h += `<div style="display:flex;align-items:center;justify-content:center;">`;
+        if (plate) {
+          const col = plate==="START" ? "var(--green)" : "#0070ea";
+          h += `<span style="font-size:8px;font-weight:800;color:${col};letter-spacing:1px;">${plate}</span>`;
+        }
+        h += `</div>`;
+        h += s4?`<div class="mestrip" data-sid="${s4.id}" style="background:${c4.bg};border-radius:1px;cursor:pointer;transition:background .1s;"></div>`:`<div></div>`;
+        h += `<div></div>`;
+        h += `</div>`;
+      }
+      h += '</div></div>';
+
+      // Strip count
+      const onCount = Object.values(meStrips).filter(Boolean).length;
+      h += `<div style="text-align:center;margin-top:6px;font-size:11px;color:var(--muted);">${onCount} / ${meAllBeams.length} strips on</div>`;
+
+      c.innerHTML = h;
+
+      c.querySelectorAll(".mestrip").forEach(el => {
+        el.addEventListener("click", () => {
+          meStrips[el.dataset.sid] = !meStrips[el.dataset.sid];
+          meRenderGrid();
+        });
+      });
+    }
+
+    function meGetOnChannels() {
+      const channels = [];
+      meAllBeams.forEach(b => {
+        if (meStrips[b.id]) {
+          const seg = b.segment || 1;
+          channels.push((seg - 1) * 16 + b.relay_channel);
+        }
+      });
+      return channels.sort((a,b) => a-b);
+    }
+
+    function meLoadFromPreset(p) {
+      meAllBeams.forEach(b => { meStrips[b.id] = false; });
+      meCurrentDescription = "";
+      if (!p) return;
+      meCurrentDescription = p.description || "";
+      if (p.channels === "*") {
+        meAllBeams.forEach(b => { meStrips[b.id] = true; });
+      } else if (Array.isArray(p.channels)) {
+        const chSet = new Set(p.channels);
+        meAllBeams.forEach(b => {
+          const globalCh = ((b.segment||1) - 1) * 16 + b.relay_channel;
+          if (chSet.has(globalCh)) meStrips[b.id] = true;
+        });
+      }
+    }
+
+    async function loadPresets() {
+      try {
+        const [presetsData, beamsData] = await Promise.all([
+          apiFetch("/api/admin/presets"),
+          apiFetch("/api/admin/beams"),
+        ]);
+        meAllBeams = beamsData.beams || [];
+        meAllPresets = presetsData.presets || {};
+
+        // Init strip states from current maze
+        if (Object.keys(meStrips).length === 0) {
+          meLoadFromPreset(meAllPresets[meCurrentMaze]);
+        }
+
+        // Maze selector (only maze_1/2/3)
+        const select = document.getElementById("mePresetSelect");
+        select.innerHTML = MAZE_NAMES.map(n =>
+          `<option value="${n}" ${n===meCurrentMaze?"selected":""}>${n.replace("_"," ").toUpperCase()}</option>`
+        ).join("");
+
+        // Show editor preset dropdown (all presets)
+        const seSelect = document.getElementById("seAddPreset");
+        seSelect.innerHTML = Object.keys(meAllPresets).map(n =>
+          `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+
+        // Saved presets list
+        const list = document.getElementById("presetList");
+        list.innerHTML = Object.entries(meAllPresets).map(([name, p]) => {
+          const chStr = Array.isArray(p.channels) ? p.channels.length + " ch" : (p.channels === "*" ? "all" : "—");
+          const isMaze = MAZE_NAMES.includes(name);
+          return `<div class="info-row">
+            <span class="info-key" style="${isMaze?"color:var(--accent);":""}">${esc(name)}</span>
+            <span class="info-val" style="font-size:12px;">${chStr} — ${esc(p.description || "")}</span>
+          </div>`;
+        }).join("");
+
+        meRenderGrid();
+      } catch (e) { console.error("loadPresets error:", e); }
+    }
+
+    document.getElementById("meLoadBtn").addEventListener("click", () => {
+      meCurrentMaze = document.getElementById("mePresetSelect").value;
+      const p = meAllPresets[meCurrentMaze];
+      meLoadFromPreset(p);
+      meRenderGrid();
+    });
+
+    document.getElementById("meClearBtn").addEventListener("click", () => {
+      meAllBeams.forEach(b => { meStrips[b.id] = false; });
+      meRenderGrid();
+    });
+    document.getElementById("meAllOnBtn").addEventListener("click", () => {
+      meAllBeams.forEach(b => { meStrips[b.id] = true; });
+      meRenderGrid();
+    });
+
+    document.getElementById("mePreviewBtn").addEventListener("click", async () => {
+      const channels = meGetOnChannels();
+      try {
+        await apiPost("/api/admin/presets", { name: "_preview", channels, description: "temp" });
+        await apiPost("/api/admin/master/engage", {});
+        // Wait for FSM to enter MASTER before applying preset
+        await new Promise(r => setTimeout(r, 300));
+        await apiPost("/api/admin/master/apply_preset", { preset: "_preview" });
+      } catch (e) { console.error("Preview error:", e); }
+    });
+
+    document.getElementById("meSaveBtn").addEventListener("click", async () => {
+      const name = meCurrentMaze;
+      const channels = meGetOnChannels();
+      const msg = document.getElementById("meSaveMsg");
+      try {
+        await apiPost("/api/admin/presets", { name, channels, description: meCurrentDescription });
+        msg.textContent = `Saved ${name} (${channels.length} strips)`;
+        msg.style.color = "var(--green)";
+        loadPresets();
+      } catch (e) {
+        msg.textContent = e.message;
+        msg.style.color = "var(--red)";
+      }
+      setTimeout(() => { msg.textContent = ""; }, 4000);
+    });
+
+    /* -----------------------------------------------------------------------
+       SHOW EDITOR
+    ----------------------------------------------------------------------- */
+    let seSteps = [];   // [{preset, hold_ms}, ...]
+    let sePlayTimer = null;
+
+    function seRenderTimeline() {
+      const el = document.getElementById("seTimeline");
+      if (!seSteps.length) {
+        el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px;">No steps. Add presets below.</div>';
+        return;
+      }
+      el.innerHTML = seSteps.map((s, i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;">
+          <span style="font-size:11px;font-weight:700;color:var(--accent);width:20px;">${i+1}</span>
+          <span style="font-size:12px;flex:1;">${esc(s.preset)}</span>
+          <input type="number" value="${s.hold_ms}" min="50" max="10000" style="
+            width:70px;height:26px;padding:0 6px;font-family:var(--font);font-size:11px;
+            background:var(--surface);border:1px solid var(--border);border-radius:3px;color:var(--text);
+          " onchange="seSteps[${i}].hold_ms=parseInt(this.value)||300">
+          <span style="font-size:10px;color:var(--muted);">ms</span>
+          <button onclick="seSteps.splice(${i},1);seRenderTimeline();" style="
+            width:24px;height:24px;border:1px solid var(--border);border-radius:3px;
+            background:transparent;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;
+          ">×</button>
+        </div>
+      `).join("");
+    }
+
+    document.getElementById("seAddBtn").addEventListener("click", () => {
+      const preset = document.getElementById("seAddPreset").value;
+      const holdMs = parseInt(document.getElementById("seAddHoldMs").value) || 300;
+      if (preset) {
+        seSteps.push({ preset, hold_ms: holdMs });
+        seRenderTimeline();
+      }
+    });
+
+    document.getElementById("sePlayBtn").addEventListener("click", async () => {
+      if (!seSteps.length) return;
+      const loop = document.getElementById("seLoop").checked;
+      let idx = 0;
+
+      async function playStep() {
+        if (idx >= seSteps.length) {
+          if (loop) { idx = 0; } else { sePlayTimer = null; return; }
+        }
+        const step = seSteps[idx];
+        try {
+          await apiPost("/api/admin/master/apply_preset", { preset: step.preset });
+        } catch (e) { console.error("Show play error:", e); }
+        idx++;
+        sePlayTimer = setTimeout(playStep, step.hold_ms);
+      }
+      // Stop any existing playback
+      if (sePlayTimer) clearTimeout(sePlayTimer);
+      playStep();
+    });
+
+    document.getElementById("seStopBtn").addEventListener("click", () => {
+      if (sePlayTimer) { clearTimeout(sePlayTimer); sePlayTimer = null; }
+    });
+
+    document.getElementById("seSaveBtn").addEventListener("click", async () => {
+      const name = document.getElementById("seShowName").value.trim();
+      const msg = document.getElementById("seSaveMsg");
+      if (!name) { msg.textContent = "Enter a show name."; msg.style.color = "var(--red)"; return; }
+      if (!seSteps.length) { msg.textContent = "No steps to save."; msg.style.color = "var(--red)"; return; }
+      const loop = document.getElementById("seLoop").checked;
+      try {
+        await apiPost("/api/admin/shows", { name, steps: seSteps, loop });
+        msg.textContent = `Saved "${name}".`;
+        msg.style.color = "var(--green)";
+      } catch (e) {
+        msg.textContent = e.message;
+        msg.style.color = "var(--red)";
+      }
+      setTimeout(() => { msg.textContent = ""; }, 4000);
+    });
+
+    seRenderTimeline();
+
+    /* -----------------------------------------------------------------------
+       BEAMS
+    ----------------------------------------------------------------------- */
+    /* --- Physical grid rendering --- */
+    const STRIP_COLOR = "#264f9a";
+    // Pressure plates are IN specific rows (not between rows)
+    const ROW_PLATES = { 1: "START", 7: "CP1", 9: "CP2" };
+
+    function renderGrid(beams) {
+      const c = document.getElementById("gridContainer");
+      const byRow = {};
+      beams.forEach(b => { const r = b.row||0; (byRow[r]||(byRow[r]=[])).push(b); });
+      const rowNums = Object.keys(byRow).map(Number).sort((a,b)=>b-a);
+
+      const W = 360, T = 5;
+      const COL = (W - T*2) / 3;
+      const VLEN = COL;
+
+      function getS(r,n) { return (byRow[r]||[]).find(b=>b.strip===n)||null; }
+      function sc(s) {
+        if (!s) return {bg:"transparent",op:"0"};
+        return { bg: s.masked?"#1a1a1a":STRIP_COLOR, op: s.masked?"0.25":"1" };
+      }
+
+      function plateHtml(label, color, borderColor) {
+        const isRound = label === "STOP";
+        const sz = label === "START" ? 50 : 40;
+        return `<div style="width:${sz}px;height:${sz}px;border-radius:${isRound?"50%":"4px"};
+          background:${color};border:${isRound?"2":"1"}px solid ${borderColor};
+          display:flex;align-items:center;justify-content:center;
+          ${isRound?"box-shadow:0 0 10px rgba(255,0,51,0.4);":""}">
+          <span style="font-size:${label.length>3?7:9}px;font-weight:900;color:${borderColor};letter-spacing:1px;">${label}</span>
+        </div>`;
+      }
+
+      let h = `<div style="width:${W+50}px;margin:0 auto;">
+        <div style="border:1px solid var(--border);border-radius:6px;padding:20px 24px;background:var(--surface);">`;
+
+      // STOP button above grid
+      h += `<div style="display:flex;justify-content:center;margin-bottom:14px;">
+        ${plateHtml("STOP","rgba(255,0,51,0.15)","var(--red)")}</div>`;
+
+      for (let ri = 0; ri < rowNums.length; ri++) {
+        const rn = rowNums[ri];
+        const s1=getS(rn,1), s2=getS(rn,2), s3=getS(rn,3), s4=getS(rn,4), s5=getS(rn,5);
+        const c1=sc(s1), c2=sc(s2), c3=sc(s3), c4=sc(s4), c5=sc(s5);
+        const plate = ROW_PLATES[rn];
+
+        h += `<div style="display:grid;grid-template-columns:1fr ${T}px 1fr ${T}px 1fr;grid-template-rows:${T}px ${VLEN}px;margin-bottom:0;">`;
+
+        // Top row: 3 horizontal segments + 2 junction nodes
+        const hAttr = (s,cs) => s ? `class="gstrip" data-bid="${s.id}" title="${s.id}" style="background:${cs.bg};opacity:${cs.op};border-radius:1px;cursor:pointer;transition:all .12s;"` : `style=""`;
+        h += `<div ${hAttr(s1,c1)}></div>`;
+        h += `<div style="background:${c2.op!=="0"?c2.bg:"transparent"};opacity:${c2.op};border-radius:1px;"></div>`;
+        h += `<div ${hAttr(s3,c3)}></div>`;
+        h += `<div style="background:${c4.op!=="0"?c4.bg:"transparent"};opacity:${c4.op};border-radius:1px;"></div>`;
+        h += `<div ${hAttr(s5,c5)}></div>`;
+
+        // Bottom row: verticals + center (plate if applicable)
+        h += `<div></div>`;
+        h += s2?`<div class="gstrip" data-bid="${s2.id}" title="${s2.id}" style="background:${c2.bg};opacity:${c2.op};border-radius:1px;cursor:pointer;transition:all .12s;"></div>`:`<div></div>`;
+        h += `<div style="display:flex;align-items:center;justify-content:center;">`;
+        if (plate === "START") {
+          h += plateHtml("START","rgba(0,255,136,0.12)","var(--green)");
+        } else if (plate) {
+          h += plateHtml(plate,"rgba(0,112,234,0.10)","#0070ea");
+        }
+        h += `</div>`;
+        h += s4?`<div class="gstrip" data-bid="${s4.id}" title="${s4.id}" style="background:${c4.bg};opacity:${c4.op};border-radius:1px;cursor:pointer;transition:all .12s;"></div>`:`<div></div>`;
+        h += `<div></div>`;
+
+        h += `</div>`;
+      }
+
+      h += '</div></div>';
+      c.innerHTML = h;
+
+      c.querySelectorAll(".gstrip").forEach(el => {
+        el.addEventListener("mouseenter", () => { el.style.opacity="1"; el.style.boxShadow="0 0 8px "+el.style.background; });
+        el.addEventListener("mouseleave", () => { el.style.opacity=""; el.style.boxShadow=""; });
+        el.addEventListener("click", () => {
+          const bid = el.dataset.bid;
+          const beam = beams.find(b=>b.id===bid);
+          if (beam) toggleBeamMask(bid, !beam.masked);
+        });
+      });
+    }
+
+    async function toggleBeamMask(beamId, masked) {
+      try {
+        await apiPost(`/api/admin/beams/${beamId}/mask`, { masked });
+        loadBeams();
+      } catch (e) { console.error("Mask toggle failed:", e); }
+    }
+
+    async function loadBeams() {
+      try {
+        const d = await apiFetch("/api/admin/beams");
+        const allBeams = d.beams || [];
+        _cachedBeams = allBeams;
+        renderGrid(allBeams);
+        const masked = allBeams.filter(b => b.masked);
+        const el = document.getElementById("maskedBeamList");
+        if (!masked.length) {
+          el.innerHTML = '<span style="color:var(--muted)">No strips masked.</span>';
+        } else {
+          el.innerHTML = masked.map(b =>
+            `<div class="info-row">
+              <span class="info-key">${esc(b.id)}</span>
+              <span class="info-val">${esc(b.type || "")} — ${esc(b.masked_reason || "manual")} (${esc(b.masked_at || "")})</span>
+            </div>`).join("");
+        }
+      } catch (e) { console.error("loadBeams error:", e); }
+    }
+
+    document.getElementById("btnUnmaskAll").addEventListener("click", async () => {
+      if (!confirm("Unmask all strips?")) return;
+      try {
+        await apiPost("/api/admin/beams/unmask_all");
+        loadBeams();
+      } catch (e) { alert(e.message); }
+    });
+
+    document.getElementById("btnRefreshBeams").addEventListener("click", loadBeams);
+
+    // Cache beams for WS relay state overlay
+    let _cachedBeams = [];
+
+    function updateBeamGridFromWs(boardsMap) {
+      // Color each strip in the beams grid based on live relay state
+      if (!_cachedBeams.length) return;
+      document.querySelectorAll(".gstrip[data-bid]").forEach(el => {
+        const bid = el.dataset.bid;
+        const beam = _cachedBeams.find(b => b.id === bid);
+        if (!beam) return;
+        const boardState = boardsMap[beam.board_id];
+        if (!boardState || !boardState.coils) return;
+        const ch = beam.relay_channel - 1;  // 0-indexed
+        const isOn = boardState.coils[ch] || false;
+        const isMasked = beam.masked;
+        if (isMasked) {
+          el.style.background = "#1a1a1a";
+        } else if (isOn) {
+          el.style.background = "#ff3300";  // red = relay on
+        } else {
+          el.style.background = STRIP_COLOR;  // blue = relay off but configured
+        }
+      });
+    }
+
+    /* -----------------------------------------------------------------------
+       LOGS
+    ----------------------------------------------------------------------- */
+    let logAbortCtrl = null;
+    const logOutput = document.getElementById("logOutput");
+
+    document.getElementById("btnLogTail").addEventListener("click", async () => {
+      if (logAbortCtrl) logAbortCtrl.abort();
+      logAbortCtrl = new AbortController();
+      const unit   = document.getElementById("logUnit").value;
+      const filter = document.getElementById("logFilter").value;
+      logOutput.textContent = "";
+      try {
+        const resp = await fetch(
+          `/api/admin/logs/stream?unit=${encodeURIComponent(unit)}&filter=${encodeURIComponent(filter)}&lines=200`,
+          {
+            headers: { "X-Admin-Password": getAdminPwd() },
+            signal: logAbortCtrl.signal,
+          },
+        );
+        if (!resp.ok) { logOutput.textContent = `Error ${resp.status}`; return; }
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split("\n\n");
+          buf = parts.pop();
+          for (const part of parts) {
+            if (part.startsWith("data: ")) {
+              logOutput.textContent += part.slice(6) + "\n";
+              logOutput.scrollTop = logOutput.scrollHeight;
+            }
+          }
+        }
+        logOutput.textContent += "\n[stream ended]\n";
+      } catch (e) {
+        if (e.name !== "AbortError") logOutput.textContent += `\n[${e.message}]\n`;
+      }
+    });
+
+    document.getElementById("btnLogStop").addEventListener("click", () => {
+      if (logAbortCtrl) { logAbortCtrl.abort(); logAbortCtrl = null; }
+      logOutput.textContent += "\n[stopped]\n";
+    });
+
+    /* -----------------------------------------------------------------------
+       MASTER MODE
+    ----------------------------------------------------------------------- */
+    async function loadMasterMode() {
+      /* Populate preset buttons */
+      try {
+        const d = await apiFetch("/api/admin/presets");
+        const grid = document.getElementById("presetGrid");
+        grid.innerHTML = "";
+        Object.keys(d.presets || {}).forEach(name => {
+          const btn = document.createElement("button");
+          btn.className = "preset-btn";
+          btn.textContent = name;
+          btn.addEventListener("click", async () => {
+            await apiPost("/api/admin/master/apply_preset", { preset: name });
+            await refreshChannelGrid();
+          });
+          grid.appendChild(btn);
+        });
+      } catch {}
+
+      /* Populate channel toggles — iterate all boards from /api/admin/hardware */
+      await refreshChannelGrid();
+    }
+
+    async function refreshChannelGrid() {
+      const grid = document.getElementById("channelGrid");
+      try {
+        const hw = await apiFetch("/api/admin/hardware");
+        const boards = hw.boards || [];
+        grid.innerHTML = "";
+        if (!boards.length) {
+          // Fallback: single board, channels 1-16
+          for (let i = 1; i <= 16; i++) {
+            grid.appendChild(makeChannelBtn("board1", i, null));
+          }
+          return;
+        }
+        boards.forEach(board => {
+          // Label group
+          const label = document.createElement("div");
+          label.style.cssText = "width:100%;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-top:8px;margin-bottom:2px;";
+          label.textContent = `// ${board.id}`;
+          grid.appendChild(label);
+          const numChannels = (board.coils || []).length || 16;
+          for (let i = 1; i <= numChannels; i++) {
+            const isOn = board.coils && board.coils[i - 1];
+            grid.appendChild(makeChannelBtn(board.id, i, isOn));
+          }
+        });
+      } catch {
+        // Fallback on error
+        grid.innerHTML = "";
+        for (let i = 1; i <= 16; i++) {
+          grid.appendChild(makeChannelBtn("board1", i, null));
+        }
+      }
+    }
+
+    function makeChannelBtn(boardId, ch, initialState) {
+      const btn = document.createElement("button");
+      btn.className = "channel-btn" + (initialState ? " on" : "");
+      // Shorten board_id to numeric suffix (e.g. "SM-NODE-1" → "1") for compact display
+      const shortId = boardId.replace(/^.*?(\d+)$/, "$1") || boardId;
+      const label = `${shortId}:${ch}`;
+      btn.textContent = label;
+      if (label.length > 10) btn.style.fontSize = "9px";
+      btn.style.width = "72px"; // wider to fit board_id:ch_num label
+      btn.dataset.boardId = boardId;
+      btn.dataset.ch = ch;
+      btn.addEventListener("click", async () => {
+        const on = btn.classList.contains("on");
+        try {
+          await apiPost("/api/admin/master/toggle_channel", { board_id: boardId, channel: ch, state: !on });
+          btn.classList.toggle("on", !on);
+        } catch (e) { console.error("Toggle channel failed:", e); }
+      });
+      return btn;
+    }
+
+    document.getElementById("btnEngageMaster").addEventListener("click", async () => {
+      if (!confirm("Engage master mode? Game runs will be excluded from leaderboard.")) return;
+      await apiPost("/api/admin/master/engage");
+    });
+    document.getElementById("btnExitMaster").addEventListener("click", async () => {
+      await apiPost("/api/admin/master/exit");
+    });
+
+    document.getElementById("btnSwStart").addEventListener("click", () => apiPost("/api/admin/master/stopwatch", {action:"start"}));
+    document.getElementById("btnSwStop").addEventListener("click",  () => apiPost("/api/admin/master/stopwatch", {action:"stop"}));
+    document.getElementById("btnSwReset").addEventListener("click", () => apiPost("/api/admin/master/stopwatch", {action:"reset"}));
+
+    /* -----------------------------------------------------------------------
+       LOGS
+    ----------------------------------------------------------------------- */
+    let logEventSource = null;
+
+    document.getElementById("btnLogTail").addEventListener("click", () => {
+      if (logEventSource) logEventSource.close();
+      const unit = document.getElementById("logUnit").value;
+      const filter = document.getElementById("logFilter").value;
+      const output = document.getElementById("logOutput");
+      output.textContent = `Streaming ${unit}...\n`;
+
+      const url = `/api/admin/logs/stream?unit=${encodeURIComponent(unit)}&filter=${encodeURIComponent(filter)}`;
+      logEventSource = new EventSource(url);
+      logEventSource.onmessage = (e) => {
+        output.textContent += e.data + "\n";
+        output.scrollTop = output.scrollHeight;
+      };
+      logEventSource.onerror = () => {
+        output.textContent += "\n[stream ended]\n";
+        logEventSource.close();
+        logEventSource = null;
+      };
+    });
+
+    document.getElementById("btnLogStop").addEventListener("click", () => {
+      if (logEventSource) {
+        logEventSource.close();
+        logEventSource = null;
+        document.getElementById("logOutput").textContent += "\n[stopped]\n";
+      }
+    });
+
+    /* -----------------------------------------------------------------------
+       DEV
+    ----------------------------------------------------------------------- */
+    function loadDev() { /* no data to load */ }
+
+    async function devTrigger(eventName, extra = {}) {
+      const msg = document.getElementById("devMsg");
+      try {
+        await apiPost("/api/admin/dev/trigger", { event: eventName, ...extra });
+        msg.textContent = `\u2713 ${eventName} sent`;
+        msg.style.color = "var(--green)";
+      } catch (e) {
+        msg.textContent = `\u2717 ${e.message}`;
+        msg.style.color = "var(--red)";
+      }
+    }
+
+    document.querySelectorAll(".dev-trigger").forEach(btn => {
+      btn.addEventListener("click", () => devTrigger(btn.dataset.event));
+    });
+
+    document.getElementById("btnDevBreak").addEventListener("click", () => {
+      const beamId = document.getElementById("devBeamId").value || "b001";
+      devTrigger("BreakConfirmed", { beam_id: beamId, ratio: 0.1 });
+    });
+
+    document.getElementById("btnDevRegister").addEventListener("click", async () => {
+      const nickname = document.getElementById("devNickname").value.trim() || "Dev Player";
+      const msg = document.getElementById("devMsg");
+      try {
+        const resp = await fetch("/api/signin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nickname }),
+        });
+        const d = await resp.json();
+        if (d.ok) {
+          msg.textContent = `\u2713 Registered: ${d.nickname} (${d.player_id.slice(0, 8)}\u2026)`;
+          msg.style.color = "var(--green)";
+        } else {
+          throw new Error(JSON.stringify(d));
+        }
+      } catch (e) {
+        msg.textContent = `\u2717 ${e.message}`;
+        msg.style.color = "var(--red)";
+      }
+    });
+
+    /* -----------------------------------------------------------------------
+       Initial load
+    ----------------------------------------------------------------------- */
+    loadDashboard();
+  </script>
+</body>
+</html>

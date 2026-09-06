@@ -1,0 +1,64 @@
+# game.yaml — timings, detection mode, and count-in configuration
+# This is the file people will edit on site. Every key has a comment.
+
+mode: hard_cutoff
+# hard_cutoff: a confirmed break ends the run immediately. Only option in v1.
+
+max_run_ms: 180000
+# Maximum run duration in ms before the run is auto-aborted. Range: 60000-600000.
+
+result_display_ms: 15000
+# How long to show the result screen (FINISHED or BUSTED) before resetting. Range: 5000-30000.
+
+arm_timeout_ms: 180000
+# How long to wait in ARM state (player registered but never counted in) before auto-resetting. Range: 30000-600000.
+
+detection_mode: assisted
+# Default detection mode: auto | assisted | manual. Start with 'assisted' on site; switch to 'auto' once trusted.
+# Switchable live from the GM console without restarting.
+
+show: main_game
+# Which show from mazes.yaml to run. Must match a key under 'shows'.
+
+count_in:
+  preset: maze_1
+  # MUST match the preset that will be active at GO. The baseline is captured against this preset.
+  # Changing this without changing maze_1 in mazes.yaml is a bug. See plan.md §4.3.
+
+  ready_blink_ms: 150
+  # Duration of the silent "system ready" blink at ARM. Doubles as the pre-flight beam check window.
+  # Range: 100-300.
+
+  baseline_pulse_index: 0
+  # Index into the pulses list below that is used for baseline capture (the longest "on" window).
+  # Do not change unless the pulse list is reordered.
+
+  pulses:
+    # [on_ms, off_ms] — regenerate the curve with tools/ramp.py, then hand-tune the tail.
+    # The relay clatter IS the sound design. These timings drive that ramp.
+    - [280, 320]   # pulse 0 — longest, baseline captured here
+    - [200, 250]
+    - [150, 190]
+    - [110, 140]
+    - [80,  100]
+    - [60,   75]
+    - [45,   55]
+    - [35,   40]
+
+  solid_at_end: true
+  # If true, after the last pulse the preset stays solid (GO state). Always true for normal play.
+
+arm_grace_ms: 150
+# Ignore break events for this many ms after detection arms at GO.
+# Must match detection.arm_grace_ms in beams.json (both are checked; the smaller wins).
+# Range: 50-500.
+
+leaderboard:
+  scope: daily
+  # daily: reset at midnight. activation: entire event. all: never reset.
+
+  show_busted: false
+  # Whether busted runs appear on the public leaderboard. Admins always see all runs.
+
+  max_entries: 20
+  # Maximum entries shown on the outdoor display leaderboard.

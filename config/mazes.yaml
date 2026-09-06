@@ -1,0 +1,119 @@
+presets:
+  blackout:
+    channels: []
+    description: all lasers off
+  all_on:
+    channels: '*'
+    description: every relay on
+  maze_1:
+    channels:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 17
+    - 18
+    - 19
+    - 20
+    - 21
+    - 33
+    - 34
+    - 35
+    - 36
+    - 37
+    description: test
+  maze_2:
+    channels:
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 22
+    - 23
+    - 24
+    - 25
+    - 26
+    - 38
+    - 39
+    - 40
+    - 41
+    - 42
+    description: "second maze \u2014 CP1 to CP2"
+  maze_3:
+    channels:
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 27
+    - 28
+    - 29
+    - 30
+    - 31
+    - 43
+    - 44
+    - 45
+    - 46
+    - 47
+    description: "third maze \u2014 CP2 to END"
+  _preview:
+    channels:
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 27
+    - 28
+    - 29
+    - 30
+    - 31
+    - 43
+    - 44
+    - 45
+    - 46
+    - 47
+    description: temp
+shows:
+  attract:
+    loop: true
+    description: "idle sparkle \u2014 plays during ATTRACT state"
+    steps:
+    - preset: all_on
+      hold_ms: 2000
+    - preset: blackout
+      hold_ms: 300
+    - preset: all_on
+      hold_ms: 2000
+    - preset: blackout
+      hold_ms: 300
+  bust:
+    loop: true
+    description: "rapid flash \u2014 plays on BUSTED"
+    steps:
+    - preset: all_on
+      hold_ms: 150
+    - preset: blackout
+      hold_ms: 150
+  clean:
+    loop: true
+    description: "celebration \u2014 plays on FINISHED (clean run)"
+    steps:
+    - preset: all_on
+      hold_ms: 400
+    - preset: blackout
+      hold_ms: 100
+  main_game:
+    segments:
+    - maze_1
+    - maze_2
+    - maze_3
+    description: the three mazes in order
+  test_show:
+    steps:
+    - preset: all_on
+      hold_ms: 200
+    loop: true

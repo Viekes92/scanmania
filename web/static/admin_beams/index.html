@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<!--
+  web/static/admin_beams/index.html — Beam ROI overlay page.
+
+  Phase 2: live MJPEG feed with beam circle overlays, ratio bars, and mask toggles.
+  Phase 1: static placeholder showing beam config from beams.json.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beams — SCANMANIA</title>
+  <style>
+    :root {
+      --bg:       #050507;
+      --surface:  #080d18;
+      --surface2: #0d1525;
+      --border:   #0d1e3a;
+      --accent:   #264f9a;
+      --text:     #e8f0fc;
+      --muted:    #5a7899;
+      --green:    #00ff88;
+      --red:      #ff0033;
+      --orange:   #ff8800;
+      --font:     'Courier New', Courier, monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      background-image:
+        linear-gradient(rgba(38,79,154,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(38,79,154,0.06) 1px, transparent 1px);
+      background-size: 40px 40px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+    }
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    #header .logo {
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: 5px;
+      color: var(--accent);
+      text-shadow: 0 0 16px rgba(38,79,154,0.6);
+    }
+    #header a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 12px;
+      letter-spacing: 2px;
+    }
+    #header a:hover { color: var(--text); }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+
+    .notice {
+      background: var(--surface);
+      border: 1px solid var(--orange);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      color: var(--orange);
+      font-size: 13px;
+      letter-spacing: 1px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 14px;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: left;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    td { padding: 6px 10px; border-bottom: 1px solid rgba(13,30,58,0.5); }
+    tr:last-child td { border-bottom: none; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+    .badge.ok    { background: rgba(0,255,136,0.1); color: var(--green); border: 1px solid rgba(0,255,136,0.3); }
+    .badge.masked { background: rgba(255,136,0,0.1); color: var(--orange); border: 1px solid rgba(255,136,0,0.3); }
+
+    #summary { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <div class="logo">SCANMANIA &mdash; BEAMS</div>
+  <a href="/admin">&#8592; Admin Portal</a>
+</div>
+
+<div class="container">
+
+  <div class="notice">
+    Phase 2 feature: live camera overlay with ROI circles, ratio bars, and one-tap masking
+    will appear here once cameras are connected. Currently showing static config from beams.json.
+  </div>
+
+  <div class="card">
+    <div class="card-title">Beam configuration</div>
+    <div id="summary">Loading&hellip;</div>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Camera</th>
+          <th>Board</th>
+          <th>Ch</th>
+          <th>Cluster</th>
+          <th>ROI (cx, cy, r)</th>
+          <th>Break / Clear</th>
+          <th>Status</th>
+          <th>Reason</th>
+        </tr>
+      </thead>
+      <tbody id="beamBody">
+        <tr><td colspan="9" style="color:var(--muted)">Loading&hellip;</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+  "use strict";
+
+  function esc(s) {
+    const d = document.createElement("div");
+    d.textContent = s ?? "—";
+    return d.innerHTML;
+  }
+
+  async function load() {
+    try {
+      const resp = await fetch("/api/admin/beams");
+      const d = await resp.json();
+      const beams = d.beams || [];
+
+      const masked = beams.filter(b => b.masked).length;
+      document.getElementById("summary").textContent =
+        `${beams.length} beams total — ${masked} masked, ${beams.length - masked} active`;
+
+      const tbody = document.getElementById("beamBody");
+      if (!beams.length) {
+        tbody.innerHTML = '<tr><td colspan="9" style="color:var(--muted)">No beams in beams.json yet. Run tools/pick_rois.py on-site.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = beams.map(b => {
+        const roi = b.roi ? `${b.roi.cx}, ${b.roi.cy}, r=${b.roi.r}` : "—";
+        const status = b.masked
+          ? '<span class="badge masked">MASKED</span>'
+          : '<span class="badge ok">ACTIVE</span>';
+        return `<tr>
+          <td style="font-family:monospace;font-weight:700">${esc(b.id)}</td>
+          <td style="color:var(--muted)">${esc(b.camera)}</td>
+          <td style="color:var(--muted)">${esc(b.board_id)}</td>
+          <td>${b.relay_channel ?? "—"}</td>
+          <td>${b.cluster ?? "—"}</td>
+          <td style="font-family:monospace;font-size:12px">${esc(roi)}</td>
+          <td style="font-family:monospace;font-size:12px">${b.break_ratio ?? "—"} / ${b.clear_ratio ?? "—"}</td>
+          <td>${status}</td>
+          <td style="color:var(--muted);font-size:12px">${esc(b.masked_reason)}</td>
+        </tr>`;
+      }).join("");
+    } catch (e) {
+      document.getElementById("beamBody").innerHTML =
+        `<tr><td colspan="9" style="color:var(--red)">${esc(e.message)}</td></tr>`;
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>

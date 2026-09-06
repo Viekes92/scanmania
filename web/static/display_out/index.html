@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<!--
+  web/static/display_out/index.html — Outdoor display (HDMI 2).
+
+  The crowd-puller. Faces the street. Designed as a visual object.
+  - Background: MJPEG feed from http://localhost:8081/cam_a.mjpg (full-screen)
+    Falls back to dark background gracefully if the stream is unavailable.
+  - Overlay: stopwatch (top-right), leaderboard (idle), state overlays
+  - ATTRACT:  leaderboard prominent, game name, MJPEG in background
+  - RUN:      stopwatch counts up, leaderboard fades back
+  - BUST:     "BUSTED" text overlay briefly
+  - FINISHED: rank and time overlay ("Rank #3 — 1:23.456")
+
+  Stopwatch interpolated at 60 fps with requestAnimationFrame.
+  WebSocket /ws for live state updates.
+  No external dependencies. No buttons. Chromium kiosk mode.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SCANMANIA — Outdoor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+
+    /* -----------------------------------------------------------------------
+       MJPEG background — fills the entire screen
+    ----------------------------------------------------------------------- */
+    #mjpegBg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      /* MJPEG is an <img> that keeps updating */
+      z-index: 0;
+      opacity: 1;
+      transition: opacity 0.4s;
+    }
+
+    /* Fallback: when MJPEG fails, the body bg (#000) shows through */
+    #mjpegBg.hidden { opacity: 0; }
+
+    /* Dark overlay over MJPEG for legibility — heavier at bottom for leaderboard */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(
+        to bottom,
+        rgba(0,0,0,0.55) 0%,
+        rgba(0,0,0,0.20) 40%,
+        rgba(0,0,0,0.45) 70%,
+        rgba(0,0,0,0.80) 100%
+      );
+      z-index: 1;
+    }
+
+    /* All UI content sits above the overlay */
+    #ui {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    /* -----------------------------------------------------------------------
+       Stopwatch — top-right, always visible during a run
+    ----------------------------------------------------------------------- */
+    #stopwatch {
+      position: absolute;
+      top: 24px;
+      right: 32px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(40px, 6vw, 88px);
+      font-weight: 700;
+      color: #264f9a;
+      text-shadow:
+        0 0 20px rgba(38, 79, 154, 0.8),
+        0 0 60px rgba(38, 79, 154, 0.4),
+        0 2px 16px rgba(0,0,0,0.9);
+      letter-spacing: 0.04em;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    #stopwatch.visible { opacity: 1; }
+
+    /* -----------------------------------------------------------------------
+       Game name — shown in ATTRACT
+    ----------------------------------------------------------------------- */
+    @keyframes attract-pulse-out {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.6; }
+    }
+
+    #gameName {
+      position: absolute;
+      top: 28px;
+      left: 36px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(40px, 6vw, 80px);
+      font-weight: 900;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #264f9a;
+      text-shadow:
+        0 0 20px rgba(38, 79, 154, 0.8),
+        0 0 60px rgba(38, 79, 154, 0.4),
+        0 2px 20px rgba(0,0,0,0.8);
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    #gameName.visible {
+      opacity: 1;
+      animation: attract-pulse-out 3s ease-in-out infinite;
+    }
+
+    /* -----------------------------------------------------------------------
+       Leaderboard — shown when ATTRACT; fades during run
+    ----------------------------------------------------------------------- */
+    #leaderboard {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 24px 36px 36px;
+      background: linear-gradient(to top, rgba(0,0,0,0.90) 0%, transparent 100%);
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+
+    #leaderboard.visible   { opacity: 1; }
+    #leaderboard.faded     { opacity: 0.18; }
+
+    #lbTitle {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(20px, 3vw, 32px);
+      font-weight: 800;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: #264f9a;
+      text-shadow: 0 0 16px rgba(38,79,154,0.5);
+      margin-bottom: 14px;
+    }
+
+    #lbRows {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .lb-row {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      font-size: clamp(22px, 3.2vw, 38px);
+    }
+
+    .lb-rank {
+      font-family: 'Courier New', Courier, monospace;
+      font-weight: 900;
+      width: 2.2em;
+      text-align: right;
+      flex-shrink: 0;
+      color: #264f9a;
+      text-shadow: 0 0 10px rgba(38,79,154,0.5);
+    }
+
+    .lb-rank-1 { color: gold;    text-shadow: 0 0 12px rgba(255,215,0,0.5); }
+    .lb-rank-2 { color: silver;  text-shadow: 0 0 10px rgba(192,192,192,0.4); }
+    .lb-rank-3 { color: #cd7f32; text-shadow: 0 0 10px rgba(205,127,50,0.4); }
+
+    .lb-name {
+      flex: 1;
+      font-weight: 600;
+      color: #e8f0fc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .lb-time {
+      font-family: 'Courier New', Courier, monospace;
+      font-weight: 700;
+      color: #00ff88;
+      text-shadow: 0 0 10px rgba(0,255,136,0.4);
+      flex-shrink: 0;
+    }
+
+    /* -----------------------------------------------------------------------
+       Flash animations for overlays
+    ----------------------------------------------------------------------- */
+    @keyframes green-flash {
+      0%, 100% { background-color: rgba(0, 40, 10, 0.55); }
+      20%       { background-color: rgba(0, 160, 60, 0.70); }
+    }
+
+    @keyframes bust-flash {
+      0%, 100% { background-color: rgba(120, 0, 20, 0.65); }
+      20%       { background-color: rgba(200, 0, 20, 0.80); }
+    }
+
+    /* -----------------------------------------------------------------------
+       BUST overlay — full-screen red tint + "BUSTED"
+    ----------------------------------------------------------------------- */
+    #bustOverlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(120, 0, 20, 0.65);
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+
+    #bustOverlay.visible { opacity: 1; animation: bust-flash 0.8s ease-in-out 3; }
+
+    #bustText {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(80px, 18vw, 220px);
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      color: #ff0033;
+      text-shadow:
+        0 0 60px rgba(255, 0, 51, 0.9),
+        0 0 120px rgba(255, 0, 51, 0.5);
+    }
+
+    #bustTime {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(28px, 5vw, 64px);
+      color: rgba(255, 100, 120, 0.9);
+      margin-top: 16px;
+      text-shadow: 0 0 20px rgba(255,0,51,0.4);
+    }
+
+    /* -----------------------------------------------------------------------
+       FINISHED overlay — rank and time
+    ----------------------------------------------------------------------- */
+    #finishedOverlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 40, 10, 0.55);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    #finishedOverlay.visible { opacity: 1; animation: green-flash 0.5s ease-out forwards; }
+
+    #finishedRank {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(36px, 6vw, 80px);
+      font-weight: 900;
+      color: #264f9a;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      text-shadow:
+        0 0 30px rgba(38, 79, 154, 0.7),
+        0 0 80px rgba(38, 79, 154, 0.3);
+    }
+
+    #finishedClean {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(48px, 8vw, 110px);
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #00ff88;
+      text-shadow:
+        0 0 40px rgba(0, 255, 136, 0.8),
+        0 0 100px rgba(0, 255, 136, 0.4);
+    }
+
+    #finishedTime {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(56px, 12vw, 160px);
+      font-weight: 900;
+      color: #ffffff;
+      letter-spacing: 0.06em;
+      text-shadow: 0 2px 30px rgba(0,0,0,0.7);
+    }
+
+    /* -----------------------------------------------------------------------
+       Reconnect indicator — very dim, non-intrusive
+    ----------------------------------------------------------------------- */
+    #reconnect {
+      display: none;
+      position: fixed;
+      bottom: 10px;
+      right: 14px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      color: #0d1e3a;
+      letter-spacing: 1px;
+      z-index: 10;
+    }
+    #reconnect.visible { display: block; }
+  </style>
+</head>
+<body>
+
+  <!-- MJPEG background -->
+  <img id="mjpegBg" src="" alt="">
+  <script>
+    // Resolve MJPEG URL relative to the current host instead of hardcoding localhost
+    (function() {
+      const mjpegPort = 8081;
+      const img = document.getElementById("mjpegBg");
+      img.src = `http://${location.hostname}:${mjpegPort}/cam_a.mjpg`;
+    })();
+  </script>
+
+  <!-- Dark overlay for legibility -->
+  <div id="overlay"></div>
+
+  <!-- All UI elements -->
+  <div id="ui">
+    <!-- Game name (attract) -->
+    <div id="gameName">SCANMANIA</div>
+
+    <!-- Stopwatch (top-right) -->
+    <div id="stopwatch">00:00.000</div>
+
+    <!-- Next up banner (shown when player registered) -->
+    <div id="nextUpBanner" style="
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.4s;
+      pointer-events: none;
+    ">
+      <div style="
+        font-family: 'Courier New', Courier, monospace;
+        font-size: clamp(28px, 4vw, 48px);
+        font-weight: 700;
+        letter-spacing: 0.25em;
+        text-transform: uppercase;
+        color: #5a7899;
+        text-shadow: 0 2px 16px rgba(0,0,0,0.8);
+        margin-bottom: 12px;
+      ">NEXT UP</div>
+      <div id="nextUpName" style="
+        font-family: 'Courier New', Courier, monospace;
+        font-size: clamp(48px, 10vw, 120px);
+        font-weight: 900;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #264f9a;
+        text-shadow:
+          0 0 40px rgba(38,79,154,0.8),
+          0 0 100px rgba(38,79,154,0.4),
+          0 2px 24px rgba(0,0,0,0.9);
+      ">—</div>
+    </div>
+
+    <!-- Leaderboard (bottom) -->
+    <div id="leaderboard">
+      <div id="lbTitle">// Top Runners</div>
+      <div id="lbRows"></div>
+    </div>
+
+    <!-- BUST overlay -->
+    <div id="bustOverlay">
+      <div id="bustText">BUSTED</div>
+      <div id="bustTime"></div>
+    </div>
+
+    <!-- FINISHED overlay -->
+    <div id="finishedOverlay">
+      <div id="finishedClean">CLEAN!</div>
+      <div id="finishedRank"></div>
+      <div id="finishedTime"></div>
+    </div>
+  </div>
+
+  <!-- Dim reconnect indicator -->
+  <div id="reconnect">reconnecting…</div>
+
+  <script>
+    /* -----------------------------------------------------------------------
+       Outdoor display JS
+
+       WebSocket message shape:
+       {
+         state:           "ATTRACT" | "RUN_SEG_1" | "BUSTED" | "FINISHED" | …,
+         elapsed_ms:      4321,
+         server_mono_now_ns: <integer nanoseconds>,
+         segment:         1 | 2 | 3,
+         rank:            null | 3,
+         player_nickname: "Joenne",
+         leaderboard:     [ { player_nickname, elapsed_ms }, … ]  (top 10)
+       }
+    ----------------------------------------------------------------------- */
+    "use strict";
+
+    const RUN_STATES  = new Set(["RUN_SEG_1", "RUN_SEG_2", "RUN_SEG_3"]);
+    const POST_STATES = new Set(["BUSTED", "FINISHED", "ABORTED", "RESULT"]);
+
+    /* ---- DOM refs ---- */
+    const mjpegBg         = document.getElementById("mjpegBg");
+    const stopwatchEl     = document.getElementById("stopwatch");
+    const gameNameEl      = document.getElementById("gameName");
+    const leaderboard     = document.getElementById("leaderboard");
+    const lbRows          = document.getElementById("lbRows");
+    const bustOverlay     = document.getElementById("bustOverlay");
+    const bustTime        = document.getElementById("bustTime");
+    const finishedOverlay = document.getElementById("finishedOverlay");
+    const finishedClean   = document.getElementById("finishedClean");
+    const finishedRank    = document.getElementById("finishedRank");
+    const finishedTime    = document.getElementById("finishedTime");
+    const reconnectEl     = document.getElementById("reconnect");
+    const nextUpBanner    = document.getElementById("nextUpBanner");
+    const nextUpName      = document.getElementById("nextUpName");
+
+    /* -----------------------------------------------------------------------
+       MJPEG fallback — if the stream image fails to load, hide it
+    ----------------------------------------------------------------------- */
+    mjpegBg.addEventListener("error", () => {
+      mjpegBg.classList.add("hidden");
+    });
+
+    // If the stream loads (or recovers), show it
+    mjpegBg.addEventListener("load", () => {
+      mjpegBg.classList.remove("hidden");
+    });
+
+    // Retry MJPEG stream every 15 seconds when hidden (stream down)
+    setInterval(() => {
+      if (mjpegBg.classList.contains("hidden")) {
+        const base = mjpegBg.src.split("?")[0];
+        mjpegBg.src = base + "?t=" + Date.now();
+      }
+    }, 15000);
+
+    /* -----------------------------------------------------------------------
+       Stopwatch interpolation
+    ----------------------------------------------------------------------- */
+    let swElapsedAtMsg = 0;
+    let swClientAtMsg  = 0;
+    let swRunning      = false;
+    let rafId          = null;
+
+    function fmtMs(ms) {
+      const t = Math.max(0, Math.floor(ms));
+      const m = Math.floor(t / 60000);
+      const s = Math.floor((t % 60000) / 1000);
+      const l = t % 1000;
+      return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}.${String(l).padStart(3,"0")}`;
+    }
+
+    function interpolated() {
+      if (!swRunning) return swElapsedAtMsg;
+      return swElapsedAtMsg + (performance.now() / 1000 - swClientAtMsg) * 1000;
+    }
+
+    function tick() {
+      stopwatchEl.textContent = fmtMs(interpolated());
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function startInterp() { if (!rafId) rafId = requestAnimationFrame(tick); }
+    function stopInterp()  { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } }
+
+    /* -----------------------------------------------------------------------
+       Leaderboard rendering
+    ----------------------------------------------------------------------- */
+    function renderLeaderboard(entries) {
+      if (!entries || !entries.length) {
+        lbRows.innerHTML = '<div class="lb-row" style="color:#0d1e3a;">No runs yet.</div>';
+        return;
+      }
+      const top = entries.slice(0, 10);
+      lbRows.innerHTML = top.map((e, i) => {
+        const rank = i + 1;
+        const rankClass = rank <= 3 ? `lb-rank-${rank}` : "";
+        return `<div class="lb-row">
+          <span class="lb-rank ${rankClass}">${rank}</span>
+          <span class="lb-name">${escHtml(e.player_nickname || e.nickname || "—")}</span>
+          <span class="lb-time">${fmtMs(e.elapsed_ms)}</span>
+        </div>`;
+      }).join("");
+    }
+
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    /* -----------------------------------------------------------------------
+       Apply server state
+    ----------------------------------------------------------------------- */
+    function applyState(msg) {
+      const state = msg.state || "ATTRACT";
+
+      swElapsedAtMsg = msg.elapsed_ms || 0;
+      swClientAtMsg  = performance.now() / 1000;
+
+      // Update leaderboard data whenever provided
+      if (msg.leaderboard) renderLeaderboard(msg.leaderboard);
+
+      /* --- Clear overlays by default --- */
+      bustOverlay.classList.remove("visible");
+      finishedOverlay.classList.remove("visible");
+
+      /* --- Next-up banner: show when player registered, hide otherwise --- */
+      if (state === "REGISTERED" || state === "ARM") {
+        nextUpName.textContent = msg.player_nickname || "—";
+        nextUpBanner.style.opacity = "1";
+      } else {
+        nextUpBanner.style.opacity = "0";
+      }
+
+      /* --- Route by state --- */
+      if (state === "ATTRACT" || state === "REGISTERED" || state === "ARM") {
+        // Idle — show leaderboard prominently, game name
+        swRunning = false;
+        stopInterp();
+        stopwatchEl.textContent = "00:00.000";
+        stopwatchEl.classList.remove("visible");
+        gameNameEl.classList.add("visible");
+        leaderboard.classList.add("visible");
+        leaderboard.classList.remove("faded");
+
+      } else if (state === "COUNTDOWN") {
+        swRunning = false;
+        stopInterp();
+        stopwatchEl.classList.remove("visible");
+        gameNameEl.classList.add("visible");
+        leaderboard.classList.add("visible");
+        leaderboard.classList.add("faded");
+
+      } else if (RUN_STATES.has(state)) {
+        // Run in progress — big stopwatch, leaderboard fades
+        swRunning = true;
+        startInterp();
+        stopwatchEl.classList.add("visible");
+        gameNameEl.classList.remove("visible");
+        leaderboard.classList.add("visible");
+        leaderboard.classList.add("faded");
+
+      } else if (state === "BUSTED") {
+        swRunning = false;
+        stopInterp();
+        stopwatchEl.textContent = fmtMs(swElapsedAtMsg);
+        stopwatchEl.classList.add("visible");
+        gameNameEl.classList.remove("visible");
+        leaderboard.classList.remove("visible");
+        bustTime.textContent = fmtMs(swElapsedAtMsg);
+        bustOverlay.classList.add("visible");
+
+      } else if (state === "FINISHED") {
+        swRunning = false;
+        stopInterp();
+        stopwatchEl.textContent = fmtMs(swElapsedAtMsg);
+        stopwatchEl.classList.add("visible");
+        gameNameEl.classList.remove("visible");
+        leaderboard.classList.remove("visible");
+        finishedRank.textContent = msg.rank != null ? `Rank #${msg.rank}` : "";
+        finishedTime.textContent = fmtMs(swElapsedAtMsg);
+        finishedOverlay.classList.add("visible");
+
+      } else if (state === "RESULT") {
+        swRunning = false;
+        stopInterp();
+        stopwatchEl.textContent = fmtMs(swElapsedAtMsg);
+        stopwatchEl.classList.add("visible");
+        gameNameEl.classList.remove("visible");
+        leaderboard.classList.add("visible");
+        leaderboard.classList.add("faded");
+        // Show the finished overlay with rank if available
+        if (msg.rank != null || (msg.outcome && msg.outcome === "clean")) {
+          finishedRank.textContent = msg.rank != null ? `Rank #${msg.rank}` : "";
+          finishedTime.textContent = fmtMs(swElapsedAtMsg);
+          finishedOverlay.classList.add("visible");
+        }
+
+      } else {
+        // RESET, FAULT, SELF_TEST, BOOT, MASTER, ABORTED
+        swRunning = false;
+        stopInterp();
+        stopwatchEl.classList.remove("visible");
+        gameNameEl.classList.add("visible");
+        leaderboard.classList.add("visible");
+        leaderboard.classList.remove("faded");
+      }
+    }
+
+    /* -----------------------------------------------------------------------
+       WebSocket
+    ----------------------------------------------------------------------- */
+    let ws    = null;
+    let delay = 1000;
+
+    function connect() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+      ws.onopen = () => {
+        reconnectEl.classList.remove("visible");
+        delay = 1000;
+        // Fetch initial leaderboard
+        fetch("/api/admin/leaderboard")
+          .then(r => r.json())
+          .then(d => { if (d.leaderboard) renderLeaderboard(d.leaderboard); })
+          .catch(() => {});
+      };
+
+      ws.onmessage = (evt) => {
+        let msg;
+        try { msg = JSON.parse(evt.data); } catch { return; }
+        applyState(msg);
+      };
+
+      ws.onclose = () => {
+        reconnectEl.classList.add("visible");
+        setTimeout(connect, delay);
+        delay = Math.min(delay * 2, 10000);
+      };
+
+      ws.onerror = () => ws.close();
+    }
+
+    connect();
+  </script>
+</body>
+</html>

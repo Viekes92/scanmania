@@ -1,0 +1,21 @@
+# metrics.yaml — metric sink configuration
+# Sinks are pluggable. 'sqlite' is always on. Others are optional.
+# See docs/metrics.md for the full metric naming convention and list.
+
+sinks:
+  sqlite:
+    enabled: true
+    # Every metric emit is an event row in the 'events' table. Always on; cannot be disabled.
+
+  prometheus_textfile:
+    enabled: false
+    # Writes a Prometheus text file for scraping by node_exporter.
+    # Useful if a future Grafana dashboard is added.
+    path: "/var/lib/node_exporter/textfile_collector/scanmania.prom"
+    # Update interval in seconds.
+    interval_s: 10
+
+  cloud:
+    enabled: false
+    # Piggybacks the §8 outbox: metric summaries are included in heartbeat pushes.
+    # Enable once the cloud endpoint is live and trusted.

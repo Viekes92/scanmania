@@ -1,0 +1,98 @@
+"""
+io/reconcile.py — periodically reads actual coil state and re-asserts if it differs.
+
+Inputs:  desired state from PresetResolver, IOBackend to read/write coils
+Outputs: log warning + metrics on mismatch; re-asserts coils by calling board.write_coils
+Invariant: the re-assert write_coils call here is the ONE permitted exception to the
+           "only presets.py calls write_coils" rule — reconcile.py is part of the io/
+           layer and acts as a safety backstop, not a preset path. All preset-driven
+           writes still go through PresetResolver. Each board check is independent so
+           a slow or dead board never stalls others.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from typing import Callable
+
+from iobackend.presets import IOBackend, PresetResolver
+
+log = logging.getLogger(__name__)
+
+_RECONCILE_INTERVAL_S = 0.5  # 500 ms
+
+
+class ReconcileLoop:
+    """
+    Periodically reads actual coil state from each board and re-asserts if it
+    differs from what PresetResolver believes the desired state to be.
+
+    A separate asyncio task is spawned per board so one unresponsive board never
+    delays checks on the others.
+    """
+
+    def __init__(
+        self,
+        resolver: PresetResolver,
+        backend: IOBackend,
+        metrics_emit: Callable,
+    ) -> None:
+        self._resolver = resolver
+        self._backend = backend
+        self._metrics_emit = metrics_emit
+
+    async def run(self) -> None:
+        """
+        Main loop: every 500 ms launch per-board checks concurrently and wait for
+        all to finish before sleeping until the next cycle.
+        """
+        log.info("ReconcileLoop started (interval=%.0f ms)", _RECONCILE_INTERVAL_S * 1000)
+        while True:
+            start = time.monotonic()
+            boards = self._backend.all_boards()
+            await asyncio.gather(
+                *(self._check_board(board.board_id) for board in boards),
+                return_exceptions=True,
+            )
+            elapsed = time.monotonic() - start
+            sleep_for = max(0.0, _RECONCILE_INTERVAL_S - elapsed)
+            await asyncio.sleep(sleep_for)
+
+    async def _check_board(self, board_id: str) -> None:
+        """
+        Read actual coil state from one board and compare to desired.
+        Re-assert via write_coils (through PresetResolver's backend call) if different.
+        """
+        board = self._backend.get_board(board_id)
+        desired = self._resolver.desired_state().get(board_id)
+        if desired is None:
+            return  # board not tracked by resolver (shouldn't happen)
+
+        actual = await board.read_coils()
+        if actual is None:
+            # Board unreachable — ModbusBoard will handle DEGRADED tracking
+            log.debug("reconcile: board '%s' read_coils returned None", board_id)
+            return
+
+        if actual != desired:
+            diff = [
+                f"ch{i+1}(want={desired[i]},got={actual[i]})"
+                for i in range(len(desired))
+                if i < len(actual) and actual[i] != desired[i]
+            ]
+            log.warning(
+                "reconcile MISMATCH board='%s': %s — re-asserting",
+                board_id, ", ".join(diff),
+            )
+            self._metrics_emit(
+                "relay.mismatch",
+                value=len(diff),
+                tags={"board_id": board_id},
+            )
+            ok = await board.write_coils(desired)
+            if not ok:
+                log.error(
+                    "reconcile: re-assert write_coils failed on board '%s'", board_id
+                )

@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<!--
+  web/static/display_in/index.html — In-container display (HDMI 1).
+
+  Shown inside the container. Must be readable through haze at 10 m.
+  Zero chrome. No navigation. No buttons. Full-screen content only.
+
+  State-driven display:
+  - COUNTDOWN:     accelerating ring/bar that fills to match the flash ramp
+  - RUN_SEG_*:     enormous stopwatch (MM:SS.mmm), segment indicator (1/2/3)
+  - BUSTED:        full-screen red, "BUSTED", elapsed time
+  - FINISHED:      full-screen green, "CLEAN!", elapsed time
+  - ATTRACT:       game name "SCANMANIA" pulsing slowly
+  - Other states:  game name / waiting indicator
+
+  Stopwatch interpolated at 60 fps using requestAnimationFrame + server
+  clock correction on each WebSocket message.
+
+  No external dependencies. System monospace font. Chromium kiosk mode.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SCANMANIA — Display</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #030305;
+      color: #fff;
+      font-family: 'Courier New', Courier, monospace;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+
+    /* -----------------------------------------------------------------------
+       Each state has a full-screen scene. Only the active one is shown.
+    ----------------------------------------------------------------------- */
+    .scene {
+      display: none;
+      position: absolute;
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    .scene.active { display: flex; animation: fadeIn 0.3s ease; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    /* -----------------------------------------------------------------------
+       ATTRACT — pulsing game name
+    ----------------------------------------------------------------------- */
+    #sceneAttract {
+      background-color: #030305;
+      background-image:
+        linear-gradient(rgba(38,79,154,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(38,79,154,0.06) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    #attractTitle {
+      font-size: clamp(72px, 14vw, 180px);
+      font-weight: 900;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #264f9a;
+      text-shadow:
+        0 0 40px rgba(38, 79, 154, 0.7),
+        0 0 100px rgba(38, 79, 154, 0.4),
+        0 0 200px rgba(38, 79, 154, 0.15);
+      animation: attract-pulse 3s ease-in-out infinite;
+    }
+
+    @keyframes attract-pulse {
+      0%, 100% {
+        opacity: 1;
+        text-shadow:
+          0 0 40px rgba(38,79,154,0.7),
+          0 0 100px rgba(38,79,154,0.4),
+          0 0 200px rgba(38,79,154,0.15);
+      }
+      50% {
+        opacity: 0.6;
+        text-shadow:
+          0 0 20px rgba(38,79,154,0.4),
+          0 0 60px rgba(38,79,154,0.2);
+      }
+    }
+
+    #attractSub {
+      margin-top: 32px;
+      font-size: clamp(24px, 3.5vw, 52px);
+      color: #3a5a7a;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+    }
+
+    /* -----------------------------------------------------------------------
+       COUNTDOWN — accelerating ring / progress bar
+    ----------------------------------------------------------------------- */
+    #sceneCountdown {
+      background: #050507;
+      gap: 40px;
+    }
+
+    #cdLabel {
+      font-size: clamp(36px, 6vw, 80px);
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #5a7899;
+    }
+
+    /* SVG ring — fills from 0 → 100% as pulses accumulate */
+    #cdRingWrap {
+      position: relative;
+      width: min(50vw, 50vh);
+      height: min(50vw, 50vh);
+    }
+
+    #cdRing {
+      transform: rotate(-90deg);
+      width: 100%;
+      height: 100%;
+    }
+
+    #cdRingBg {
+      fill: none;
+      stroke: #061428;
+      stroke-width: 16;
+    }
+
+    #cdRingFill {
+      fill: none;
+      stroke: #264f9a;
+      stroke-width: 16;
+      stroke-linecap: butt;
+      filter: drop-shadow(0 0 8px rgba(38,79,154,0.7));
+      transition: stroke-dashoffset 80ms linear;
+      /* Will be calculated in JS once we know the radius */
+    }
+
+    /* Step count in centre of ring */
+    #cdStep {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(48px, 8vw, 120px);
+      font-weight: 900;
+      color: #264f9a;
+      text-shadow: 0 0 30px rgba(38,79,154,0.6);
+    }
+
+    /* -----------------------------------------------------------------------
+       RUN — enormous stopwatch
+    ----------------------------------------------------------------------- */
+    #sceneRun {
+      background: #000000;
+      gap: 16px;
+    }
+
+    #runStopwatch {
+      font-size: clamp(80px, 20vw, 260px);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #ffffff;
+      line-height: 1;
+      text-shadow: 0 0 30px rgba(255,255,255,0.06);
+    }
+
+    #runSegment {
+      font-size: clamp(28px, 4.5vw, 64px);
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      color: #264f9a;
+      text-transform: uppercase;
+      text-shadow: 0 0 20px rgba(38,79,154,0.5);
+    }
+
+    /* -----------------------------------------------------------------------
+       BUSTED — full-screen red
+    ----------------------------------------------------------------------- */
+    #sceneBusted {
+      background: #ff0033;
+      gap: 20px;
+    }
+
+    #bustedTitle {
+      font-size: clamp(96px, 22vw, 280px);
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #000000;
+      animation: busted-flash 0.8s ease-in-out 3;
+    }
+
+    @keyframes busted-flash {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    #bustedTime {
+      font-size: clamp(36px, 6vw, 80px);
+      color: rgba(0, 0, 0, 0.85);
+      letter-spacing: 0.08em;
+    }
+
+    /* -----------------------------------------------------------------------
+       FINISHED (CLEAN) — full-screen green
+    ----------------------------------------------------------------------- */
+    @keyframes finished-flash {
+      0%   { background-color: #00aa44; }
+      100% { background-color: #003a00; }
+    }
+
+    #sceneFinished {
+      background: #003a00;
+      gap: 20px;
+      animation: finished-flash 0.5s ease-out forwards;
+    }
+
+    #finishedTitle {
+      font-size: clamp(96px, 22vw, 280px);
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #00ff88;
+      text-shadow:
+        0 0 60px rgba(0, 255, 136, 0.7),
+        0 0 140px rgba(0, 255, 136, 0.4);
+    }
+
+    #finishedTime {
+      font-size: clamp(36px, 6vw, 80px);
+      color: #80ffcc;
+      letter-spacing: 0.08em;
+    }
+
+    #finishedName {
+      font-size: clamp(28px, 4vw, 60px);
+      color: #80ffcc;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      opacity: 0.8;
+    }
+
+    /* -----------------------------------------------------------------------
+       ABORTED — dark orange
+    ----------------------------------------------------------------------- */
+    #sceneAborted {
+      background: #1a0a00;
+      gap: 20px;
+    }
+
+    #abortedTitle {
+      font-size: clamp(72px, 16vw, 220px);
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #ff6600;
+      text-shadow:
+        0 0 40px rgba(255, 102, 0, 0.7),
+        0 0 100px rgba(255, 102, 0, 0.35);
+    }
+
+    #abortedTime {
+      font-size: clamp(36px, 6vw, 80px);
+      color: rgba(255, 120, 30, 0.85);
+      letter-spacing: 0.08em;
+    }
+
+    /* -----------------------------------------------------------------------
+       ARM pulse on "GET READY" label
+    ----------------------------------------------------------------------- */
+    @keyframes arm-pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.5; }
+    }
+
+    .arm-pulsing { animation: arm-pulse 1.5s ease-in-out infinite; }
+
+    /* -----------------------------------------------------------------------
+       Segment indicator flash on change
+    ----------------------------------------------------------------------- */
+    @keyframes segFlash {
+      0%   { filter: brightness(1); }
+      40%  { filter: brightness(2.5); }
+      100% { filter: brightness(1); }
+    }
+
+    #runSegment.flash { animation: segFlash 0.5s ease-out; }
+
+    /* -----------------------------------------------------------------------
+       RESULT — show rank + time briefly before resetting
+    ----------------------------------------------------------------------- */
+    #sceneResult {
+      background: #030305;
+      gap: 20px;
+    }
+
+    #resultRank {
+      font-size: clamp(40px, 7vw, 96px);
+      color: #264f9a;
+      letter-spacing: 0.1em;
+      text-shadow: 0 0 20px rgba(38,79,154,0.5);
+    }
+
+    #resultTime {
+      font-size: clamp(60px, 12vw, 160px);
+      font-weight: 900;
+      color: #fff;
+      letter-spacing: 0.06em;
+    }
+
+    /* -----------------------------------------------------------------------
+       FAULT / generic waiting
+    ----------------------------------------------------------------------- */
+    #sceneWaiting {
+      background: #050507;
+    }
+
+    #waitingText {
+      font-size: clamp(24px, 4vw, 56px);
+      color: #0d1e3a;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    /* -----------------------------------------------------------------------
+       Reconnect indicator — dim, bottom-left, non-intrusive
+    ----------------------------------------------------------------------- */
+    #reconnectBadge {
+      display: none;
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      font-size: 14px;
+      color: #0d1e3a;
+      letter-spacing: 0.1em;
+      pointer-events: none;
+    }
+
+    #reconnectBadge.visible { display: block; }
+  </style>
+</head>
+<body>
+
+  <!-- ATTRACT -->
+  <div class="scene active" id="sceneAttract">
+    <div id="attractTitle">SCANMANIA</div>
+    <div id="attractSub">// Laser maze — step inside</div>
+  </div>
+
+  <!-- REGISTERED — welcome the player -->
+  <div class="scene" id="sceneRegistered">
+    <div id="welcomeLabel" style="
+      font-size: clamp(36px, 5vw, 64px);
+      color: #5a7899;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    ">WELCOME</div>
+    <div id="welcomeName" style="
+      font-size: clamp(64px, 12vw, 160px);
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      color: #264f9a;
+      text-shadow:
+        0 0 40px rgba(38,79,154,0.7),
+        0 0 100px rgba(38,79,154,0.4);
+      text-transform: uppercase;
+    ">—</div>
+    <div style="
+      margin-top: 32px;
+      font-size: clamp(20px, 3vw, 40px);
+      color: #5a7899;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    ">Step on the start plate</div>
+  </div>
+
+  <!-- COUNTDOWN -->
+  <div class="scene" id="sceneCountdown">
+    <div id="cdLabel">Get ready…</div>
+    <div id="cdRingWrap">
+      <svg id="cdRing" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <circle id="cdRingBg"   cx="100" cy="100" r="82"/>
+        <circle id="cdRingFill" cx="100" cy="100" r="82"
+                stroke-dasharray="515.22"
+                stroke-dashoffset="515.22"/>
+      </svg>
+      <div id="cdStep">—</div>
+    </div>
+  </div>
+
+  <!-- RUN (all three segments use same scene) -->
+  <div class="scene" id="sceneRun">
+    <div id="runSegment">Segment 1</div>
+    <div id="runStopwatch">00:00.000</div>
+  </div>
+
+  <!-- BUSTED -->
+  <div class="scene" id="sceneBusted">
+    <div id="bustedTitle">BUSTED</div>
+    <div id="bustedTime">—</div>
+  </div>
+
+  <!-- FINISHED -->
+  <div class="scene" id="sceneFinished">
+    <div id="finishedTitle">CLEAN!</div>
+    <div id="finishedName"></div>
+    <div id="finishedTime">—</div>
+  </div>
+
+  <!-- ABORTED -->
+  <div class="scene" id="sceneAborted">
+    <div id="abortedTitle">RUN CANCELLED</div>
+    <div id="abortedTime">—</div>
+  </div>
+
+  <!-- RESULT -->
+  <div class="scene" id="sceneResult">
+    <div id="resultRank">—</div>
+    <div id="resultTime">—</div>
+  </div>
+
+  <!-- FAULT / generic waiting -->
+  <div class="scene" id="sceneWaiting">
+    <div id="waitingText">Standby</div>
+  </div>
+
+  <!-- Dim reconnect indicator -->
+  <div id="reconnectBadge">reconnecting…</div>
+
+  <script>
+    /* -----------------------------------------------------------------------
+       In-container display JS
+
+       WebSocket message shape (server at ~10 Hz):
+       {
+         state:           "ATTRACT" | "RUN_SEG_1" | "BUSTED" | … ,
+         elapsed_ms:      4321,
+         server_mono_now_ns: <integer nanoseconds>,
+         countdown_step:  null | 0-7,
+         countdown_total: 8,
+         segment:         1 | 2 | 3,
+         rank:            null | 3,
+         player_nickname: "Joenne"
+       }
+
+       Stopwatch: interpolated 60 fps client-side, hard-corrected each message.
+    ----------------------------------------------------------------------- */
+    "use strict";
+
+    /* ---- State constants ---- */
+    const RUN_STATES  = new Set(["RUN_SEG_1","RUN_SEG_2","RUN_SEG_3"]);
+    const COUNTDOWN_TOTAL = 8;  // number of count-in pulses (from game.yaml)
+
+    /* ---- Countdown ring geometry ---- */
+    // r=82 → circumference = 2π×82 ≈ 515.22
+    const RING_CIRC = 2 * Math.PI * 82;
+
+    /* ---- DOM refs ---- */
+    const scenes = {
+      attract:    document.getElementById("sceneAttract"),
+      registered: document.getElementById("sceneRegistered"),
+      countdown:  document.getElementById("sceneCountdown"),
+      run:        document.getElementById("sceneRun"),
+      busted:     document.getElementById("sceneBusted"),
+      finished:   document.getElementById("sceneFinished"),
+      aborted:    document.getElementById("sceneAborted"),
+      result:     document.getElementById("sceneResult"),
+      waiting:    document.getElementById("sceneWaiting"),
+    };
+
+    const welcomeName  = document.getElementById("welcomeName");
+    const welcomeLabel = document.getElementById("welcomeLabel");
+
+    const runStopwatch   = document.getElementById("runStopwatch");
+    const runSegment     = document.getElementById("runSegment");
+    const cdStep         = document.getElementById("cdStep");
+    const cdRingFill     = document.getElementById("cdRingFill");
+    const bustedTime     = document.getElementById("bustedTime");
+    const finishedTime   = document.getElementById("finishedTime");
+    const finishedName   = document.getElementById("finishedName");
+    const abortedTime    = document.getElementById("abortedTime");
+    const resultRank     = document.getElementById("resultRank");
+    const resultTime     = document.getElementById("resultTime");
+    const reconnectBadge = document.getElementById("reconnectBadge");
+
+    /* Track segment for flash animation */
+    let lastSegment = null;
+
+    /* ---- Stopwatch interpolation ---- */
+    let swElapsedAtMsg = 0;   // elapsed_ms from last WS message
+    let swClientAtMsg  = 0;   // performance.now()/1000 at message arrival
+    let swRunning      = false;
+    let rafId          = null;
+
+    function fmtMs(ms) {
+      const t = Math.max(0, Math.floor(ms));
+      const m = Math.floor(t / 60000);
+      const s = Math.floor((t % 60000) / 1000);
+      const l = t % 1000;
+      return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}.${String(l).padStart(3,"0")}`;
+    }
+
+    function getInterpolatedMs() {
+      if (!swRunning) return swElapsedAtMsg;
+      const drift = performance.now() / 1000 - swClientAtMsg;
+      return swElapsedAtMsg + drift * 1000;
+    }
+
+    function tick() {
+      runStopwatch.textContent = fmtMs(getInterpolatedMs());
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function startInterpolation() { if (!rafId) rafId = requestAnimationFrame(tick); }
+    function stopInterpolation()  { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } }
+
+    /* ---- Scene switching ---- */
+    function showScene(name) {
+      Object.entries(scenes).forEach(([k, el]) => {
+        el.classList.toggle("active", k === name);
+      });
+    }
+
+    /* ---- Ring fill for countdown ---- */
+    function setRingProgress(step, total) {
+      // step 0 = first pulse (barely started); step total-1 = last pulse (nearly full)
+      const fraction = total > 1 ? step / (total - 1) : 1;
+      // Filled clockwise: dashoffset decreases from RING_CIRC (empty) to 0 (full)
+      const offset = RING_CIRC * (1 - fraction);
+      cdRingFill.style.strokeDashoffset = offset;
+      // Color escalation based on progress
+      if (fraction < 0.5) {
+        cdRingFill.style.stroke = "#264f9a";
+      } else if (fraction < 0.8) {
+        cdRingFill.style.stroke = "#ff8800";
+      } else {
+        cdRingFill.style.stroke = "#ff0033";
+      }
+    }
+
+    /* ---- Apply server state to the display ---- */
+    function applyState(msg) {
+      const state = msg.state || "ATTRACT";
+
+      /* --- Stopwatch interpolation values --- */
+      swElapsedAtMsg = msg.elapsed_ms || 0;
+      swClientAtMsg  = performance.now() / 1000;
+
+      /* --- Route to correct scene --- */
+      if (state === "REGISTERED") {
+        swRunning = false;
+        stopInterpolation();
+        welcomeName.textContent = msg.player_nickname || "—";
+        welcomeLabel.textContent = "WELCOME";
+        welcomeLabel.classList.remove("arm-pulsing");
+        showScene("registered");
+
+      } else if (state === "ARM") {
+        swRunning = false;
+        stopInterpolation();
+        welcomeName.textContent = msg.player_nickname || "—";
+        welcomeLabel.textContent = "GET READY";
+        welcomeLabel.classList.add("arm-pulsing");
+        showScene("registered");
+
+      } else if (state === "ATTRACT") {
+        swRunning = false;
+        stopInterpolation();
+        showScene("attract");
+
+      } else if (state === "COUNTDOWN") {
+        swRunning = false;
+        stopInterpolation();
+        showScene("countdown");
+        const step  = msg.countdown_step  ?? 0;
+        const total = msg.countdown_total ?? COUNTDOWN_TOTAL;
+        cdStep.textContent = total - step; // countdown: "8, 7, 6…"
+        setRingProgress(step, total);
+
+      } else if (RUN_STATES.has(state)) {
+        swRunning = true;
+        showScene("run");
+        const seg = msg.segment || 1;
+        runSegment.textContent = `Segment ${seg} / 3`;
+        if (seg !== lastSegment) {
+          lastSegment = seg;
+          runSegment.classList.remove("flash");
+          // Force reflow to restart animation
+          void runSegment.offsetWidth;
+          runSegment.classList.add("flash");
+          setTimeout(() => runSegment.classList.remove("flash"), 500);
+        }
+        startInterpolation();
+
+      } else if (state === "BUSTED") {
+        swRunning = false;
+        stopInterpolation();
+        showScene("busted");
+        bustedTime.textContent = fmtMs(swElapsedAtMsg);
+
+      } else if (state === "FINISHED") {
+        swRunning = false;
+        stopInterpolation();
+        showScene("finished");
+        finishedName.textContent = msg.player_nickname || "";
+        finishedTime.textContent = fmtMs(swElapsedAtMsg);
+
+      } else if (state === "RESULT") {
+        swRunning = false;
+        stopInterpolation();
+        showScene("result");
+        resultTime.textContent = fmtMs(swElapsedAtMsg);
+        resultRank.textContent = msg.rank != null ? `Rank #${msg.rank}` : "";
+
+      } else if (state === "ABORTED") {
+        swRunning = false;
+        stopInterpolation();
+        showScene("aborted");
+        abortedTime.textContent = fmtMs(swElapsedAtMsg);
+
+      } else {
+        /* RESET, FAULT, SELF_TEST, MASTER, BOOT */
+        swRunning = false;
+        stopInterpolation();
+        showScene("waiting");
+      }
+    }
+
+    /* -----------------------------------------------------------------------
+       WebSocket
+    ----------------------------------------------------------------------- */
+    let ws    = null;
+    let delay = 1000;
+
+    function connect() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+      ws.onopen = () => {
+        reconnectBadge.classList.remove("visible");
+        delay = 1000;
+      };
+
+      ws.onmessage = (evt) => {
+        let msg;
+        try { msg = JSON.parse(evt.data); } catch { return; }
+        applyState(msg);
+      };
+
+      ws.onclose = () => {
+        reconnectBadge.classList.add("visible");
+        setTimeout(connect, delay);
+        delay = Math.min(delay * 2, 10000);
+      };
+
+      ws.onerror = () => ws.close();
+    }
+
+    connect();
+  </script>
+</body>
+</html>

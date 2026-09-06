@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<!--
+  web/static/gm/index.html — Gamemaster console.
+
+  The most important screen in the project. One page, no scrolling for anything
+  urgent. Every action thumb-reachable on an iPad. Drives a full game session:
+  COUNT IN, BUST, ABORT, VOID, FORCE RESET. Live beam strip. Health strip.
+  Detection mode switcher. Assisted-mode confirm/veto overlay.
+
+  Stopwatch is interpolated at 60 fps client-side using requestAnimationFrame;
+  hard-corrected on each WebSocket message (server is authoritative).
+
+  No external dependencies. Plain HTML/CSS/JS. Works in Chromium kiosk mode.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GM — SCANMANIA</title>
+  <style>
+    /* -----------------------------------------------------------------------
+       Custom properties — neon red heist
+    ----------------------------------------------------------------------- */
+    :root {
+      --bg:          #050507;
+      --surface:     #080d18;
+      --surface2:    #0d1525;
+      --border:      #0d1e3a;
+      --accent:      #264f9a;
+      --accent-glow: rgba(38, 79, 154, 0.6);
+      --accent-dim:  #1a3366;
+      --text:        #e8f0fc;
+      --muted:       #5a7899;
+
+      /* action button colours */
+      --green:       #00ff88;
+      --green-dark:  #005533;
+      --red:         #ff0033;
+      --red-dark:    #660015;
+      --orange:      #ff8800;
+      --orange-dark: #7a4200;
+      --grey:        #555;
+      --grey-dark:   #2a2a2a;
+
+      /* beam state colours */
+      --beam-ok:      #00ff88;
+      --beam-broken:  #ff0033;
+      --beam-masked:  #444;
+
+      /* health state colours */
+      --health-ok:    #00ff88;
+      --health-warn:  #ff8800;
+      --health-err:   #ff0033;
+
+      --radius: 10px;
+      --btn-h:  72px;          /* minimum 48 px, targeting 72 for iPad comfort */
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;        /* no scrolling for anything urgent */
+      background: var(--bg);
+      background-image:
+        linear-gradient(rgba(38,79,154,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(38,79,154,0.06) 1px, transparent 1px);
+      background-size: 40px 40px;
+      color: var(--text);
+      font-family: 'Courier New', Courier, monospace;
+      -webkit-font-smoothing: antialiased;
+      touch-action: manipulation;
+      user-select: none;
+    }
+
+    /* -----------------------------------------------------------------------
+       Top-level layout: top-bar, actions, detection, beams, health
+       All sections visible without scrolling (designed for 768 px iPad height)
+    ----------------------------------------------------------------------- */
+    body {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 0;
+      gap: 0;
+    }
+
+    /* -----------------------------------------------------------------------
+       Section wrapper
+    ----------------------------------------------------------------------- */
+    .section {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* -----------------------------------------------------------------------
+       Top bar — state, stopwatch, player name, detection badge
+    ----------------------------------------------------------------------- */
+    #topBar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 16px;
+      border-bottom: 2px solid var(--border);
+      background: var(--surface);
+      box-shadow: inset 0 -1px 0 rgba(38,79,154,0.15);
+      flex-shrink: 0;
+    }
+
+    #stateLabel {
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-family: 'Courier New', Courier, monospace;
+      color: var(--accent);
+      text-shadow: 0 0 20px var(--accent-glow), 0 0 50px rgba(38,79,154,0.15);
+      flex: 1 1 auto;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Large stopwatch — mono, always visible, no glow (readability first) */
+    #stopwatch {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 48px;
+      font-weight: 700;
+      color: #ffffff;
+      white-space: nowrap;
+      letter-spacing: 1px;
+      flex-shrink: 0;
+    }
+
+    #playerName {
+      font-size: 18px;
+      font-weight: 600;
+      font-family: 'Courier New', Courier, monospace;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
+      flex-shrink: 0;
+    }
+
+    #playerName::before {
+      content: "// ";
+      color: var(--accent-dim);
+    }
+
+    #detectionBadge {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      font-family: 'Courier New', Courier, monospace;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    /* AUTO = filled red pill */
+    #detectionBadge.mode-auto {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    /* ASSISTED = amber border only */
+    #detectionBadge.mode-assisted {
+      background: transparent;
+      color: var(--orange);
+      border-color: var(--orange);
+    }
+
+    /* MANUAL = muted */
+    #detectionBadge.mode-manual {
+      background: transparent;
+      color: var(--muted);
+      border-color: var(--grey);
+    }
+
+    /* -----------------------------------------------------------------------
+       Banner alerts — stacked above the actions
+    ----------------------------------------------------------------------- */
+    #banners {
+      flex-shrink: 0;
+    }
+
+    .banner {
+      display: none;
+      padding: 10px 16px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: 'Courier New', Courier, monospace;
+      letter-spacing: 1px;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .banner.visible { display: block; }
+
+    .banner-red {
+      background: rgba(255, 0, 51, 0.12);
+      color: var(--red);
+      border-bottom: 1px solid var(--red);
+      animation: pulse-banner 1.4s ease-in-out infinite;
+    }
+
+    .banner-amber {
+      background: rgba(255, 136, 0, 0.10);
+      color: var(--orange);
+      border-bottom: 1px solid var(--orange);
+    }
+
+    @keyframes pulse-banner {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.55; }
+    }
+
+    /* -----------------------------------------------------------------------
+       Primary action buttons row
+    ----------------------------------------------------------------------- */
+    #actions {
+      display: flex;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .action-btn {
+      flex: 1 1 0;
+      height: var(--btn-h);
+      font-size: 18px;
+      font-weight: 900;
+      font-family: 'Courier New', Courier, monospace;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: var(--surface2);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: filter 0.1s, transform 0.08s, background 0.08s, color 0.08s;
+      touch-action: manipulation;
+    }
+
+    .action-btn:active:not(:disabled) {
+      transform: scale(0.97);
+    }
+
+    .action-btn:disabled {
+      opacity: 0.2;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none !important;
+    }
+
+    /* Individual action colours — outlined style */
+    #btnCountIn {
+      border: 2px solid var(--green);
+      color: var(--green);
+    }
+    #btnCountIn:active:not(:disabled) {
+      background: var(--green);
+      color: #000;
+    }
+
+    #btnBust {
+      border: 2px solid var(--red);
+      color: var(--red);
+      box-shadow: 0 0 10px rgba(255,0,51,0.25), inset 0 0 6px rgba(255,0,51,0.05);
+    }
+    #btnBust:active:not(:disabled) {
+      background: var(--red);
+      color: #000;
+    }
+
+    #btnAbort {
+      border: 2px solid var(--orange);
+      color: var(--orange);
+    }
+    #btnAbort:active:not(:disabled) {
+      background: var(--orange);
+      color: #000;
+    }
+
+    #btnVoid {
+      border: 2px solid #555;
+      color: #888;
+    }
+    #btnVoid:active:not(:disabled) {
+      background: #555;
+      color: #fff;
+    }
+
+    #btnCancel {
+      border: 1px solid var(--grey);
+      color: var(--muted);
+      background: transparent;
+      font-size: 16px;
+    }
+    #btnCancel:active:not(:disabled) {
+      background: var(--grey-dark);
+      color: var(--text);
+    }
+
+    #btnForceReset {
+      border: 1px solid var(--accent-dim);
+      color: var(--muted);
+      background: transparent;
+      font-size: 14px;
+    }
+    #btnForceReset:active:not(:disabled) {
+      background: var(--accent-dim);
+      color: var(--text);
+    }
+
+    /* -----------------------------------------------------------------------
+       Detection mode switcher — segmented control
+    ----------------------------------------------------------------------- */
+    #detectionSection {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      font-family: 'Courier New', Courier, monospace;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--accent-dim);
+      margin-bottom: 8px;
+    }
+
+    #detectionToggle {
+      display: flex;
+      gap: 0;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .seg-btn {
+      flex: 1;
+      height: 48px;
+      font-size: 15px;
+      font-weight: 800;
+      font-family: 'Courier New', Courier, monospace;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+      touch-action: manipulation;
+    }
+
+    .seg-btn.active {
+      background: var(--accent);
+      color: #000;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    .seg-btn:not(.active):active {
+      background: var(--surface);
+    }
+
+    #detectionToggle.locked {
+      pointer-events: none;
+      opacity: 0.3;
+    }
+
+    /* -----------------------------------------------------------------------
+       Live beam strip — one pill per beam
+    ----------------------------------------------------------------------- */
+    #beamSection {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #beamStrip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .beam-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: 'Courier New', Courier, monospace;
+      cursor: default;
+      transition: filter 0.1s;
+      min-height: 48px;     /* minimum tap target */
+    }
+
+    .beam-pill.ok {
+      background: #001a00;
+      border: 1px solid var(--beam-ok);
+      color: var(--beam-ok);
+    }
+    .beam-pill.broken {
+      background: #060d1a;
+      border: 1px solid var(--beam-broken);
+      color: var(--beam-broken);
+      box-shadow: 0 0 8px rgba(255,0,51,0.35);
+    }
+    .beam-pill.masked {
+      background: #0a0a0a;
+      border: 1px solid #333;
+      color: #444;
+    }
+
+    .beam-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .beam-pill.ok     .beam-dot { background: var(--beam-ok); }
+    .beam-pill.broken .beam-dot { background: var(--beam-broken); animation: flash-red 0.5s infinite; }
+    .beam-pill.masked .beam-dot { background: var(--beam-masked); }
+
+    @keyframes flash-red {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    /* -----------------------------------------------------------------------
+       Health strip — relay boards, Pico, camera, cloud sync
+    ----------------------------------------------------------------------- */
+    #healthSection {
+      padding: 10px 14px;
+      flex-shrink: 0;
+    }
+
+    #healthStrip {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .health-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Courier New', Courier, monospace;
+      color: var(--text);
+      min-height: 48px;
+    }
+
+    .health-led {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .health-led.ok   { background: var(--health-ok); }
+    .health-led.warn { background: var(--health-warn); animation: pulse-warn 1.5s infinite; }
+    .health-led.err  { background: var(--health-err); animation: pulse-err 0.8s infinite; }
+
+    @keyframes pulse-warn {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+    @keyframes pulse-err {
+      0%, 100% { opacity: 1; box-shadow: 0 0 6px var(--health-err); }
+      50%       { opacity: 0.2; box-shadow: none; }
+    }
+
+    /* -----------------------------------------------------------------------
+       Scrollable lower section — last 10 runs
+    ----------------------------------------------------------------------- */
+    #lowerSection {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .lower-label {
+      font-size: 11px;
+      font-weight: 700;
+      font-family: 'Courier New', Courier, monospace;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--accent-dim);
+      margin-bottom: 10px;
+    }
+
+    #recentRuns {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .run-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: 'Courier New', Courier, monospace;
+      transition: border-color 0.12s;
+    }
+
+    .run-row:hover {
+      border-color: var(--accent-dim);
+    }
+
+    .run-outcome {
+      font-weight: 800;
+      font-size: 11px;
+      font-family: 'Courier New', Courier, monospace;
+      padding: 3px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .run-outcome.clean   { background: rgba(0,255,136,0.12); color: var(--green); border: 1px solid #005533; }
+    .run-outcome.busted  { background: rgba(255,0,51,0.12);  color: var(--red);   border: 1px solid #660015; }
+    .run-outcome.aborted { background: rgba(255,136,0,0.12); color: var(--orange); border: 1px solid #7a4200; }
+    .run-outcome.voided  { background: rgba(85,85,85,0.12);  color: var(--grey);  border: 1px solid #333; }
+
+    .run-name  { flex: 1; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .run-time  { font-family: 'Courier New', Courier, monospace; color: var(--muted); white-space: nowrap; }
+
+    /* -----------------------------------------------------------------------
+       Assisted mode confirm/veto overlay — full screen, urgent
+    ----------------------------------------------------------------------- */
+    #assistedOverlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.92);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      z-index: 100;
+    }
+
+    #assistedOverlay.visible { display: flex; }
+
+    #assistedTitle {
+      font-size: 48px;
+      font-weight: 900;
+      font-family: 'Courier New', Courier, monospace;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      text-shadow: 0 0 30px var(--accent-glow), 0 0 60px rgba(38,79,154,0.2);
+    }
+
+    #assistedBeam {
+      font-size: 24px;
+      font-family: 'Courier New', Courier, monospace;
+      color: var(--muted);
+      letter-spacing: 2px;
+    }
+
+    /* Thumbnail of the triggering ROI */
+    #assistedThumb {
+      width: 220px;
+      height: 220px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 2px solid var(--red);
+      box-shadow: 0 0 20px rgba(255,0,51,0.5);
+      background: #060d1a;
+      display: block;
+    }
+
+    .assisted-btns {
+      display: flex;
+      gap: 24px;
+      width: 100%;
+      max-width: 480px;
+      padding: 0 24px;
+    }
+
+    .assisted-btns button {
+      height: 100px;
+      font-size: 28px;
+      font-weight: 900;
+      font-family: 'Courier New', Courier, monospace;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      border-radius: var(--radius);
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: filter 0.1s, transform 0.08s;
+    }
+
+    .assisted-btns button:active {
+      filter: brightness(0.8);
+      transform: scale(0.97);
+    }
+
+    /* BUST — filled red, narrower (40%) */
+    #btnConfirm {
+      flex: 0 0 40%;
+      background: var(--red);
+      color: #000;
+      border: 2px solid var(--red);
+      box-shadow: 0 0 20px rgba(255,0,51,0.4);
+    }
+
+    /* CLEAR — filled green, wider (60%) */
+    #btnVeto {
+      flex: 0 0 60%;
+      background: var(--green);
+      color: #000;
+      border: 2px solid var(--green);
+      box-shadow: 0 0 20px rgba(0,255,136,0.3);
+    }
+
+    /* -----------------------------------------------------------------------
+       WS disconnect banner
+    ----------------------------------------------------------------------- */
+    #wsDisconnectBanner {
+      display: none;
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 15px;
+      font-weight: 900;
+      font-family: 'Courier New', Courier, monospace;
+      letter-spacing: 2px;
+      text-align: center;
+      text-transform: uppercase;
+      background: var(--red);
+      color: #000;
+      flex-shrink: 0;
+      animation: pulse-banner 1.4s ease-in-out infinite;
+    }
+
+    #wsDisconnectBanner.visible { display: block; }
+
+    /* -----------------------------------------------------------------------
+       WebSocket status
+    ----------------------------------------------------------------------- */
+    #wsStatus {
+      position: fixed;
+      bottom: 8px;
+      right: 12px;
+      font-size: 11px;
+      font-family: 'Courier New', Courier, monospace;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .ws-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #333;
+    }
+
+    .ws-dot.ok  { background: var(--health-ok); }
+    .ws-dot.err { background: var(--health-err); }
+
+    /* Sign-in form inputs */
+    .signin-input {
+      height: 56px;
+      font-size: 18px;
+      font-weight: 700;
+      font-family: 'Courier New', Courier, monospace;
+      letter-spacing: 1px;
+      background: var(--surface2);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 0 16px;
+      outline: none;
+      caret-color: var(--green);
+      width: 100%;
+    }
+
+    .signin-input:focus {
+      border-color: var(--accent);
+    }
+
+    .gender-btn.selected {
+      border-color: var(--green) !important;
+      color: var(--green) !important;
+      background: rgba(0,255,136,0.08) !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- -----------------------------------------------------------------------
+       TOP BAR — state · stopwatch · player · detection badge
+  ----------------------------------------------------------------------- -->
+  <div id="topBar">
+    <div id="stateLabel">ATTRACT</div>
+    <div id="stopwatch">00:00.000</div>
+    <div id="playerName">—</div>
+    <div id="detectionBadge" class="mode-auto">AUTO</div>
+  </div>
+
+  <!-- -----------------------------------------------------------------------
+       BANNER ALERTS
+  ----------------------------------------------------------------------- -->
+  <div id="banners">
+    <div class="banner banner-red"   id="bannerManual">⚠ DETECTION OFFLINE — CALL BUSTS MANUALLY</div>
+    <div class="banner banner-amber" id="bannerSync">CLOUD SYNC PAUSED</div>
+    <div class="banner banner-amber" id="bannerMasked"></div>
+  </div>
+
+  <!-- -----------------------------------------------------------------------
+       PLAYER SIGN-IN PANEL (toggled by NEW PLAYER button, visible in ATTRACT)
+  ----------------------------------------------------------------------- -->
+  <div id="signinPanel" style="
+    display:none;
+    position:fixed; inset:0; z-index:90;
+    background:rgba(0,0,0,0.92);
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  ">
+    <form id="signinForm" autocomplete="off" style="
+      width:100%; max-width:480px;
+      display:flex; flex-direction:column; gap:12px;
+    ">
+      <div style="
+        font-size:28px; font-weight:900;
+        font-family:'Courier New',Courier,monospace;
+        letter-spacing:3px; text-transform:uppercase;
+        color:var(--green); text-align:center;
+        margin-bottom:8px;
+      ">REGISTER PLAYER</div>
+
+      <input id="sfName" type="text" placeholder="First name *" maxlength="30" required
+        class="signin-input">
+      <input id="sfSurname" type="text" placeholder="Surname *" maxlength="50" required
+        class="signin-input">
+      <input id="sfEmail" type="email" placeholder="Email *" maxlength="120" required
+        class="signin-input">
+      <input id="sfDob" type="date" placeholder="Date of birth"
+        class="signin-input" style="color-scheme:dark;">
+      <div style="display:flex; gap:10px;">
+        <button type="button" class="gender-btn" data-g="M" id="genderM"
+          style="flex:1; height:56px; font-size:18px; font-weight:900;
+            font-family:'Courier New',Courier,monospace; letter-spacing:2px;
+            border:2px solid var(--border); color:var(--muted);
+            background:var(--surface2); border-radius:var(--radius);
+            cursor:pointer; touch-action:manipulation;">M</button>
+        <button type="button" class="gender-btn" data-g="F" id="genderF"
+          style="flex:1; height:56px; font-size:18px; font-weight:900;
+            font-family:'Courier New',Courier,monospace; letter-spacing:2px;
+            border:2px solid var(--border); color:var(--muted);
+            background:var(--surface2); border-radius:var(--radius);
+            cursor:pointer; touch-action:manipulation;">F</button>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:8px;">
+        <button type="button" id="btnSigninCancel" style="
+          flex:1; height:var(--btn-h);
+          font-size:16px; font-weight:700;
+          font-family:'Courier New',Courier,monospace;
+          letter-spacing:1px; text-transform:uppercase;
+          border:1px solid var(--border); color:var(--muted);
+          background:transparent; border-radius:var(--radius);
+          cursor:pointer; touch-action:manipulation;
+        ">CANCEL</button>
+        <button type="submit" id="btnRegister" style="
+          flex:2; height:var(--btn-h);
+          font-size:18px; font-weight:900;
+          font-family:'Courier New',Courier,monospace;
+          letter-spacing:2px; text-transform:uppercase;
+          border:2px solid var(--green); color:var(--green);
+          background:var(--surface2); border-radius:var(--radius);
+          cursor:pointer; touch-action:manipulation;
+        ">REGISTER</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- WS disconnect banner (shown after 5 s of disconnect) -->
+  <div id="wsDisconnectBanner">CONNECTION LOST</div>
+
+  <!-- -----------------------------------------------------------------------
+       PRIMARY ACTIONS
+  ----------------------------------------------------------------------- -->
+  <div id="actions">
+    <button class="action-btn" id="btnNewPlayer"   style="border:2px solid var(--green); color:var(--green);">NEW PLAYER</button>
+    <button class="action-btn" id="btnCountIn"    disabled>COUNT IN</button>
+    <button class="action-btn" id="btnBust"       disabled>BUST</button>
+    <button class="action-btn" id="btnAbort"      disabled>ABORT</button>
+    <button class="action-btn" id="btnCancel"     disabled>CANCEL</button>
+    <button class="action-btn" id="btnVoid"       disabled>VOID</button>
+    <button class="action-btn" id="btnForceReset"         >FORCE RESET</button>
+  </div>
+
+  <!-- GM action feedback -->
+  <div id="gmFeedback" style="
+    display:none;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: 'Courier New', Courier, monospace;
+    letter-spacing: 1px;
+    text-align: center;
+    color: var(--red);
+    background: rgba(255,0,51,0.10);
+    border-bottom: 1px solid var(--red);
+    flex-shrink: 0;
+    transition: opacity 0.3s;
+  "></div>
+
+  <!-- -----------------------------------------------------------------------
+       DETECTION MODE SWITCHER
+  ----------------------------------------------------------------------- -->
+  <div id="detectionSection">
+    <div class="section-label">Detection mode</div>
+    <div id="detectionToggle">
+      <button class="seg-btn active" data-mode="auto">AUTO</button>
+      <button class="seg-btn"        data-mode="assisted">ASSISTED</button>
+      <button class="seg-btn"        data-mode="manual">MANUAL</button>
+    </div>
+  </div>
+
+  <!-- -----------------------------------------------------------------------
+       LIVE BEAM STRIP
+  ----------------------------------------------------------------------- -->
+  <div id="beamSection">
+    <div class="section-label">Beams</div>
+    <div id="beamStrip">
+      <!-- Dynamically populated from WebSocket state -->
+      <span style="color: var(--muted); font-size: 13px; font-family: monospace;">Waiting for data…</span>
+    </div>
+  </div>
+
+  <!-- -----------------------------------------------------------------------
+       HEALTH STRIP
+  ----------------------------------------------------------------------- -->
+  <div id="healthSection">
+    <div class="section-label">Health</div>
+    <div id="healthStrip">
+      <div class="health-item" id="hBoards">
+        <div class="health-led ok" id="hBoardsLed"></div>
+        <span>Relay boards</span>
+      </div>
+      <div class="health-item" id="hPico">
+        <div class="health-led ok" id="hPicoLed"></div>
+        <span>Pico</span>
+      </div>
+      <div class="health-item" id="hCamera">
+        <div class="health-led ok" id="hCameraLed"></div>
+        <span>Camera</span>
+      </div>
+      <div class="health-item" id="hSync">
+        <div class="health-led ok" id="hSyncLed"></div>
+        <span>Cloud sync</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- -----------------------------------------------------------------------
+       LOWER SECTION — recent runs (below the fold, scrollable)
+  ----------------------------------------------------------------------- -->
+  <div id="lowerSection">
+    <div class="lower-label">Recent runs</div>
+    <div id="recentRuns">
+      <span style="color: var(--muted); font-size: 13px; font-family: monospace;">No runs yet.</span>
+    </div>
+  </div>
+
+  <!-- -----------------------------------------------------------------------
+       VOID REASON OVERLAY — quick-pick reason before sending void
+  ----------------------------------------------------------------------- -->
+  <div id="voidOverlay" style="
+    display:none;
+    position:fixed; inset:0; z-index:95;
+    background:rgba(0,0,0,0.92);
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    gap:16px;
+  ">
+    <div style="
+      font-size:28px; font-weight:900;
+      font-family:'Courier New',Courier,monospace;
+      letter-spacing:3px; text-transform:uppercase;
+      color:#888; text-align:center;
+      margin-bottom:8px;
+    ">VOID REASON</div>
+    <div style="width:100%; max-width:480px; display:flex; flex-direction:column; gap:12px;">
+      <button class="void-reason-btn" data-reason="EQUIPMENT FAULT" style="
+        height:var(--btn-h); font-size:18px; font-weight:900;
+        font-family:'Courier New',Courier,monospace;
+        letter-spacing:2px; text-transform:uppercase;
+        border:2px solid #555; color:#888;
+        background:var(--surface2); border-radius:var(--radius);
+        cursor:pointer; touch-action:manipulation;
+      ">EQUIPMENT FAULT</button>
+      <button class="void-reason-btn" data-reason="WRONG PLAYER" style="
+        height:var(--btn-h); font-size:18px; font-weight:900;
+        font-family:'Courier New',Courier,monospace;
+        letter-spacing:2px; text-transform:uppercase;
+        border:2px solid #555; color:#888;
+        background:var(--surface2); border-radius:var(--radius);
+        cursor:pointer; touch-action:manipulation;
+      ">WRONG PLAYER</button>
+      <button class="void-reason-btn" data-reason="OTHER" style="
+        height:var(--btn-h); font-size:18px; font-weight:900;
+        font-family:'Courier New',Courier,monospace;
+        letter-spacing:2px; text-transform:uppercase;
+        border:2px solid #555; color:#888;
+        background:var(--surface2); border-radius:var(--radius);
+        cursor:pointer; touch-action:manipulation;
+      ">OTHER</button>
+      <button id="btnVoidCancel" style="
+        height:var(--btn-h); font-size:16px; font-weight:700;
+        font-family:'Courier New',Courier,monospace;
+        letter-spacing:1px; text-transform:uppercase;
+        border:1px solid var(--border); color:var(--muted);
+        background:transparent; border-radius:var(--radius);
+        cursor:pointer; touch-action:manipulation;
+        margin-top:4px;
+      ">CANCEL</button>
+    </div>
+  </div>
+
+  <!-- -----------------------------------------------------------------------
+       ASSISTED MODE OVERLAY — full-screen confirm/veto prompt
+  ----------------------------------------------------------------------- -->
+  <div id="assistedOverlay">
+    <div id="assistedTitle">BEAM BREAK DETECTED</div>
+    <div id="assistedBeam">Beam —</div>
+    <img id="assistedThumb" src="" alt="Evidence thumbnail">
+    <div class="assisted-btns">
+      <button id="btnVeto"    >CLEAR — RESUME</button>
+      <button id="btnConfirm" >BUST</button>
+    </div>
+  </div>
+
+  <!-- WebSocket status -->
+  <div id="wsStatus">
+    <div class="ws-dot" id="wsDot"></div>
+    <span id="wsLabel">connecting…</span>
+  </div>
+
+  <script>
+    /* -----------------------------------------------------------------------
+       Gamemaster console JS
+
+       WebSocket message shape (server broadcasts at ~10 Hz):
+       {
+         state: "RUN_SEG_1",
+         detection_mode: "auto",
+         elapsed_ms: 4321,
+         started_at_mono: <float, seconds>,
+         server_mono_now: <float, seconds>,
+         countdown_step: null | 0-7,
+         player_nickname: "Joenne",
+         pending_break: null | "b03",
+         beams: [ { id, state: "ok"|"broken"|"masked" }, … ],
+         health: {
+           boards: "ok"|"warn"|"err",
+           pico:   "ok"|"warn"|"err",
+           camera: "ok"|"warn"|"err",
+           sync:   "ok"|"warn"|"err",
+           sync_paused: bool,
+           manual_degraded: bool,
+           masked_count: int
+         },
+         recent_runs: [ { outcome, elapsed_ms, player_nickname }, … ]
+       }
+    ----------------------------------------------------------------------- */
+
+    "use strict";
+
+    /* ---- State constants ---- */
+    const RUN_STATES      = new Set(["RUN_SEG_1", "RUN_SEG_2", "RUN_SEG_3"]);
+    const ACTIVE_STATES   = new Set(["RUN_SEG_1", "RUN_SEG_2", "RUN_SEG_3", "COUNTDOWN"]);
+    const POST_RUN_STATES = new Set(["FINISHED", "BUSTED", "ABORTED", "RESULT"]);
+
+    /* ---- DOM refs ---- */
+    const stateLabel       = document.getElementById("stateLabel");
+    const stopwatchEl      = document.getElementById("stopwatch");
+    const playerNameEl     = document.getElementById("playerName");
+    const detectionBadge   = document.getElementById("detectionBadge");
+    const bannerManual     = document.getElementById("bannerManual");
+    const bannerSync       = document.getElementById("bannerSync");
+    const bannerMasked     = document.getElementById("bannerMasked");
+    const btnCountIn       = document.getElementById("btnCountIn");
+    const btnBust          = document.getElementById("btnBust");
+    const btnAbort         = document.getElementById("btnAbort");
+    const btnCancel        = document.getElementById("btnCancel");
+    const btnVoid          = document.getElementById("btnVoid");
+    const btnForceReset    = document.getElementById("btnForceReset");
+    const gmFeedback       = document.getElementById("gmFeedback");
+    const detectionToggle  = document.getElementById("detectionToggle");
+    const beamStrip        = document.getElementById("beamStrip");
+    const recentRuns       = document.getElementById("recentRuns");
+    const assistedOverlay  = document.getElementById("assistedOverlay");
+    const assistedBeam     = document.getElementById("assistedBeam");
+    const assistedThumb    = document.getElementById("assistedThumb");
+    const btnConfirm       = document.getElementById("btnConfirm");
+    const btnVeto          = document.getElementById("btnVeto");
+    const wsDot            = document.getElementById("wsDot");
+    const wsLabel          = document.getElementById("wsLabel");
+    const hBoardsLed       = document.getElementById("hBoardsLed");
+    const hPicoLed         = document.getElementById("hPicoLed");
+    const hCameraLed       = document.getElementById("hCameraLed");
+    const hSyncLed         = document.getElementById("hSyncLed");
+
+    /* -----------------------------------------------------------------------
+       Stopwatch interpolation
+       Server sends: elapsed_ms (at the time of the message) +
+                     server_mono_now_ns (server monotonic nanoseconds, not used in calculation)
+       We record arrival time (performance.now() / 1000) and interpolate.
+    ----------------------------------------------------------------------- */
+    let swElapsedAtMsg  = 0;      // elapsed_ms from the last WS message
+    let swServerMono    = 0;      // server monotonic seconds at that message
+    let swClientAtMsg   = 0;      // performance.now() seconds at message arrival
+    let swRunning       = false;  // whether to interpolate
+    let rafId           = null;
+
+    function formatTime(ms) {
+      /* Format elapsed milliseconds as MM:SS.mmm */
+      const totalMs = Math.max(0, Math.floor(ms));
+      const minutes = Math.floor(totalMs / 60000);
+      const seconds = Math.floor((totalMs % 60000) / 1000);
+      const millis  = totalMs % 1000;
+      return `${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}.${String(millis).padStart(3,"0")}`;
+    }
+
+    function interpolatedElapsed() {
+      if (!swRunning) return swElapsedAtMsg;
+      const nowClient = performance.now() / 1000;
+      const drift = nowClient - swClientAtMsg;
+      return swElapsedAtMsg + drift * 1000;
+    }
+
+    function tickStopwatch() {
+      stopwatchEl.textContent = formatTime(interpolatedElapsed());
+      rafId = requestAnimationFrame(tickStopwatch);
+    }
+
+    function startInterpolation() {
+      if (!rafId) rafId = requestAnimationFrame(tickStopwatch);
+    }
+
+    function stopInterpolation() {
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    }
+
+    /* -----------------------------------------------------------------------
+       Apply a full server state update to the UI
+    ----------------------------------------------------------------------- */
+    let currentState     = "ATTRACT";
+    let currentDetection = "auto";
+
+    function applyState(msg) {
+      const state     = msg.state      || "ATTRACT";
+      const detection = msg.detection_mode || "auto";
+      currentState     = state;
+      currentDetection = detection;
+
+      /* --- Top bar --- */
+      const STATE_LABELS = {
+        "REGISTERED": "PLAYER READY",
+        "ARM":        "ON PLATE",
+        "COUNTDOWN":  "COUNTING IN",
+        "FINISHED":   "CLEAN!",
+        "BUSTED":     "BUSTED",
+        "ABORTED":    "ABORTED",
+        "RESULT":     "RESULT",
+        "FAULT":      "FAULT",
+        "MASTER":     "MASTER MODE",
+        "RUN_SEG_1":  "RUN — SEG 1",
+        "RUN_SEG_2":  "RUN — SEG 2",
+        "RUN_SEG_3":  "RUN — SEG 3",
+      };
+      const stateText = STATE_LABELS[state] || state;
+      stateLabel.textContent     = stateText;
+      playerNameEl.textContent   = msg.player_nickname || "—";
+      detectionBadge.textContent = detection.toUpperCase();
+      detectionBadge.className   = `mode-${detection}`;
+
+      /* --- Stopwatch --- */
+      swElapsedAtMsg = msg.elapsed_ms || 0;
+      swServerMono   = msg.server_mono_now || 0;
+      swClientAtMsg  = performance.now() / 1000;
+      swRunning      = RUN_STATES.has(state);
+      if (swRunning) startInterpolation();
+      else           stopInterpolation();
+      stopwatchEl.textContent = formatTime(swElapsedAtMsg);
+
+      /* --- Button enable/disable + visibility rules (from plan §7.2) --- */
+      // Enabled states
+      const countInEnabled    = (state === "ARM");
+      const bustEnabled       = RUN_STATES.has(state);
+      const abortEnabled      = (RUN_STATES.has(state) || state === "COUNTDOWN");
+      const cancelEnabled     = (state === "COUNTDOWN" || state === "REGISTERED");
+      const voidEnabled       = POST_RUN_STATES.has(state);
+
+      // Apply disabled attribute
+      btnCountIn.disabled    = !countInEnabled;
+      btnBust.disabled       = !bustEnabled;
+      btnAbort.disabled      = !abortEnabled;
+      btnCancel.disabled     = !cancelEnabled;
+      btnVoid.disabled       = !voidEnabled;
+      btnForceReset.disabled = false;  // always enabled
+
+      // Hide disabled buttons; show enabled ones. FORCE RESET always visible.
+      btnCountIn.style.display    = countInEnabled  ? "" : "none";
+      btnBust.style.display       = bustEnabled     ? "" : "none";
+      btnAbort.style.display      = abortEnabled    ? "" : "none";
+      btnCancel.style.display     = cancelEnabled   ? "" : "none";
+      btnVoid.style.display       = voidEnabled     ? "" : "none";
+      // NEW PLAYER visibility handled by updateSigninVisibility()
+      // FORCE RESET: always visible but small/muted (handled by CSS, no hide)
+
+      /* --- Stopwatch color by state --- */
+      if (RUN_STATES.has(state)) {
+        stopwatchEl.style.color = "#ffffff";
+      } else if (state === "BUSTED") {
+        stopwatchEl.style.color = "var(--red)";
+      } else if (state === "FINISHED") {
+        stopwatchEl.style.color = "var(--green)";
+      } else {
+        stopwatchEl.style.color = "var(--muted)";
+      }
+
+      /* --- Detection toggle locked during RUN / COUNTDOWN --- */
+      const detectionLocked = RUN_STATES.has(state) || state === "COUNTDOWN";
+      detectionToggle.classList.toggle("locked", detectionLocked);
+
+      /* --- Detection mode segmented control --- */
+      document.querySelectorAll(".seg-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.mode === detection);
+      });
+
+      /* --- Banners --- */
+      const health = msg.health || {};
+      // FAULT state: show bannerManual as red "SYSTEM FAULT" alert
+      if (state === "FAULT") {
+        bannerManual.classList.add("visible");
+        bannerManual.textContent = "SYSTEM FAULT — TAP FORCE RESET";
+        bannerManual.classList.remove("banner-amber");
+        bannerManual.classList.add("banner-red");
+      } else {
+        bannerManual.textContent = "⚠ DETECTION OFFLINE — CALL BUSTS MANUALLY";
+        bannerManual.classList.remove("banner-amber");
+        bannerManual.classList.add("banner-red");
+        bannerManual.classList.toggle("visible", health.manual_degraded === true);
+      }
+      bannerSync.classList.toggle("visible",
+        health.sync_paused === true);
+      const maskedCount = health.masked_count || 0;
+      bannerMasked.classList.toggle("visible", maskedCount > 0);
+      if (maskedCount > 0) {
+        bannerMasked.textContent =
+          `${maskedCount} beam${maskedCount > 1 ? "s" : ""} masked`;
+      }
+
+      /* --- ATTRACT hint --- */
+      let attractHint = document.getElementById("attractHint");
+      if (state === "ATTRACT") {
+        if (!attractHint) {
+          attractHint = document.createElement("div");
+          attractHint.id = "attractHint";
+          attractHint.style.cssText = "font-size:13px; color:var(--muted); font-family:'Courier New',Courier,monospace; text-align:center; padding:4px 14px; flex-shrink:0;";
+          bannerMasked.parentNode.insertAdjacentElement("afterend", attractHint);
+        }
+        attractHint.textContent = "Tap NEW PLAYER to begin";
+        attractHint.style.display = "block";
+      } else if (attractHint) {
+        attractHint.style.display = "none";
+      }
+
+      /* --- Health strip --- */
+      setLed(hBoardsLed, health.boards  || "ok");
+      setLed(hPicoLed,   health.pico    || "ok");
+      setLed(hCameraLed, health.camera  || "ok");
+      setLed(hSyncLed,   health.sync    || "ok");
+
+      /* --- Beam strip --- */
+      renderBeams(msg.beams || []);
+
+      /* --- Assisted overlay --- */
+      if (msg.pending_break) {
+        assistedBeam.textContent = `Beam ${msg.pending_break}`;
+        /* Only load thumbnail when we have a valid run_id */
+        if (msg.run_id) {
+          assistedThumb.src = `/api/evidence/${msg.run_id}/${msg.pending_break}`;
+          assistedThumb.style.display = "block";
+        } else {
+          assistedThumb.removeAttribute("src");
+          assistedThumb.style.display = "none";
+        }
+        assistedOverlay.classList.add("visible");
+      } else {
+        assistedOverlay.classList.remove("visible");
+      }
+
+      /* --- Sign-in form visibility --- */
+      updateSigninVisibility(state);
+
+      /* --- Recent runs --- */
+      if (Array.isArray(msg.recent_runs)) renderRecentRuns(msg.recent_runs);
+    }
+
+    function setLed(el, status) {
+      el.className = "health-led " + (status === "ok" ? "ok" : status === "warn" ? "warn" : "err");
+    }
+
+    /* -----------------------------------------------------------------------
+       Beam strip rendering
+    ----------------------------------------------------------------------- */
+    // Map: beam_id → rendered pill element (for efficient updates)
+    const beamPills = new Map();
+
+    function renderBeams(beams) {
+      if (!beams.length) {
+        beamStrip.innerHTML = '<span style="color: var(--muted); font-size:13px; font-family:monospace;">No beams configured.</span>';
+        beamPills.clear();
+        return;
+      }
+
+      // Build or update pills
+      const seen = new Set();
+      beams.forEach(b => {
+        seen.add(b.id);
+        let pill = beamPills.get(b.id);
+        if (!pill) {
+          pill = document.createElement("div");
+          pill.className = "beam-pill";
+          pill.dataset.beamId = b.id;
+          pill.innerHTML = `<div class="beam-dot"></div><span>${b.id}</span>`;
+          beamStrip.appendChild(pill);
+          beamPills.set(b.id, pill);
+        }
+        pill.className = `beam-pill ${b.state || "ok"}`;
+        pill.title = `${b.id} — ${b.state || "ok"}`;
+      });
+
+      // Remove pills for beams that disappeared from config
+      for (const [id, pill] of beamPills) {
+        if (!seen.has(id)) { pill.remove(); beamPills.delete(id); }
+      }
+
+      // Clear the initial placeholder
+      const placeholder = beamStrip.querySelector(":scope > span");
+      if (placeholder && beamPills.size > 0) placeholder.remove();
+    }
+
+    /* -----------------------------------------------------------------------
+       Recent runs rendering
+    ----------------------------------------------------------------------- */
+    function renderRecentRuns(runs) {
+      if (!runs.length) {
+        recentRuns.innerHTML = '<span style="color: var(--muted); font-size:13px; font-family:monospace;">No runs yet.</span>';
+        return;
+      }
+      recentRuns.innerHTML = runs.map(r => `
+        <div class="run-row">
+          <span class="run-outcome ${r.outcome}">${r.outcome}</span>
+          <span class="run-name">${escHtml(r.player_nickname || "—")}</span>
+          <span class="run-time">${r.elapsed_ms != null ? formatTime(r.elapsed_ms) : "—"}</span>
+        </div>`).join("");
+    }
+
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    /* -----------------------------------------------------------------------
+       API calls — all action buttons POST to /api/gm/*
+    ----------------------------------------------------------------------- */
+
+    let gmFeedbackTimer = null;
+
+    function showGmFeedback(msg) {
+      gmFeedback.textContent = msg;
+      gmFeedback.style.display = "block";
+      gmFeedback.style.opacity = "1";
+      if (gmFeedbackTimer) clearTimeout(gmFeedbackTimer);
+      gmFeedbackTimer = setTimeout(() => {
+        gmFeedback.style.opacity = "0";
+        setTimeout(() => { gmFeedback.style.display = "none"; }, 300);
+      }, 3000);
+    }
+
+    async function gmPost(endpoint, body = {}) {
+      try {
+        const resp = await fetch(`/api/gm/${endpoint}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!resp.ok) {
+          const d = await resp.json().catch(() => ({}));
+          const msg = d.detail || d.error || `Error ${resp.status}`;
+          console.warn(`GM action ${endpoint} failed:`, d);
+          showGmFeedback(`${endpoint.toUpperCase()} FAILED: ${msg}`);
+        }
+      } catch (err) {
+        console.error(`GM action ${endpoint} network error:`, err);
+        showGmFeedback(`NETWORK ERROR — ${endpoint.toUpperCase()}`);
+      }
+    }
+
+    /* --- Player sign-in panel --- */
+    const signinPanel    = document.getElementById("signinPanel");
+    const signinForm     = document.getElementById("signinForm");
+    const sfName         = document.getElementById("sfName");
+    const sfSurname      = document.getElementById("sfSurname");
+    const sfEmail        = document.getElementById("sfEmail");
+    const sfDob          = document.getElementById("sfDob");
+    const btnNewPlayer   = document.getElementById("btnNewPlayer");
+    const btnSigninCancel = document.getElementById("btnSigninCancel");
+    let selectedGender   = "";
+
+    // Gender toggle buttons
+    document.querySelectorAll(".gender-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        selectedGender = btn.dataset.g;
+        document.querySelectorAll(".gender-btn").forEach(b =>
+          b.classList.toggle("selected", b.dataset.g === selectedGender));
+      });
+    });
+
+    function openSigninPanel() {
+      signinPanel.style.display = "flex";
+      sfName.value = "";
+      sfSurname.value = "";
+      sfEmail.value = "";
+      sfDob.value = "";
+      selectedGender = "";
+      document.querySelectorAll(".gender-btn").forEach(b => b.classList.remove("selected"));
+      sfName.focus();
+    }
+
+    function closeSigninPanel() {
+      signinPanel.style.display = "none";
+    }
+
+    btnNewPlayer.addEventListener("click", openSigninPanel);
+    btnSigninCancel.addEventListener("click", closeSigninPanel);
+
+    signinForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const first_name = sfName.value.trim();
+      const surname = sfSurname.value.trim();
+      const email = sfEmail.value.trim();
+      if (!first_name || !surname || !email) return;
+      try {
+        const resp = await fetch("/api/signin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            first_name,
+            surname,
+            email,
+            dob: sfDob.value || "",
+            gender: selectedGender,
+          }),
+        });
+        if (resp.ok) {
+          closeSigninPanel();
+        } else {
+          showGmFeedback("SIGN-IN FAILED — try again");
+        }
+      } catch (err) {
+        console.error("Sign-in error:", err);
+      }
+    });
+
+    function updateSigninVisibility(state) {
+      // Show NEW PLAYER button only in ATTRACT
+      btnNewPlayer.style.display = (state === "ATTRACT") ? "" : "none";
+      // Auto-close the panel if we leave ATTRACT (e.g. force reset)
+      if (state !== "ATTRACT") closeSigninPanel();
+    }
+
+    /* -----------------------------------------------------------------------
+       Tap-to-confirm helper
+       Usage: makeTapConfirm(btn, label, onConfirm)
+         - First tap: changes btn text to "TAP AGAIN", starts 3s timeout.
+         - Second tap within 3s: calls onConfirm(), resets text.
+         - Timeout: resets text without executing.
+       Do NOT wrap: COUNT IN, ABORT, CANCEL (time-sensitive).
+    ----------------------------------------------------------------------- */
+    function makeTapConfirm(btn, originalLabel, onConfirm) {
+      let pending = false;
+      let timer   = null;
+
+      function reset() {
+        pending = false;
+        if (timer) { clearTimeout(timer); timer = null; }
+        btn.textContent = originalLabel;
+      }
+
+      btn.addEventListener("click", () => {
+        if (!pending) {
+          pending = true;
+          btn.textContent = "TAP AGAIN";
+          timer = setTimeout(reset, 3000);
+        } else {
+          reset();
+          onConfirm();
+        }
+      });
+
+      // Expose reset so applyState can clear pending state on state change
+      btn._tapReset = reset;
+    }
+
+    /* -----------------------------------------------------------------------
+       VOID reason overlay
+    ----------------------------------------------------------------------- */
+    const voidOverlay      = document.getElementById("voidOverlay");
+    const btnVoidCancel    = document.getElementById("btnVoidCancel");
+
+    function openVoidOverlay() {
+      voidOverlay.style.display = "flex";
+    }
+
+    function closeVoidOverlay() {
+      voidOverlay.style.display = "none";
+    }
+
+    btnVoidCancel.addEventListener("click", closeVoidOverlay);
+
+    document.querySelectorAll(".void-reason-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const reason = btn.dataset.reason;
+        closeVoidOverlay();
+        // Reset the VOID button tap-confirm state
+        if (btnVoid._tapReset) btnVoid._tapReset();
+        gmPost("void", { reason });
+      });
+    });
+
+    /* -----------------------------------------------------------------------
+       Action button wiring
+    ----------------------------------------------------------------------- */
+    btnCountIn.addEventListener("click", () => gmPost("count-in"));
+    btnAbort.addEventListener("click",   () => gmPost("abort"));
+    btnCancel.addEventListener("click",  () => gmPost("cancel"));
+
+    // BUST — tap-to-confirm
+    makeTapConfirm(btnBust, "BUST", () => gmPost("bust"));
+
+    // VOID — tap-to-confirm, then open reason overlay
+    makeTapConfirm(btnVoid, "VOID", () => openVoidOverlay());
+
+    // FORCE RESET — tap-to-confirm
+    makeTapConfirm(btnForceReset, "FORCE RESET", () => gmPost("force-reset"));
+
+    /* --- Assisted overlay --- */
+    btnConfirm.addEventListener("click", () => gmPost("confirm-break"));
+    btnVeto.addEventListener("click",    () => gmPost("veto-break"));
+
+    /* --- Detection mode switcher --- */
+    // Inline confirm state for switching away from auto during active run/countdown.
+    let detectionConfirmPending = false;
+    let detectionConfirmMode    = null;
+
+    const detectionConfirmBar = document.createElement("div");
+    detectionConfirmBar.style.cssText = "display:none; padding:8px 14px; font-size:13px; font-weight:700; font-family:'Courier New',Courier,monospace; letter-spacing:1px; text-align:center; color:var(--orange); background:rgba(255,136,0,0.10); border-bottom:1px solid var(--orange); flex-shrink:0;";
+    document.getElementById("detectionSection").insertAdjacentElement("beforebegin", detectionConfirmBar);
+
+    function cancelDetectionConfirm() {
+      detectionConfirmPending = false;
+      detectionConfirmMode    = null;
+      detectionConfirmBar.style.display = "none";
+    }
+
+    document.querySelectorAll(".seg-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const mode = btn.dataset.mode;
+        if (mode === currentDetection) {
+          cancelDetectionConfirm();
+          return;
+        }
+        // During an active run or countdown, require a tap-to-confirm before switching
+        const needsConfirm = (RUN_STATES.has(currentState) || currentState === "COUNTDOWN")
+                             && currentDetection === "auto";
+        if (needsConfirm && !detectionConfirmPending) {
+          detectionConfirmPending = true;
+          detectionConfirmMode    = mode;
+          detectionConfirmBar.textContent = `⚠ Tap ${mode.toUpperCase()} again to confirm switching detection during active run`;
+          detectionConfirmBar.style.display = "block";
+          return;
+        }
+        if (needsConfirm && detectionConfirmPending && mode === detectionConfirmMode) {
+          cancelDetectionConfirm();
+          gmPost("detection-mode", { mode });
+          return;
+        }
+        cancelDetectionConfirm();
+        gmPost("detection-mode", { mode });
+      });
+    });
+
+    /* --- Beam mask toggle --- */
+    // Determine current masked state from the pill element, then send toggled value.
+    // The WS message carries beams_masked (array of beam IDs) and also reflects
+    // masked state via the beam's state field ("masked"). We read from the pill class.
+    async function toggleBeamMask(beamId) {
+      const pill = beamPills.get(beamId);
+      const currentlyMasked = pill ? pill.classList.contains("masked") : false;
+      await gmPost("mask-beam", { beam_id: beamId, masked: !currentlyMasked });
+    }
+
+    /* -----------------------------------------------------------------------
+       WebSocket
+    ----------------------------------------------------------------------- */
+    let ws = null;
+    let wsDelay = 1000;
+    let wsDisconnectTimer = null;
+    const wsDisconnectBanner = document.getElementById("wsDisconnectBanner");
+
+    function connectWS() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+      ws.onopen = () => {
+        wsDot.className = "ws-dot ok";
+        wsLabel.textContent = "live";
+        wsDelay = 1000;
+        // Hide disconnect banner on reconnect
+        if (wsDisconnectTimer) { clearTimeout(wsDisconnectTimer); wsDisconnectTimer = null; }
+        wsDisconnectBanner.classList.remove("visible");
+      };
+
+      ws.onmessage = (evt) => {
+        let msg;
+        try { msg = JSON.parse(evt.data); } catch { return; }
+        applyState(msg);
+      };
+
+      ws.onclose = () => {
+        wsDot.className = "ws-dot err";
+        wsLabel.textContent = "reconnecting…";
+        // Show "CONNECTION LOST" banner after 5 seconds of disconnect
+        if (!wsDisconnectTimer) {
+          wsDisconnectTimer = setTimeout(() => {
+            wsDisconnectBanner.classList.add("visible");
+          }, 5000);
+        }
+        setTimeout(connectWS, wsDelay);
+        wsDelay = Math.min(wsDelay * 2, 10000);
+      };
+
+      ws.onerror = () => ws.close();
+    }
+
+    connectWS();
+
+    /* Recent runs come from the WS state broadcast (recent_runs field).
+       The "No runs yet" placeholder is shown until the first WS message arrives. */
+  </script>
+</body>
+</html>

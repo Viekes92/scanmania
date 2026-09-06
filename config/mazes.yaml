@@ -59,37 +59,13 @@ presets:
     - 46
     - 47
     description: "third maze \u2014 CP2 to END"
-  _preview:
-    channels:
-    - 11
-    - 12
-    - 13
-    - 14
-    - 15
-    - 27
-    - 28
-    - 29
-    - 30
-    - 31
-    - 43
-    - 44
-    - 45
-    - 46
-    - 47
-    description: temp
 shows:
   attract:
-    loop: true
-    description: "idle sparkle \u2014 plays during ATTRACT state"
+    loop: false
+    description: solid all-on during idle (design a show later)
     steps:
     - preset: all_on
-      hold_ms: 2000
-    - preset: blackout
-      hold_ms: 300
-    - preset: all_on
-      hold_ms: 2000
-    - preset: blackout
-      hold_ms: 300
+      hold_ms: 999999
   bust:
     loop: true
     description: "rapid flash \u2014 plays on BUSTED"

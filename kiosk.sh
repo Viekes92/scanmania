@@ -1,34 +1,100 @@
 #!/bin/bash
-# ScanMania Kiosk — X + Chromium fullscreen
-SERVER=http://localhost:8000
+# ScanMania kiosk — one bare X server, one Chromium window per HDMI output.
+#
+# There is no window manager on this box, so nothing honours a fullscreen
+# request: --kiosk quietly did nothing and Chromium picked its own window size.
+# Every window is therefore positioned and sized explicitly from what xrandr
+# reports, and --app hides the browser chrome that --kiosk used to.
+#
+# Which page lands on which panel is cabling, not logic — override with
+# SCANMANIA_OUT_IN / SCANMANIA_OUT_OUT in /etc/default/scanmania.
+set -u
 
-# Start X on vt7
+SERVER=${SCANMANIA_SERVER:-http://localhost:8000}
+OUT_IN=${SCANMANIA_OUT_IN:-HDMI-1}     # in-container stopwatch
+OUT_OUT=${SCANMANIA_OUT_OUT:-HDMI-2}   # outdoor feed + leaderboard
+MIN_HZ=${SCANMANIA_MIN_HZ:-50}         # a stopwatch at 30 Hz reads as stuttering
+
+CHROME_FLAGS=(
+  # --test-type is what suppresses the yellow "unsupported command-line flag:
+  # --no-sandbox" infobar; --disable-infobars stopped covering that one and it
+  # was eating ~45 px off the top of both panels.
+  --no-sandbox --test-type
+  --noerrdialogs --disable-infobars --disable-translate
+  --no-first-run --no-default-browser-check --disable-pinch
+  --disable-session-crashed-bubble --disable-features=TranslateUI
+  --autoplay-policy=no-user-gesture-required
+)
+
 Xorg :0 -nolisten tcp vt7 &
+XPID=$!
+trap 'kill $XPID 2>/dev/null' EXIT
 sleep 2
 
 export DISPLAY=:0
-
-# Disable blanking and cursor
 xset s off -dpms 2>/dev/null
+xset s noblank 2>/dev/null
 unclutter -idle 0.5 -root &
 
-# Detect outputs
-OUTPUTS=$(xrandr | grep ' connected' | awk '{print $1}')
-NUM=$(echo "$OUTPUTS" | wc -w)
-echo "Connected: $OUTPUTS ($NUM)"
+# Highest-resolution mode on $1 that runs at >= MIN_HZ. xrandr lists modes
+# largest first, so the first match is the best one. Falls back to the
+# preferred mode if the panel offers nothing fast enough.
+pick_mode() {
+  xrandr --query | awk -v out="$1" -v minhz="$MIN_HZ" '
+    $1 == out && $2 == "connected" { on = 1; next }
+    on && $1 ~ /^[0-9]+x[0-9]+$/ {
+      res = $1
+      if (pref == "") pref = res
+      for (i = 2; i <= NF; i++) {
+        hz = $i; gsub(/[*+]/, "", hz)
+        if (hz + 0 >= minhz) { found = res; exit }
+      }
+      next
+    }
+    on { exit }
+    END { print (found != "" ? found : pref) }
+  '
+}
 
-if [ "$NUM" -ge 2 ]; then
-    OUT1=$(echo $OUTPUTS | cut -d' ' -f1)
-    OUT2=$(echo $OUTPUTS | cut -d' ' -f2)
-    W1=$(xrandr | grep "$OUT1" -A1 | tail -1 | awk '{print $1}' | cut -dx -f1)
-    xrandr --output $OUT1 --auto --pos 0x0 --output $OUT2 --auto --right-of $OUT1
-    sleep 1
-    chromium --no-sandbox --kiosk --noerrdialogs --disable-translate --no-first-run         --disable-infobars --window-position=0,0 --app="$SERVER/display/in" &
-    chromium --no-sandbox --kiosk --noerrdialogs --disable-translate --no-first-run         --disable-infobars --window-position=$W1,0 --app="$SERVER/display/out" &
-else
-    xrandr --output $(echo $OUTPUTS | cut -d' ' -f1) --auto
-    sleep 1
-    chromium --no-sandbox --kiosk --noerrdialogs --disable-translate --no-first-run         --disable-infobars --app="$SERVER/display/in" &
+mapfile -t CONNECTED < <(xrandr --query | awk '$2 == "connected" { print $1 }')
+echo "Connected outputs: ${CONNECTED[*]}"
+
+has_output() {
+  local o
+  for o in "${CONNECTED[@]}"; do [ "$o" = "$1" ] && return 0; done
+  return 1
+}
+
+# Fall back to whatever is actually plugged in if the configured names are not.
+has_output "$OUT_IN"  || OUT_IN=${CONNECTED[0]:-}
+has_output "$OUT_OUT" || OUT_OUT=${CONNECTED[1]:-}
+[ -n "$OUT_IN" ] || { echo "No connected output, giving up."; exit 1; }
+
+MODE_IN=$(pick_mode "$OUT_IN")
+xrandr --output "$OUT_IN" --mode "$MODE_IN" --pos 0x0 --primary
+W_IN=${MODE_IN%x*}
+
+if [ -n "$OUT_OUT" ] && [ "$OUT_OUT" != "$OUT_IN" ]; then
+  MODE_OUT=$(pick_mode "$OUT_OUT")
+  xrandr --output "$OUT_OUT" --mode "$MODE_OUT" --pos "${W_IN}x0"
 fi
+sleep 1
+xrandr --query | grep ' connected'
+
+launch() {   # launch <name> <WxH> <x-offset> <url>
+  local name=$1 mode=$2 xoff=$3 url=$4
+  local w=${mode%x*} h=${mode#*x}
+  echo "  $name: ${w}x${h} at ${xoff},0 -> $url"
+  # Its own profile directory, or the second Chromium just hands the URL to the
+  # first ("Opening in existing browser session") and exits, leaving one window.
+  dbus-run-session -- chromium "${CHROME_FLAGS[@]}" \
+    --user-data-dir="/var/tmp/scanmania-kiosk-$name" \
+    --window-position="${xoff},0" --window-size="${w},${h}" \
+    --app="$url" &
+}
+
+echo "Launching:"
+launch in "$MODE_IN" 0 "$SERVER/display/in"
+[ -n "${MODE_OUT:-}" ] && launch out "$MODE_OUT" "$W_IN" "$SERVER/display/out"
 
 wait

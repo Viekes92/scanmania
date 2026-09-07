@@ -36,6 +36,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   editor inputs. The old limit rejected legitimate slow attract sequences with a 422; the loader and
   show player never had a cap.
 
+### Fixed — kiosk displays
+
+Neither HDMI panel had ever shown the right thing. Three independent causes in `kiosk.sh`:
+
+- **Only one browser window ever existed.** Both Chromium invocations shared the default profile
+  directory, so the second one handed its URL to the first and exited (`Opening in existing
+  browser session` in the journal). `/display/in` was never on screen. Each window now gets its
+  own `--user-data-dir`.
+- **Nothing was fullscreen.** There is no window manager on the box, so `--kiosk` — which asks
+  the WM for fullscreen — did nothing and Chromium sized its own window (1265x1420 on a
+  2560x1440 panel). Both windows are now positioned and sized explicitly from what xrandr
+  reports, and `--app` hides the chrome that `--kiosk` used to.
+- **A Chromium infobar covered the top of both panels.** `--disable-infobars` no longer
+  suppresses the "unsupported command-line flag: --no-sandbox" warning; `--test-type` does.
+
+Also in `kiosk.sh`: mode selection prefers the highest resolution that runs at ≥ 50 Hz rather
+than taking `--auto`, because the outdoor panel's native 3840x2160 is a 30 Hz mode and a
+stopwatch at 30 Hz reads as stuttering. Output-to-page mapping is overridable via
+`SCANMANIA_OUT_IN` / `SCANMANIA_OUT_OUT` since which panel is which is cabling, not logic.
+Chromium runs under `dbus-run-session` to stop it flooding the journal with dbus errors.
+
 ### Admin panel — CSS / UX / accessibility pass
 
 All in `web/static/admin/index.html`; no behaviour changes to any API.

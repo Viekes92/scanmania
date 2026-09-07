@@ -10,6 +10,7 @@
  */
 
 #include <Ethernet.h>
+#include <mbed.h>  // for Watchdog
 
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x64 };
 IPAddress ip(172, 16, 0, 100);
@@ -34,6 +35,8 @@ EthernetClient mbClient;
 unsigned long bootAt = 0;
 unsigned long mbPolls = 0;
 unsigned long lastMbAt = 0;
+unsigned long lastEthCheck = 0;
+unsigned long ethRestarts = 0;
 
 // Button press counter (for manual input triggering)
 int btnPresses = 0;
@@ -70,13 +73,23 @@ void setup() {
   webSrv.begin();
 
   bootAt = millis();
-  digitalWrite(LED_RESET, HIGH);  // USER LED on = booted
+  digitalWrite(LED_RESET, HIGH);
+
+  // Hardware watchdog: reboots if loop() hangs for >8 seconds
+  mbed::Watchdog::get_instance().start(8000);
+
   Serial.println("[BOOT] Ready! Modbus TCP :502, Web :80");
+  Serial.println("[BOOT] Watchdog: 8s, Ethernet health check: 30s");
   Serial.println("[BOOT] Button: press 1-4 times to toggle inputs");
 }
 
 void loop() {
   // ---- Modbus TCP ----
+  // Drop stale client if no data received in 10 seconds
+  if (mbClient && mbClient.connected() && lastMbAt > 0 && (millis() - lastMbAt) > 10000) {
+    Serial.println("[MB] Stale client — dropping");
+    mbClient.stop();
+  }
   if (!mbClient || !mbClient.connected()) {
     EthernetClient newClient = mbSrv.available();
     if (newClient) {
@@ -132,8 +145,32 @@ void loop() {
   bool nucOk = lastMbAt > 0 && (millis() - lastMbAt) < 2000;
   if (nucOk) {
     digitalWrite(LED_RESET, HIGH);
-  } else if (millis() > 5000) {  // don't blink during first 5s boot
+  } else if (millis() > 5000) {
     digitalWrite(LED_RESET, (millis() % 1000 < 500) ? HIGH : LOW);
+  }
+
+  // ---- Watchdog kick ----
+  mbed::Watchdog::get_instance().kick();
+
+  // ---- Ethernet health check every 30s ----
+  if (millis() - lastEthCheck > 30000) {
+    lastEthCheck = millis();
+    if (Ethernet.linkStatus() == LinkOFF || Ethernet.localIP() == IPAddress(0, 0, 0, 0)) {
+      ethRestarts++;
+      Serial.print("[ETH] Link lost or IP zero — reinitializing (restart #");
+      Serial.print(ethRestarts);
+      Serial.println(")");
+      // Re-init Ethernet
+      Ethernet.begin(mac, ip, gw, gw, sn);
+      mbSrv.begin();
+      webSrv.begin();
+      // Close stale Modbus client
+      if (mbClient) { mbClient.stop(); }
+      Serial.print("[ETH] Reinitialized. IP=");
+      Serial.println(Ethernet.localIP());
+    } else {
+      Ethernet.maintain();  // renew DHCP lease (no-op for static, but good practice)
+    }
   }
 }
 

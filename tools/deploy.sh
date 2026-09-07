@@ -58,7 +58,7 @@ fi
 # --- 3. Pull -----------------------------------------------------------------
 say "Pulling"
 before="$(git rev-parse HEAD)"
-git pull --ff-only origin main
+git pull -q --ff-only origin main
 after="$(git rev-parse HEAD)"
 
 if [ "$before" = "$after" ]; then

@@ -622,7 +622,7 @@ def register_routes(
         haze: int | None = None
         fan: int | None = None
 
-    @router.post("/api/admin/hazer", dependencies=[Depends(_require_admin)])
+    @router.post("/api/admin/hazer")
     async def admin_hazer_set(body: HazerBody):
         hazer = getattr(app_ref, "get_hazer", lambda: None)()
         if not hazer:
@@ -642,7 +642,7 @@ def register_routes(
         if not hazer:
             raise HTTPException(status_code=503, detail="Hazer not available")
         hazer.set_enabled(not hazer.enabled)
-        return {"ok": True, "enabled": hazer.enabled}
+        return {"ok": True, "enabled": hazer.enabled, "haze": hazer.haze, "fan": hazer.fan}
 
     # ------------------------------------------------------------------
     # Master mode

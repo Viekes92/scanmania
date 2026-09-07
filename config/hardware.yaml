@@ -63,4 +63,4 @@ hazer:
   haze_channel: 2              # DMX ch2 = haze volume (0-255)
   default_fan: 200             # 0-255
   default_haze: 128            # 0-255
-  enabled: true
+  enabled: false                # default OFF on startup, GM turns on

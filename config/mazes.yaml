@@ -61,13 +61,11 @@ presets:
     description: "third maze \u2014 CP2 to END"
 shows:
   attract:
-    loop: true
     description: "idle sparkle \u2014 plays during ATTRACT state"
     steps:
     - preset: all_on
-      hold_ms: 2000
-    - preset: blackout
-      hold_ms: 300
+      hold_ms: 10000
+    loop: true
   bust:
     loop: true
     description: "rapid flash \u2014 plays on BUSTED"

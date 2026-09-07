@@ -241,19 +241,28 @@ void handleModbus() {
 
 // ---- Web handler ----
 void handleWeb(EthernetClient& wc) {
+  // Read just the first line (GET /path HTTP/1.1) — don't wait for full headers
   char req[80] = {};
   int n = 0;
-  bool hdr = true, bl = false;
-  unsigned long webStart = millis();
-  while (wc.connected() && (millis() - webStart) < 500) {
-    if (!wc.available()) { delay(1); continue; }
+  unsigned long t0 = millis();
+
+  // Wait up to 200ms for first byte
+  while (!wc.available() && (millis() - t0) < 200) { /* spin */ }
+
+  // Read first line only
+  while (wc.available() && n < 79) {
     char c = wc.read();
-    if (hdr && c != '\r' && c != '\n' && n < 79) req[n++] = c;
-    if (c == '\n') { if (bl) break; bl = true; hdr = false; }
-    else if (c != '\r') bl = false;
+    if (c == '\r' || c == '\n') break;
+    req[n++] = c;
   }
 
-  Serial.print("[WEB] Request: ");
+  // Drain remaining headers (don't parse, just consume)
+  t0 = millis();
+  while (wc.connected() && (millis() - t0) < 100) {
+    if (wc.available()) { wc.read(); t0 = millis(); }
+  }
+
+  Serial.print("[WEB] ");
   Serial.println(req);
 
   if (strstr(req, "/t?")) {

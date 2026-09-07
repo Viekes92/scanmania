@@ -257,9 +257,34 @@ async def async_main(args: argparse.Namespace) -> int:
     )
     tasks.append(asyncio.create_task(runner.run(), name="runner"))
 
+    # Hazer — Art-Net DMX via ShowTec NET-2/3
+    hazer = None
+    hazer_cfg = getattr(cfg.hardware, "hazer", None) or {}
+    if isinstance(hazer_cfg, dict) and hazer_cfg.get("artnet_ip"):
+        try:
+            from iobackend.hazer import HazerController
+            hazer = HazerController(
+                artnet_ip=hazer_cfg["artnet_ip"],
+                universe=hazer_cfg.get("universe", 0),
+                channel=hazer_cfg.get("channel", 1),
+                fan_channel=hazer_cfg.get("fan_channel", 0),
+                default_intensity=hazer_cfg.get("default_intensity", 128),
+                default_fan=hazer_cfg.get("default_fan", 200),
+            )
+            if not hazer_cfg.get("enabled", True):
+                hazer.set_enabled(False)
+            tasks.append(asyncio.create_task(hazer.run(), name="hazer"))
+            log.info("Hazer: Art-Net → %s (ch %d, intensity %d)",
+                     hazer_cfg["artnet_ip"], hazer_cfg.get("channel", 1),
+                     hazer_cfg.get("default_intensity", 128))
+        except Exception as e:
+            log.warning("Hazer unavailable: %s", e)
+
     # WebServer — FastAPI + WebSocket hub, served via uvicorn
     web_app = ScanManiaApp(cfg, db, hub)
     web_app.set_runner(runner)
+    if hazer:
+        web_app.set_hazer(hazer)
     fastapi_app = web_app.build()
 
     import uvicorn

@@ -46,7 +46,7 @@ def fake_config():
     """
     from config.loader import (
         AppConfig, HardwareConfig, RelayBoard, CameraConfig, NetworkConfig,
-        HazerConfig, BeamsConfig, BeamConfig, BeamROI, DetectionConfig,
+        BeamsConfig, BeamConfig, BeamROI, DetectionConfig,
         GameConfig, CountInConfig, CountInPulse, LeaderboardConfig,
         MazesConfig, PresetConfig, ShowConfig, ShowStep,
     )
@@ -141,7 +141,7 @@ def fake_config():
             relay_boards=[board],
             cameras=[camera],
             network=NetworkConfig(subnet="10.0.0.0/24", nuc_ip="10.0.0.1", web_port=8000),
-            hazer=HazerConfig(board_id=None, channel=None),
+            hazer=None,
         ),
         beams=BeamsConfig(beams=beams, detection=detection),
         game=game,

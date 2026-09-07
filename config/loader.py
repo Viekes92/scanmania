@@ -42,8 +42,15 @@ class CameraConfig:
 
 @dataclass
 class HazerConfig:
-    board_id: Optional[str]
-    channel: Optional[int]
+    board_id: Optional[str] = None    # legacy relay-based hazer
+    channel: Optional[int] = None
+    artnet_ip: Optional[str] = None   # Art-Net DMX hazer
+    universe: int = 0
+    dmx_channel: int = 1
+    fan_channel: int = 0
+    default_intensity: int = 128
+    default_fan: int = 200
+    enabled: bool = True
 
 
 @dataclass
@@ -58,8 +65,8 @@ class HardwareConfig:
     relay_boards: list[RelayBoard]
     cameras: list[CameraConfig]
     network: NetworkConfig
-    hazer: HazerConfig
-    inputs: dict | None = None  # Arduino Opta input module config
+    hazer: dict | None = None     # hazer config (Art-Net DMX or relay)
+    inputs: dict | None = None   # Arduino Opta input module config
 
 
 @dataclass
@@ -224,10 +231,7 @@ def load_hardware() -> HardwareConfig:
             nuc_ip=net.get("nuc_ip", "10.0.0.1"),
             web_port=net.get("web_port", 8000),
         ),
-        hazer=HazerConfig(
-            board_id=hazer_d.get("board_id"),
-            channel=hazer_d.get("channel"),
-        ),
+        hazer=hazer_d,  # pass raw dict — __main__.py reads it directly
         inputs=d.get("inputs"),
     )
 

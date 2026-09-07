@@ -601,6 +601,50 @@ def register_routes(
         return {"ok": True, "name": body.name, "steps": len(body.steps)}
 
     # ------------------------------------------------------------------
+    # Hazer
+    # ------------------------------------------------------------------
+
+    @router.get("/api/admin/hazer")
+    async def admin_hazer_status():
+        hazer = getattr(app_ref, "get_hazer", lambda: None)()
+        if not hazer:
+            return {"ok": True, "available": False}
+        return {
+            "ok": True,
+            "available": True,
+            "enabled": hazer.enabled,
+            "intensity": hazer.intensity,
+            "fan": hazer.fan,
+        }
+
+    class HazerBody(BaseModel):
+        enabled: bool | None = None
+        intensity: int | None = None
+        fan: int | None = None
+
+    @router.post("/api/admin/hazer", dependencies=[Depends(_require_admin)])
+    async def admin_hazer_set(body: HazerBody):
+        hazer = getattr(app_ref, "get_hazer", lambda: None)()
+        if not hazer:
+            raise HTTPException(status_code=503, detail="Hazer not available")
+        if body.enabled is not None:
+            hazer.set_enabled(body.enabled)
+        if body.intensity is not None:
+            hazer.set_intensity(body.intensity)
+        if body.fan is not None:
+            hazer.set_fan(body.fan)
+        return {"ok": True, "enabled": hazer.enabled, "intensity": hazer.intensity, "fan": hazer.fan}
+
+    # Also expose on GM routes for quick toggle
+    @router.post("/api/gm/hazer-toggle")
+    async def gm_hazer_toggle():
+        hazer = getattr(app_ref, "get_hazer", lambda: None)()
+        if not hazer:
+            raise HTTPException(status_code=503, detail="Hazer not available")
+        hazer.set_enabled(not hazer.enabled)
+        return {"ok": True, "enabled": hazer.enabled}
+
+    # ------------------------------------------------------------------
     # Master mode
     # ------------------------------------------------------------------
 

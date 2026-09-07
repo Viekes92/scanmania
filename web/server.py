@@ -212,8 +212,13 @@ class ScanManiaApp:
         self._outbox = outbox
 
     def get_outbox(self) -> Any:
-        """Called by admin routes to get the (possibly-None) outbox worker."""
         return self._outbox
+
+    def set_hazer(self, hazer: Any) -> None:
+        self._hazer = hazer
+
+    def get_hazer(self) -> Any:
+        return getattr(self, "_hazer", None)
 
     def _on_player_registered(self, player_id: str, nickname: str) -> None:
         if self._runner:

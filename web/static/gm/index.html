@@ -884,6 +884,10 @@
         <div class="health-led ok" id="hSyncLed"></div>
         <span>Cloud sync</span>
       </div>
+      <div class="health-item" id="hHazer" style="cursor:pointer;touch-action:manipulation;" title="Tap to toggle hazer">
+        <div class="health-led ok" id="hHazerLed"></div>
+        <span>Hazer</span>
+      </div>
     </div>
   </div>
 
@@ -1489,6 +1493,23 @@
 
     /* --- Assisted overlay --- */
     btnConfirm.addEventListener("click", () => gmPost("confirm-break"));
+
+    /* --- Hazer toggle --- */
+    document.getElementById("hHazer").addEventListener("click", async () => {
+      try {
+        const resp = await fetch("/api/gm/hazer-toggle", { method: "POST" });
+        const d = await resp.json();
+        document.getElementById("hHazerLed").className = "health-led " + (d.enabled ? "ok" : "err");
+      } catch (e) { console.error("Hazer toggle failed:", e); }
+    });
+    // Poll hazer status on load
+    fetch("/api/admin/hazer").then(r=>r.json()).then(d => {
+      if (d.available) {
+        document.getElementById("hHazerLed").className = "health-led " + (d.enabled ? "ok" : "err");
+      } else {
+        document.getElementById("hHazerLed").className = "health-led warn";
+      }
+    }).catch(() => {});
     btnVeto.addEventListener("click",    () => gmPost("veto-break"));
 
     /* --- Detection mode switcher --- */

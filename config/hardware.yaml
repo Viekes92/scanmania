@@ -61,6 +61,6 @@ hazer:
   universe: 1
   fan_channel: 1               # DMX ch1 = blower speed (0-255)
   haze_channel: 2              # DMX ch2 = haze volume (0-255)
-  default_fan: 200             # 0-255
-  default_haze: 128            # 0-255
-  enabled: false                # default OFF on startup, GM turns on
+  default_fan: 255             # 0-255 (blower always on for haze distribution)
+  default_haze: 0              # 0-255 (GM controls haze output)
+  enabled: true

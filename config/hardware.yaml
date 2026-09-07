@@ -58,7 +58,7 @@ inputs:
 
 hazer:
   artnet_ip: "172.16.0.201"   # ShowTec NET-2/3 (SM-NODE-DMX)
-  universe: 0
+  universe: 1
   fan_channel: 1               # DMX ch1 = blower speed (0-255)
   haze_channel: 2              # DMX ch2 = haze volume (0-255)
   default_fan: 200             # 0-255

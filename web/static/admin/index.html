@@ -24,11 +24,15 @@
       --surface:     #080d18;
       --surface2:    #0d1525;
       --border:      #0d1e3a;
+      /* --accent is 2.3:1 on these surfaces: chrome, borders and glow only.
+         Anything that renders as text uses --accent-text (5.5:1). */
       --accent:      #264f9a;
       --accent-glow: rgba(38, 79, 154, 0.6);
+      --accent-text: #5b8fd6;
       --accent-dim:  #1a3366;
       --text:        #e8f0fc;
-      --muted:       #5a7899;
+      /* was #5a7899 — 4.0:1, below AA for the 10-12px labels it is used on */
+      --muted:       #6c8cae;
       --green:       #00ff88;
       --green-dark:  #005533;
       --red:         #ff0033;
@@ -75,7 +79,7 @@
       font-weight: 900;
       letter-spacing: 6px;
       font-family: var(--font);
-      color: var(--accent);
+      color: var(--accent-text);
       text-shadow: 0 0 16px var(--accent-glow), 0 0 40px rgba(38,79,154,0.1);
       text-transform: uppercase;
     }
@@ -148,7 +152,7 @@
     }
 
     .tab-btn.active {
-      color: var(--accent);
+      color: var(--accent-text);
       border-bottom-color: var(--accent);
     }
 
@@ -163,6 +167,84 @@
 
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
+
+    /* -----------------------------------------------------------------------
+       Focus, motion and small screens
+
+       The whole page was keyboard-invisible: `outline: none` on the inputs and
+       nothing anywhere else, so a keyboard user could not tell what was focused.
+       :focus-visible keeps the ring off mouse clicks, so the look is unchanged
+       for pointer users.
+    ----------------------------------------------------------------------- */
+    :focus-visible {
+      outline: 2px solid var(--accent-text);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+
+    /* Some controls set `outline: none` in their own rule; override it. */
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible,
+    button:focus-visible,
+    [tabindex]:focus-visible {
+      outline: 2px solid var(--accent-text);
+      outline-offset: 2px;
+    }
+
+    /* Skip link — first tab stop, gets the keyboard past 11 nav buttons. */
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      z-index: 1100;
+      padding: 10px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--accent);
+      color: var(--accent-text);
+      font-family: var(--font);
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      text-decoration: none;
+    }
+    .skip-link:focus { left: 8px; top: 8px; }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px; height: 1px;
+      margin: -1px; padding: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* The header is a 3-item flex row that collides below ~700px, and the tab
+       strip needs bigger touch targets on the iPad this is also used from. */
+    @media (max-width: 700px) {
+      #header {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 10px 12px;
+      }
+      #header .logo { font-size: 16px; letter-spacing: 4px; }
+      #tabContent { padding: 12px; height: auto; min-height: calc(100vh - var(--tab-h) - 45px); }
+      .tab-btn { padding: 0 12px; }
+    }
+
+    @media (pointer: coarse) {
+      .tab-btn { min-height: 48px; }
+      .btn { min-height: 40px; }
+    }
 
     /* -----------------------------------------------------------------------
        Shared component styles
@@ -310,7 +392,7 @@
     }
     .btn-default:hover {
       border-color: var(--accent-dim);
-      color: var(--accent);
+      color: var(--accent-text);
     }
 
     /* Table */
@@ -407,7 +489,7 @@
       letter-spacing: 2px;
       transition: background 0.1s, border-color 0.1s, color 0.1s;
     }
-    .preset-btn:hover   { border-color: var(--accent); color: var(--accent); background: rgba(38,79,154,0.05); }
+    .preset-btn:hover   { border-color: var(--accent); color: var(--accent-text); background: rgba(38,79,154,0.05); }
     .preset-btn:active  { background: var(--surface); }
 
     /* Individual channel toggles */
@@ -434,7 +516,7 @@
     .channel-btn.on {
       background: rgba(38, 79, 154, 0.12);
       border-color: var(--accent);
-      color: var(--accent);
+      color: var(--accent-text);
       box-shadow: 0 0 8px rgba(38,79,154,0.2);
     }
 
@@ -475,14 +557,14 @@
     }
 
     .config-editor:focus {
-      outline: none;
       border-color: var(--accent);
       box-shadow: 0 0 8px var(--accent-glow);
     }
 
-    /* Input/select focus — red glow ring */
+    /* Focus glow. The outline is left alone here so the :focus-visible rule
+       above can still draw a ring — the glow on its own is too subtle to be the
+       only focus indicator. */
     input, select {
-      outline: none;
       transition: border-color 0.12s, box-shadow 0.12s;
     }
     input:focus, select:focus {
@@ -521,7 +603,7 @@
     }
 
     .beams-placeholder a {
-      color: var(--accent);
+      color: var(--accent-text);
       text-decoration: underline;
     }
 
@@ -578,13 +660,15 @@
 </head>
 <body>
 
+  <a href="#tabContent" class="skip-link">Skip to content</a>
+
   <!-- LOGIN OVERLAY -->
   <div id="loginOverlay" style="position:fixed;inset:0;z-index:1000;background:#050507;background-image:linear-gradient(rgba(38,79,154,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(38,79,154,0.06) 1px,transparent 1px);background-size:40px 40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;">
-    <div style="font-family:'Courier New',monospace;font-size:28px;font-weight:900;letter-spacing:8px;color:#264f9a;text-shadow:0 0 20px rgba(38,79,154,0.6);text-transform:uppercase;">SCANMANIA</div>
-    <div style="font-family:'Courier New',monospace;font-size:12px;letter-spacing:3px;color:#5a7899;text-transform:uppercase;">// Admin access</div>
+    <div style="font-family:'Courier New',monospace;font-size:28px;font-weight:900;letter-spacing:8px;color:#5b8fd6;text-shadow:0 0 20px rgba(38,79,154,0.6);text-transform:uppercase;">SCANMANIA</div>
+    <div style="font-family:'Courier New',monospace;font-size:12px;letter-spacing:3px;color:#6c8cae;text-transform:uppercase;">// Admin access</div>
     <div style="display:flex;flex-direction:column;gap:12px;width:320px;">
-      <input id="loginPwdInput" type="password" placeholder="password" style="width:100%;padding:14px 16px;background:#080d18;border:1px solid #0d1e3a;border-radius:8px;color:#e8f0fc;font-family:'Courier New',monospace;font-size:16px;outline:none;caret-color:#264f9a;letter-spacing:2px;" autocomplete="current-password">
-      <button id="loginBtn" style="width:100%;padding:14px;background:transparent;border:2px solid #264f9a;border-radius:8px;color:#264f9a;font-family:'Courier New',monospace;font-size:14px;font-weight:900;letter-spacing:4px;text-transform:uppercase;cursor:pointer;">LOGIN</button>
+      <input id="loginPwdInput" type="password" placeholder="password" style="width:100%;padding:14px 16px;background:#080d18;border:1px solid #0d1e3a;border-radius:8px;color:#e8f0fc;font-family:'Courier New',monospace;font-size:16px;caret-color:#264f9a;letter-spacing:2px;" autocomplete="current-password" aria-label="Admin password">
+      <button id="loginBtn" style="width:100%;padding:14px;background:transparent;border:2px solid #264f9a;border-radius:8px;color:#5b8fd6;font-family:'Courier New',monospace;font-size:14px;font-weight:900;letter-spacing:4px;text-transform:uppercase;cursor:pointer;">LOGIN</button>
       <div id="loginErr" style="font-family:'Courier New',monospace;font-size:13px;color:#ff0033;text-align:center;min-height:20px;"></div>
     </div>
   </div>
@@ -592,33 +676,38 @@
   <!-- -----------------------------------------------------------------------
        HEADER
   ----------------------------------------------------------------------- -->
-  <div id="header">
+  <header id="header">
     <span class="logo">SCANMANIA</span>
-    <span class="state-pill" id="headerState">ATTRACT</span>
+    <!-- The label is a sibling, not a child: JS sets headerState.textContent. -->
+    <span class="visually-hidden" id="headerStateLabel">Game state</span>
+    <span class="state-pill" id="headerState" role="status"
+          aria-labelledby="headerStateLabel headerState">ATTRACT</span>
     <div class="header-controls">
-      <div id="wsBar">
+      <div id="wsBar" aria-live="polite">
         <div class="ws-led" id="wsLed"></div>
         <span id="wsLbl">connecting…</span>
       </div>
       <button class="btn btn-default" id="btnLogout" style="font-size:11px;">Logout</button>
     </div>
-  </div>
+  </header>
 
   <!-- -----------------------------------------------------------------------
        TAB NAV
   ----------------------------------------------------------------------- -->
-  <div id="tabNav">
-    <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
-    <button class="tab-btn"        data-tab="hardware">Hardware</button>
-    <button class="tab-btn"        data-tab="beams">Beams</button>
-    <button class="tab-btn"        data-tab="presets">Maze Editor</button>
-    <button class="tab-btn"        data-tab="config">Config</button>
-    <button class="tab-btn"        data-tab="runs">Runs</button>
-    <button class="tab-btn"        data-tab="leaderboard">Leaderboard</button>
-    <button class="tab-btn"        data-tab="cloudsync">Cloud Sync</button>
-    <button class="tab-btn"        data-tab="logs">Logs</button>
-    <button class="tab-btn"        data-tab="mastermode">Master Mode</button>
-    <button class="tab-btn"        data-tab="dev">Dev</button>
+  <!-- Roving tabindex: only the selected tab is in the tab order, arrows move
+       between them. Without this the keyboard has to step through all 11. -->
+  <div id="tabNav" role="tablist" aria-label="Admin sections">
+    <button class="tab-btn active" data-tab="dashboard"   role="tab" id="tabbtn-dashboard"   aria-controls="tab-dashboard"   aria-selected="true"  tabindex="0">Dashboard</button>
+    <button class="tab-btn"        data-tab="hardware"    role="tab" id="tabbtn-hardware"    aria-controls="tab-hardware"    aria-selected="false" tabindex="-1">Hardware</button>
+    <button class="tab-btn"        data-tab="beams"       role="tab" id="tabbtn-beams"       aria-controls="tab-beams"       aria-selected="false" tabindex="-1">Beams</button>
+    <button class="tab-btn"        data-tab="presets"     role="tab" id="tabbtn-presets"     aria-controls="tab-presets"     aria-selected="false" tabindex="-1">Maze Editor</button>
+    <button class="tab-btn"        data-tab="config"      role="tab" id="tabbtn-config"      aria-controls="tab-config"      aria-selected="false" tabindex="-1">Config</button>
+    <button class="tab-btn"        data-tab="runs"        role="tab" id="tabbtn-runs"        aria-controls="tab-runs"        aria-selected="false" tabindex="-1">Runs</button>
+    <button class="tab-btn"        data-tab="leaderboard" role="tab" id="tabbtn-leaderboard" aria-controls="tab-leaderboard" aria-selected="false" tabindex="-1">Leaderboard</button>
+    <button class="tab-btn"        data-tab="cloudsync"   role="tab" id="tabbtn-cloudsync"   aria-controls="tab-cloudsync"   aria-selected="false" tabindex="-1">Cloud Sync</button>
+    <button class="tab-btn"        data-tab="logs"        role="tab" id="tabbtn-logs"        aria-controls="tab-logs"        aria-selected="false" tabindex="-1">Logs</button>
+    <button class="tab-btn"        data-tab="mastermode"  role="tab" id="tabbtn-mastermode"  aria-controls="tab-mastermode"  aria-selected="false" tabindex="-1">Master Mode</button>
+    <button class="tab-btn"        data-tab="dev"         role="tab" id="tabbtn-dev"         aria-controls="tab-dev"         aria-selected="false" tabindex="-1">Dev</button>
   </div>
 
   <!-- -----------------------------------------------------------------------
@@ -627,7 +716,7 @@
   <div id="tabContent">
 
     <!-- === DASHBOARD === -->
-    <div class="tab-panel active" id="tab-dashboard">
+    <div class="tab-panel active" id="tab-dashboard" role="tabpanel" aria-labelledby="tabbtn-dashboard" tabindex="0">
       <div class="stat-row">
         <div class="stat-box"><div class="stat-val" id="dState">—</div><div class="stat-label">State</div></div>
         <div class="stat-box"><div class="stat-val" id="dUptime">—</div><div class="stat-label">Uptime</div></div>
@@ -662,7 +751,7 @@
     </div>
 
     <!-- === HARDWARE === -->
-    <div class="tab-panel" id="tab-hardware">
+    <div class="tab-panel" id="tab-hardware" role="tabpanel" aria-labelledby="tabbtn-hardware" tabindex="0">
       <div class="card">
         <div class="card-title">Relay Boards</div>
         <table class="data-table" id="boardsTable">
@@ -701,7 +790,7 @@
           <div class="info-row" style="align-items:center;">
             <span class="info-key">Fan (0–255)</span>
             <span class="info-val" style="display:flex;align-items:center;gap:10px;">
-              <input type="range" id="hazerFanSlider" min="0" max="255" value="0"
+              <input type="range" id="hazerFanSlider" aria-label="Hazer fan level" min="0" max="255" value="0"
                 style="width:160px;accent-color:var(--accent);">
               <span id="hazerFanVal" style="width:30px;text-align:right;">0</span>
             </span>
@@ -709,7 +798,7 @@
           <div class="info-row" style="align-items:center;">
             <span class="info-key">Haze (0–255)</span>
             <span class="info-val" style="display:flex;align-items:center;gap:10px;">
-              <input type="range" id="hazerHazeSlider" min="0" max="255" value="0"
+              <input type="range" id="hazerHazeSlider" aria-label="Hazer haze level" min="0" max="255" value="0"
                 style="width:160px;accent-color:var(--accent);">
               <span id="hazerHazeVal" style="width:30px;text-align:right;">0</span>
             </span>
@@ -724,7 +813,7 @@
     </div>
 
     <!-- === BEAMS === -->
-    <div class="tab-panel" id="tab-beams">
+    <div class="tab-panel" id="tab-beams" role="tabpanel" aria-labelledby="tabbtn-beams" tabindex="0">
       <div class="card" style="overflow-x:auto;">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
           <div class="card-title" style="margin:0;">Physical Layout</div>
@@ -751,14 +840,14 @@
     </div>
 
     <!-- === MAZE EDITOR + SHOW EDITOR === -->
-    <div class="tab-panel" id="tab-presets">
+    <div class="tab-panel" id="tab-presets" role="tabpanel" aria-labelledby="tabbtn-presets" tabindex="0">
 
       <!-- Maze Editor -->
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
           <div class="card-title" style="margin:0;">Maze Editor</div>
           <div style="display:flex;gap:6px;align-items:center;">
-            <select id="mePresetSelect" style="
+            <select id="mePresetSelect" aria-label="Preset to edit" style="
               height:32px;padding:0 10px;font-family:var(--font);font-size:12px;
               background:var(--surface2);border:1px solid var(--border);border-radius:4px;
               color:var(--text);cursor:pointer;min-width:140px;
@@ -791,12 +880,12 @@
           </div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
-          <select id="seShowSelect" style="
+          <select id="seShowSelect" aria-label="Show to edit" style="
             height:32px;padding:0 10px;font-family:var(--font);font-size:12px;
             background:var(--surface2);border:1px solid var(--border);border-radius:4px;
             color:var(--text);cursor:pointer;min-width:150px;
           "><option value="">— New show —</option></select>
-          <input id="seShowName" type="text" placeholder="Show name…"
+          <input id="seShowName" type="text" aria-label="Show name" placeholder="Show name…"
             style="flex:1;min-width:140px;height:32px;padding:0 10px;font-family:var(--font);font-size:12px;
                    background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);">
           <button class="btn btn-primary" id="seSaveBtn" style="font-size:11px;padding:5px 14px;">Save Show</button>
@@ -807,12 +896,12 @@
         </div>
         <div id="seTimeline" style="display:flex;flex-direction:column;gap:4px;"></div>
         <div style="display:flex;gap:8px;margin-top:10px;align-items:center;">
-          <select id="seAddPreset" style="
+          <select id="seAddPreset" aria-label="Preset for new step" style="
             height:32px;padding:0 10px;font-family:var(--font);font-size:12px;
             background:var(--surface2);border:1px solid var(--border);border-radius:4px;
             color:var(--text);min-width:140px;
           "></select>
-          <input id="seAddHoldMs" type="number" value="300" min="50" max="60000" style="
+          <input id="seAddHoldMs" type="number" aria-label="Hold time for new step, milliseconds" value="300" min="50" max="60000" style="
             height:32px;padding:0 8px;font-family:var(--font);font-size:12px;
             background:var(--surface2);border:1px solid var(--border);border-radius:4px;
             color:var(--text);width:80px;
@@ -833,9 +922,9 @@
     </div>
 
     <!-- === CONFIG === -->
-    <div class="tab-panel" id="tab-config">
+    <div class="tab-panel" id="tab-config" role="tabpanel" aria-labelledby="tabbtn-config" tabindex="0">
       <div style="display:flex;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px;">
-        <button class="cfg-tab-btn active" data-cfg="game"     style="flex:1;padding:10px;background:var(--surface2);border:none;border-right:1px solid var(--border);color:var(--accent);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;">game.yaml</button>
+        <button class="cfg-tab-btn active" data-cfg="game"     style="flex:1;padding:10px;background:var(--surface2);border:none;border-right:1px solid var(--border);color:var(--accent-text);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;">game.yaml</button>
         <button class="cfg-tab-btn"        data-cfg="hardware" style="flex:1;padding:10px;background:transparent;border:none;border-right:1px solid var(--border);color:var(--muted);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;">hardware.yaml</button>
         <button class="cfg-tab-btn"        data-cfg="mazes"    style="flex:1;padding:10px;background:transparent;border:none;border-right:1px solid var(--border);color:var(--muted);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;">mazes.yaml</button>
         <button class="cfg-tab-btn"        data-cfg="beams"    style="flex:1;padding:10px;background:transparent;border:none;color:var(--muted);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;">beams.json</button>
@@ -843,7 +932,7 @@
 
       <div class="card" id="cfgCard-game">
         <div class="card-title">game.yaml</div>
-        <textarea class="config-editor" id="cfgEditor-game" style="min-height:400px;"></textarea>
+        <textarea class="config-editor" id="cfgEditor-game" aria-label="game.yaml contents" style="min-height:400px;"></textarea>
         <div class="flex-row mt-12">
           <button class="btn btn-primary" onclick="saveCfg('game')">Save &amp; apply</button>
           <button class="btn btn-default" onclick="loadCfgFile('game')">Reload</button>
@@ -853,7 +942,7 @@
 
       <div class="card" id="cfgCard-hardware" style="display:none;">
         <div class="card-title">hardware.yaml</div>
-        <textarea class="config-editor" id="cfgEditor-hardware" style="min-height:400px;"></textarea>
+        <textarea class="config-editor" id="cfgEditor-hardware" aria-label="hardware.yaml contents" style="min-height:400px;"></textarea>
         <div class="flex-row mt-12">
           <button class="btn btn-primary" onclick="saveCfg('hardware')">Save &amp; apply</button>
           <button class="btn btn-default" onclick="loadCfgFile('hardware')">Reload</button>
@@ -863,7 +952,7 @@
 
       <div class="card" id="cfgCard-mazes" style="display:none;">
         <div class="card-title">mazes.yaml</div>
-        <textarea class="config-editor" id="cfgEditor-mazes" style="min-height:400px;"></textarea>
+        <textarea class="config-editor" id="cfgEditor-mazes" aria-label="mazes.yaml contents" style="min-height:400px;"></textarea>
         <div class="flex-row mt-12">
           <button class="btn btn-primary" onclick="saveCfg('mazes')">Save &amp; apply</button>
           <button class="btn btn-default" onclick="loadCfgFile('mazes')">Reload</button>
@@ -873,7 +962,7 @@
 
       <div class="card" id="cfgCard-beams" style="display:none;">
         <div class="card-title">beams.json</div>
-        <textarea class="config-editor" id="cfgEditor-beams" style="min-height:400px;"></textarea>
+        <textarea class="config-editor" id="cfgEditor-beams" aria-label="beams.json contents" style="min-height:400px;"></textarea>
         <div class="flex-row mt-12">
           <button class="btn btn-primary" onclick="saveCfg('beams')">Save &amp; apply</button>
           <button class="btn btn-default" onclick="loadCfgFile('beams')">Reload</button>
@@ -893,9 +982,9 @@
     </div>
 
     <!-- === RUNS === -->
-    <div class="tab-panel" id="tab-runs">
+    <div class="tab-panel" id="tab-runs" role="tabpanel" aria-labelledby="tabbtn-runs" tabindex="0">
       <div class="flex-row" style="margin-bottom:14px;">
-        <input type="text" id="runSearch" placeholder="Search player…"
+        <input type="text" id="runSearch" aria-label="Search runs by player" placeholder="Search player…"
           style="flex:1; min-width:160px; padding:8px 12px; border-radius:6px;
                  border:1px solid var(--border); background:var(--surface2);
                  color:var(--text); font-size:13px; font-family:var(--font);">
@@ -923,7 +1012,7 @@
     </div>
 
     <!-- === LEADERBOARD === -->
-    <div class="tab-panel" id="tab-leaderboard">
+    <div class="tab-panel" id="tab-leaderboard" role="tabpanel" aria-labelledby="tabbtn-leaderboard" tabindex="0">
       <div class="flex-row" style="margin-bottom:14px;">
         <div style="display:flex;gap:4px;">
           <button class="btn btn-primary lb-scope-btn" data-scope="daily"      style="font-size:11px;padding:5px 12px;">Daily</button>
@@ -947,7 +1036,7 @@
     </div>
 
     <!-- === CLOUD SYNC === -->
-    <div class="tab-panel" id="tab-cloudsync">
+    <div class="tab-panel" id="tab-cloudsync" role="tabpanel" aria-labelledby="tabbtn-cloudsync" tabindex="0">
       <div class="card">
         <div class="card-title">Status</div>
         <div class="info-row">
@@ -982,9 +1071,9 @@
     </div>
 
     <!-- === LOGS === -->
-    <div class="tab-panel" id="tab-logs">
+    <div class="tab-panel" id="tab-logs" role="tabpanel" aria-labelledby="tabbtn-logs" tabindex="0">
       <div class="flex-row" style="margin-bottom:14px;">
-        <select id="logUnit" style="padding:8px 12px; border-radius:6px;
+        <select id="logUnit" aria-label="Log source unit" style="padding:8px 12px; border-radius:6px;
             border:1px solid var(--border); background:var(--surface2);
             color:var(--text); font-size:13px; font-family:var(--font);">
           <option value="scanmania-core">scanmania-core</option>
@@ -994,7 +1083,7 @@
           <option value="scanmania-sync">scanmania-sync</option>
           <option value="scanmania-kiosk">scanmania-kiosk</option>
         </select>
-        <input type="text" id="logFilter" placeholder="Filter…"
+        <input type="text" id="logFilter" aria-label="Filter log lines" placeholder="Filter…"
           style="flex:1; min-width:120px; padding:8px 12px; border-radius:6px;
                  border:1px solid var(--border); background:var(--surface2);
                  color:var(--text); font-size:13px; font-family:var(--font);">
@@ -1005,7 +1094,7 @@
     </div>
 
     <!-- === MASTER MODE === -->
-    <div class="tab-panel" id="tab-mastermode">
+    <div class="tab-panel" id="tab-mastermode" role="tabpanel" aria-labelledby="tabbtn-mastermode" tabindex="0">
       <div class="card" style="border-color: var(--red); box-shadow: 0 0 16px rgba(255,0,51,0.1);">
         <div class="card-title" style="color:var(--red);">Master Mode — direct hardware control</div>
         <div id="masterStatus" class="inactive">MASTER MODE: INACTIVE</div>
@@ -1054,7 +1143,7 @@
     </div>
 
     <!-- === DEV === -->
-    <div class="tab-panel" id="tab-dev">
+    <div class="tab-panel" id="tab-dev" role="tabpanel" aria-labelledby="tabbtn-dev" tabindex="0">
       <div class="card" style="border-color:var(--orange);">
         <div class="card-title" style="color:var(--orange);">Dev — inject FSM events for testing</div>
         <div id="devModeWarning" style="font-size:12px;font-weight:700;font-family:var(--font);letter-spacing:1px;color:var(--orange);background:rgba(255,136,0,0.08);border:1px solid var(--orange);border-radius:6px;padding:8px 12px;margin-bottom:12px;">
@@ -1066,7 +1155,7 @@
 
         <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">1. Register player first</div>
         <div class="flex-row" style="margin-bottom:16px;">
-          <input id="devNickname" type="text" value="Dev Player" placeholder="Nickname"
+          <input id="devNickname" type="text" aria-label="Fake player nickname" value="Dev Player" placeholder="Nickname"
             style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid var(--border);
                    background:var(--surface2);color:var(--text);font-size:13px;font-family:var(--font);">
           <button class="btn btn-default" id="btnDevRegister">Register Player</button>
@@ -1091,7 +1180,7 @@
           <button class="btn btn-default dev-trigger" data-event="StopPressed">Stop Button</button>
         </div>
         <div class="flex-row" style="margin-bottom:16px;">
-          <input id="devBeamId" type="text" value="b001" placeholder="beam_id"
+          <input id="devBeamId" type="text" aria-label="Beam ID to break" value="b001" placeholder="beam_id"
             style="width:90px;padding:8px 12px;border-radius:6px;border:1px solid var(--border);
                    background:var(--surface2);color:var(--text);font-size:13px;font-family:var(--font);">
           <button class="btn btn-warn" id="btnDevBreak">Beam Break</button>
@@ -1120,12 +1209,12 @@
   ----------------------------------------------------------------------- -->
   <div id="toastHost" style="position:fixed;right:16px;bottom:16px;z-index:1200;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:none;"></div>
 
-  <div id="modalOverlay" style="display:none;position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,0.88);align-items:center;justify-content:center;padding:24px;">
+  <div id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalBody" style="display:none;position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,0.88);align-items:center;justify-content:center;padding:24px;">
     <div style="width:100%;max-width:440px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;">
-      <div id="modalTitle" style="font-size:13px;font-weight:900;font-family:var(--font);letter-spacing:3px;text-transform:uppercase;color:var(--accent);margin-bottom:10px;"></div>
+      <div id="modalTitle" style="font-size:13px;font-weight:900;font-family:var(--font);letter-spacing:3px;text-transform:uppercase;color:var(--accent-text);margin-bottom:10px;"></div>
       <div id="modalBody" style="font-size:13px;font-family:var(--font);color:var(--text);line-height:1.6;margin-bottom:14px;"></div>
       <div id="modalChoices" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
-      <input id="modalInput" type="text" style="display:none;width:100%;padding:10px 12px;margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:13px;">
+      <input id="modalInput" type="text" aria-labelledby="modalTitle" style="display:none;width:100%;padding:10px 12px;margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:13px;">
       <div style="display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn btn-default" id="modalCancel">Cancel</button>
         <button class="btn btn-primary" id="modalOk">OK</button>
@@ -1219,17 +1308,38 @@
         .catch(() => loginPwdInput.focus());
     } else { loginPwdInput.focus(); }
 
-    /* ---- Tab switching ---- */
-    const tabBtns   = document.querySelectorAll(".tab-btn");
+    /* ---- Tab switching ----
+       ARIA tabs pattern: aria-selected tracks the class, and tabindex is roving
+       so Tab lands on the selected tab only and arrows move between them. */
+    const tabBtns   = Array.from(document.querySelectorAll(".tab-btn"));
     const tabPanels = document.querySelectorAll(".tab-panel");
 
-    tabBtns.forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = btn.dataset.tab;
-        tabBtns.forEach(b => b.classList.toggle("active", b === btn));
-        tabPanels.forEach(p => p.classList.toggle("active", p.id === `tab-${id}`));
-        onTabActivated(id);
+    function activateTab(btn, focus) {
+      const id = btn.dataset.tab;
+      tabBtns.forEach(b => {
+        const on = b === btn;
+        b.classList.toggle("active", on);
+        b.setAttribute("aria-selected", on ? "true" : "false");
+        b.tabIndex = on ? 0 : -1;
       });
+      tabPanels.forEach(p => p.classList.toggle("active", p.id === `tab-${id}`));
+      if (focus) btn.focus();
+      onTabActivated(id);
+    }
+
+    tabBtns.forEach(btn => btn.addEventListener("click", () => activateTab(btn, false)));
+
+    document.getElementById("tabNav").addEventListener("keydown", ev => {
+      const i = tabBtns.indexOf(document.activeElement);
+      if (i < 0) return;
+      let next = null;
+      if (ev.key === "ArrowRight")     next = tabBtns[(i + 1) % tabBtns.length];
+      else if (ev.key === "ArrowLeft") next = tabBtns[(i - 1 + tabBtns.length) % tabBtns.length];
+      else if (ev.key === "Home")      next = tabBtns[0];
+      else if (ev.key === "End")       next = tabBtns[tabBtns.length - 1];
+      if (!next) return;
+      ev.preventDefault();
+      activateTab(next, true);
     });
 
     /* -----------------------------------------------------------------------
@@ -2323,7 +2433,13 @@
         return { bg: on ? "#ff3300" : "#1a2233", op: "1" };
       }
 
-      let h = `<div style="width:${W+50}px;margin:0 auto;">
+      // Toggle targets, so they carry button semantics for the keyboard too.
+      const mestripAttr = (s, cs) => `class="mestrip" data-sid="${esc(s.id)}" title="${esc(s.id)}"
+        role="button" tabindex="0" aria-pressed="${meStrips[s.id] ? "true" : "false"}"
+        aria-label="Strip ${esc(s.id)}, ${meStrips[s.id] ? "on" : "off"}"
+        style="background:${cs.bg};border-radius:1px;cursor:pointer;transition:background .1s;"`;
+
+      let h = `<div style="max-width:${W+50}px;margin:0 auto;">
         <div style="border:1px solid var(--border);border-radius:6px;padding:16px 24px;background:#060a12;">`;
 
       for (let ri = 0; ri < rowNums.length; ri++) {
@@ -2335,21 +2451,21 @@
         const plate = ROW_PLATES[rn];
 
         h += `<div style="display:grid;grid-template-columns:1fr ${T}px 1fr ${T}px 1fr;grid-template-rows:${T}px ${VLEN}px;">`;
-        const hA = (s,cs) => s ? `class="mestrip" data-sid="${esc(s.id)}" title="${esc(s.id)}" style="background:${cs.bg};border-radius:1px;cursor:pointer;transition:background .1s;"` : `style=""`;
+        const hA = (s,cs) => s ? mestripAttr(s,cs) : `style=""`;
         h += `<div ${hA(s1,c1)}></div>`;
         h += `<div style="background:${c2.bg};border-radius:1px;"></div>`;
         h += `<div ${hA(s3,c3)}></div>`;
         h += `<div style="background:${c4.bg};border-radius:1px;"></div>`;
         h += `<div ${hA(s5,c5)}></div>`;
         h += `<div></div>`;
-        h += s2?`<div class="mestrip" data-sid="${esc(s2.id)}" title="${esc(s2.id)}" style="background:${c2.bg};border-radius:1px;cursor:pointer;transition:background .1s;"></div>`:`<div></div>`;
+        h += s2?`<div ${mestripAttr(s2,c2)}></div>`:`<div></div>`;
         h += `<div style="display:flex;align-items:center;justify-content:center;">`;
         if (plate) {
           const col = plate==="START" ? "var(--green)" : "#0070ea";
           h += `<span style="font-size:8px;font-weight:800;color:${col};letter-spacing:1px;">${plate}</span>`;
         }
         h += `</div>`;
-        h += s4?`<div class="mestrip" data-sid="${esc(s4.id)}" title="${esc(s4.id)}" style="background:${c4.bg};border-radius:1px;cursor:pointer;transition:background .1s;"></div>`:`<div></div>`;
+        h += s4?`<div ${mestripAttr(s4,c4)}></div>`:`<div></div>`;
         h += `<div></div>`;
         h += `</div>`;
       }
@@ -2359,6 +2475,12 @@
       const onCount = Object.values(meStrips).filter(Boolean).length;
       h += `<div style="text-align:center;margin-top:6px;font-size:11px;color:var(--muted);">${onCount} / ${meAllBeams.length} strips on</div>`;
 
+      // Toggling re-renders the whole grid, which throws focus back to <body>.
+      // Remember which strip had it and hand it back after the swap.
+      const focused = document.activeElement;
+      const refocus = focused && focused.classList.contains("mestrip")
+        ? focused.dataset.sid : null;
+
       c.innerHTML = h;
 
       c.querySelectorAll(".mestrip").forEach(el => {
@@ -2366,7 +2488,17 @@
           meStrips[el.dataset.sid] = !meStrips[el.dataset.sid];
           meRenderGrid();
         });
+        el.addEventListener("keydown", ev => {
+          if (ev.key !== "Enter" && ev.key !== " ") return;
+          ev.preventDefault();   // Space would scroll the page
+          el.click();
+        });
       });
+
+      if (refocus) {
+        const el = c.querySelector(`.mestrip[data-sid="${CSS.escape(refocus)}"]`);
+        if (el) el.focus();
+      }
     }
 
     function meGetOnChannels() {
@@ -2428,7 +2560,7 @@
           const chStr = Array.isArray(p.channels) ? p.channels.length + " ch" : (p.channels === "*" ? "all" : "—");
           const isMaze = MAZE_NAMES.includes(name);
           return `<div class="info-row">
-            <span class="info-key" style="${isMaze?"color:var(--accent);":""}">${esc(name)}</span>
+            <span class="info-key" style="${isMaze?"color:var(--accent-text);":""}">${esc(name)}</span>
             <span class="info-val" style="font-size:12px;">${esc(chStr)} — ${esc(p.description || "")}</span>
           </div>`;
         }).join("");
@@ -2578,7 +2710,7 @@
         <div class="${i === playingIdx ? "se-step-playing" : ""}" style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;">
           <span style="font-size:11px;font-weight:700;color:${i === playingIdx ? "var(--text)" : "var(--accent)"};width:20px;">${i === playingIdx ? "▶" : i+1}</span>
           <span style="font-size:12px;flex:1;">${esc(s.preset)}</span>
-          <input type="number" value="${s.hold_ms}" min="50" max="60000" style="
+          <input type="number" value="${s.hold_ms}" min="50" max="60000" aria-label="Hold time in milliseconds" style="
             width:70px;height:26px;padding:0 6px;font-family:var(--font);font-size:11px;
             background:var(--surface);border:1px solid var(--border);border-radius:3px;color:var(--text);
           " onchange="seSteps[${i}].hold_ms=parseInt(this.value)||300">
@@ -2732,6 +2864,13 @@
         return { bg: s.masked?"#1a1a1a":STRIP_COLOR, op: s.masked?"0.25":"1" };
       }
 
+      // A beam segment is a click target, so it needs to be a real one for the
+      // keyboard too: role + tabindex + aria-pressed mirroring the mask state.
+      const stripAttr = (s, cs) => `class="gstrip" data-bid="${esc(s.id)}" title="${esc(s.id)}"
+        role="button" tabindex="0" aria-pressed="${s.masked ? "true" : "false"}"
+        aria-label="Beam ${esc(s.id)}, ${s.masked ? "masked" : "active"} — toggle mask"
+        style="background:${cs.bg};opacity:${cs.op};border-radius:1px;cursor:pointer;transition:all .12s;"`;
+
       function plateHtml(label, color, borderColor) {
         const isRound = label === "STOP";
         const sz = label === "START" ? 50 : 40;
@@ -2743,7 +2882,7 @@
         </div>`;
       }
 
-      let h = `<div style="width:${W+50}px;margin:0 auto;">
+      let h = `<div style="max-width:${W+50}px;margin:0 auto;">
         <div style="border:1px solid var(--border);border-radius:6px;padding:20px 24px;background:var(--surface);">`;
 
       // STOP button above grid
@@ -2759,7 +2898,7 @@
         h += `<div style="display:grid;grid-template-columns:1fr ${T}px 1fr ${T}px 1fr;grid-template-rows:${T}px ${VLEN}px;margin-bottom:0;">`;
 
         // Top row: 3 horizontal segments + 2 junction nodes
-        const hAttr = (s,cs) => s ? `class="gstrip" data-bid="${esc(s.id)}" title="${esc(s.id)}" style="background:${cs.bg};opacity:${cs.op};border-radius:1px;cursor:pointer;transition:all .12s;"` : `style=""`;
+        const hAttr = (s,cs) => s ? stripAttr(s,cs) : `style=""`;
         h += `<div ${hAttr(s1,c1)}></div>`;
         h += `<div style="background:${c2.op!=="0"?c2.bg:"transparent"};opacity:${c2.op};border-radius:1px;"></div>`;
         h += `<div ${hAttr(s3,c3)}></div>`;
@@ -2768,7 +2907,7 @@
 
         // Bottom row: verticals + center (plate if applicable)
         h += `<div></div>`;
-        h += s2?`<div class="gstrip" data-bid="${esc(s2.id)}" title="${esc(s2.id)}" style="background:${c2.bg};opacity:${c2.op};border-radius:1px;cursor:pointer;transition:all .12s;"></div>`:`<div></div>`;
+        h += s2?`<div ${stripAttr(s2,c2)}></div>`:`<div></div>`;
         h += `<div style="display:flex;align-items:center;justify-content:center;">`;
         if (plate === "START") {
           h += plateHtml("START","rgba(0,255,136,0.12)","var(--green)");
@@ -2776,7 +2915,7 @@
           h += plateHtml(plate,"rgba(0,112,234,0.10)","#0070ea");
         }
         h += `</div>`;
-        h += s4?`<div class="gstrip" data-bid="${esc(s4.id)}" title="${esc(s4.id)}" style="background:${c4.bg};opacity:${c4.op};border-radius:1px;cursor:pointer;transition:all .12s;"></div>`:`<div></div>`;
+        h += s4?`<div ${stripAttr(s4,c4)}></div>`:`<div></div>`;
         h += `<div></div>`;
 
         h += `</div>`;
@@ -2786,12 +2925,21 @@
       c.innerHTML = h;
 
       c.querySelectorAll(".gstrip").forEach(el => {
-        el.addEventListener("mouseenter", () => { el.style.opacity="1"; el.style.boxShadow="0 0 8px "+el.style.background; });
-        el.addEventListener("mouseleave", () => { el.style.opacity=""; el.style.boxShadow=""; });
+        const hi = () => { el.style.opacity="1"; el.style.boxShadow="0 0 8px "+el.style.background; };
+        const lo = () => { el.style.opacity=""; el.style.boxShadow=""; };
+        el.addEventListener("mouseenter", hi);
+        el.addEventListener("mouseleave", lo);
+        el.addEventListener("focus", hi);
+        el.addEventListener("blur", lo);
         el.addEventListener("click", () => {
           const bid = el.dataset.bid;
           const beam = beams.find(b=>b.id===bid);
           if (beam) toggleBeamMask(bid, !beam.masked);
+        });
+        el.addEventListener("keydown", ev => {
+          if (ev.key !== "Enter" && ev.key !== " ") return;
+          ev.preventDefault();   // Space would scroll the page
+          el.click();
         });
       });
     }

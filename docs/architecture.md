@@ -132,6 +132,27 @@ and refuses to run if there is uncommitted work outside `config/`.
 and beam geometry legitimately drift on the box. The script commits and pushes that drift
 before pulling, which is why live show tuning ends up in git rather than being lost.
 
+## Frontend accessibility conventions
+
+The frontends are single-file HTML with no build step and no linter, so the rules below are
+enforced by convention. They apply to `web/static/admin/index.html` today; extend the same
+treatment to any new panel.
+
+- **Colour tokens split by role.** `--accent` is chrome only — borders, glows, `accent-color`.
+  Anything that renders as text uses `--accent-text`. `--accent` is 2.3:1 on the panel surfaces
+  and fails AA outright; keeping the two apart is what stops it drifting back into body text.
+- **Never `outline: none`.** A `:focus-visible` ring is defined once at the top of the stylesheet.
+  Inline `style="outline:none"` beats it, so do not write one.
+- **Anything clickable is focusable.** A `<div>` with a click handler needs `role="button"`,
+  `tabindex="0"`, an accessible name, and Enter/Space activation. Prefer a real `<button>` when
+  the layout allows it. If the handler re-renders its container, capture the focused element
+  first and restore focus afterwards — otherwise focus falls back to `<body>` on every toggle.
+- **Every input has a name.** A `placeholder` is not a label; use a wrapping `<label>` or
+  `aria-label`.
+- **Tabs follow the ARIA tabs pattern** — `aria-selected` tracks the active class, `tabindex` is
+  roving, arrows and Home/End move between tabs.
+- Diagrams use `max-width`, not `width`, so they survive a narrow viewport.
+
 ## State machine summary
 
 See `docs/game-rules.md` for prose. Key states:

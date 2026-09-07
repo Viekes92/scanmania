@@ -36,6 +36,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   editor inputs. The old limit rejected legitimate slow attract sequences with a 422; the loader and
   show player never had a cap.
 
+### Admin panel — CSS / UX / accessibility pass
+
+All in `web/static/admin/index.html`; no behaviour changes to any API.
+
+- **Contrast.** `--accent` (#264f9a) is 2.3:1 on the panel surfaces and was used for body text.
+  It is now chrome-only (borders, glows); a new `--accent-text` (#5b8fd6, 5.5:1) covers the nine
+  text uses and the login overlay. `--muted` went #5a7899 → #6c8cae, clearing AA for the 10–12 px
+  labels it is used on.
+- **Focus is visible again.** `outline: none` removed from the config editor, the shared
+  `input, select` rule and the login field; a `:focus-visible` ring added globally plus explicit
+  overrides for controls that set their own outline. Mouse users see no change.
+- **Tabs are a real ARIA tablist.** `role="tablist"` / `tab` / `tabpanel` with `aria-controls`,
+  `aria-labelledby` and `aria-selected`, a roving `tabindex` so Tab enters the strip once, and
+  ArrowLeft / ArrowRight / Home / End to move between tabs.
+- **The beam grid and the maze-editor grid are keyboard-operable.** Both were `<div>`s with a
+  click handler and no way in from the keyboard. They now carry `role="button"`, `tabindex="0"`,
+  `aria-pressed` and an accessible name, activate on Enter and Space, and the maze editor restores
+  focus to the toggled strip after its re-render.
+- **Labels.** `aria-label` on the 17 inputs, selects and textareas that had only a placeholder or
+  nothing at all; the confirm modal is now `role="dialog" aria-modal="true"` wired to its title
+  and body.
+- **Responsive.** Both maze diagrams changed from a fixed `width` to `max-width`, and breakpoints
+  added at 700 px and for coarse pointers. A skip link and `<header>` element round it out, and
+  `prefers-reduced-motion: reduce` disables the transitions and the state-pill pulse.
+
 ### Admin panel audit — backend and frontend
 
 #### Fixed (correctness / data loss)

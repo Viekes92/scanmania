@@ -684,7 +684,7 @@
       </div>
 
       <div class="card" id="hazerCard">
-        <div class="card-title">Hazer — SM-NODE-DMX</div>
+        <div class="card-title">Hazer</div>
         <div id="hazerInfo" style="font-size:13px; color:var(--muted); margin-bottom:12px;">Loading…</div>
         <div id="hazerControls" style="display:none;">
           <div class="info-row">
@@ -765,6 +765,7 @@
             "></select>
             <button class="btn btn-default" id="meLoadBtn" style="font-size:11px;padding:5px 10px;">Load</button>
             <button class="btn btn-primary" id="mePreviewBtn" style="font-size:11px;padding:5px 10px;">Preview Live</button>
+            <button class="btn btn-danger" id="meExitPreviewBtn" style="font-size:11px;padding:5px 10px;display:none;">Exit Preview</button>
           </div>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
@@ -783,12 +784,18 @@
       <div class="card mt-16">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
           <div class="card-title" style="margin:0;">Show Editor</div>
-          <div style="display:flex;gap:6px;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span id="sePlayHint" style="font-size:10px;color:var(--orange);letter-spacing:1px;">Requires master mode</span>
             <button class="btn btn-default" id="sePlayBtn" style="font-size:11px;padding:5px 10px;">Play</button>
             <button class="btn btn-default" id="seStopBtn" style="font-size:11px;padding:5px 10px;">Stop</button>
           </div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+          <select id="seShowSelect" style="
+            height:32px;padding:0 10px;font-family:var(--font);font-size:12px;
+            background:var(--surface2);border:1px solid var(--border);border-radius:4px;
+            color:var(--text);cursor:pointer;min-width:150px;
+          "><option value="">— New show —</option></select>
           <input id="seShowName" type="text" placeholder="Show name…"
             style="flex:1;min-width:140px;height:32px;padding:0 10px;font-family:var(--font);font-size:12px;
                    background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);">
@@ -910,6 +917,7 @@
         </table>
       </div>
       <div style="text-align:center;margin-top:12px;">
+        <div id="runsCount" style="font-size:11px;color:var(--muted);font-family:var(--font);margin-bottom:8px;"></div>
         <button class="btn btn-default" id="btnRunsLoadMore" style="font-size:11px;padding:6px 20px;">Load more</button>
       </div>
     </div>
@@ -1017,12 +1025,18 @@
           <!-- Populated dynamically -->
           <span style="color:var(--muted); font-size:13px;">Loading presets…</span>
         </div>
+        <div id="presetGridHint" style="font-size:11px;color:var(--orange);font-family:var(--font);letter-spacing:1px;">
+          Engage master mode to enable.
+        </div>
       </div>
 
       <div class="card">
         <div class="card-title">Individual channel toggles (all boards)</div>
         <div id="channelGrid">
           <!-- Populated dynamically from /api/admin/hardware -->
+        </div>
+        <div id="channelGridHint" class="mt-8" style="font-size:11px;color:var(--orange);font-family:var(--font);letter-spacing:1px;">
+          Engage master mode to enable.
         </div>
         <p class="mt-8" style="font-size:11px; color:var(--muted); font-family:var(--font); letter-spacing:1px;">
           Tap a channel to toggle on/off. Red = on.
@@ -1098,6 +1112,27 @@
 
   </div><!-- /#tabContent -->
 
+  <!-- -----------------------------------------------------------------------
+       TOASTS + MODAL
+       In-page replacements for alert()/confirm()/prompt(): Chromium kiosk lets
+       the operator permanently suppress native dialogs, which would silently
+       turn confirm-gated actions (Void, Save & apply) into no-ops.
+  ----------------------------------------------------------------------- -->
+  <div id="toastHost" style="position:fixed;right:16px;bottom:16px;z-index:1200;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:none;"></div>
+
+  <div id="modalOverlay" style="display:none;position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,0.88);align-items:center;justify-content:center;padding:24px;">
+    <div style="width:100%;max-width:440px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;">
+      <div id="modalTitle" style="font-size:13px;font-weight:900;font-family:var(--font);letter-spacing:3px;text-transform:uppercase;color:var(--accent);margin-bottom:10px;"></div>
+      <div id="modalBody" style="font-size:13px;font-family:var(--font);color:var(--text);line-height:1.6;margin-bottom:14px;"></div>
+      <div id="modalChoices" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+      <input id="modalInput" type="text" style="display:none;width:100%;padding:10px 12px;margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:13px;">
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-default" id="modalCancel">Cancel</button>
+        <button class="btn btn-primary" id="modalOk">OK</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     /* -----------------------------------------------------------------------
        Admin portal JS
@@ -1156,7 +1191,7 @@
         if (resp.ok) {
           sessionStorage.setItem("adminPwd", hashed);
           loginOverlay.style.display = "none";
-          loadDashboard();
+          onTabActivated("dashboard");
         } else if (resp.status === 403) {
           loginErr.textContent = "Access denied.";
         } else {
@@ -1178,7 +1213,7 @@
       // Already hashed — verify directly without re-hashing
       fetch("/api/admin/login", { method: "POST", headers: { "X-Admin-Password": _storedPwd } })
         .then(r => {
-          if (r.ok) { loginOverlay.style.display = "none"; loadDashboard(); }
+          if (r.ok) { loginOverlay.style.display = "none"; onTabActivated("dashboard"); }
           else { sessionStorage.removeItem("adminPwd"); loginPwdInput.focus(); }
         })
         .catch(() => loginPwdInput.focus());
@@ -1197,13 +1232,28 @@
       });
     });
 
-    let _hwInterval = null;
+    /* -----------------------------------------------------------------------
+       Shared cross-tab state.
+       Declared here — above connectWS() — because the WebSocket handler and the
+       tab loaders both read them. Declaring them further down would leave them
+       in the temporal dead zone for anything that fires early.
+    ----------------------------------------------------------------------- */
+    let _fsmState      = null;   // last FSM state seen on the WebSocket
+    let _activeTab     = "dashboard";
+    let _cachedBeams   = [];     // beams.json cache for the WS relay overlay
+    let _beamsById     = new Map();
+    let mePreviewActive = false; // maze editor "Preview Live" engaged master mode
+    const STRIP_COLOR  = "#264f9a";
+    // Pressure plates are IN specific rows (not between rows)
+    const ROW_PLATES   = { 1: "START", 7: "CP1", 9: "CP2" };
+
     let _dashInterval = null;
     function onTabActivated(id) {
-      // Stop hardware polling when leaving the tab
-      if (_hwInterval) { clearInterval(_hwInterval); _hwInterval = null; }
+      _activeTab = id;
       // Stop dashboard auto-refresh when leaving the dashboard tab
       if (_dashInterval) { clearInterval(_dashInterval); _dashInterval = null; }
+      // Never leave the log SSE stream open behind a hidden tab
+      if (id !== "logs") closeLogStream();
 
       switch (id) {
         case "dashboard":
@@ -1225,12 +1275,25 @@
       }
     }
 
+    /** tabActive — is this tab panel the visible one? Guards 10Hz WS renderers. */
+    function tabActive(id) {
+      const p = document.getElementById(`tab-${id}`);
+      return !!p && p.classList.contains("active");
+    }
+
     /* -----------------------------------------------------------------------
        Utility
     ----------------------------------------------------------------------- */
+    /**
+     * esc — HTML-escape for interpolation into markup AND into quoted
+     * attributes, so quotes must be escaped too. null/undefined render as an
+     * em-dash; 0 and "" are preserved verbatim.
+     */
     function esc(s) {
-      return String(s || "—")
-        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      if (s === null || s === undefined) return "—";
+      return String(s)
+        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
     }
 
     function fmtMs(ms) {
@@ -1242,10 +1305,27 @@
       return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}.${String(l).padStart(3,"0")}`;
     }
 
+    /** forceRelogin — session rejected: drop the stored hash and show the login. */
+    function forceRelogin() {
+      sessionStorage.removeItem("adminPwd");
+      loginOverlay.style.display = "flex";
+      loginErr.textContent = "Session rejected — sign in again.";
+      loginPwdInput.value = "";
+      loginPwdInput.focus();
+    }
+
     async function apiFetch(path, opts = {}) {
       const headers = { "X-Admin-Password": getAdminPwd(), ...(opts.headers || {}) };
       const resp = await fetch(path, { ...opts, headers });
-      if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+      if (resp.status === 403) {
+        forceRelogin();
+        throw new Error("403 — not authorised");
+      }
+      if (!resp.ok) {
+        let detail = "";
+        try { const j = await resp.json(); detail = j && j.detail ? String(j.detail) : ""; } catch {}
+        throw new Error(detail ? `${resp.status} ${detail}` : `${resp.status} ${resp.statusText}`);
+      }
       return resp.json();
     }
 
@@ -1257,12 +1337,203 @@
       });
     }
 
+    /* Browser navigations (window.location, EventSource) cannot send headers,
+       so downloads and the log stream authenticate with a short-lived one-shot
+       token fetched over the normal header-authenticated channel instead. */
+    async function withDownloadToken(path) {
+      const d = await apiPost("/api/admin/download-token");
+      const sep = path.includes("?") ? "&" : "?";
+      return `${path}${sep}token=${encodeURIComponent(d.token)}`;
+    }
+
+    async function startDownload(path) {
+      try {
+        window.location = await withDownloadToken(path);
+      } catch (e) {
+        toast(`Download failed: ${e.message}`, "error");
+      }
+    }
+
+    /* One dismiss timer per element — otherwise a later message's timer wipes
+       an earlier one's text (and vice versa). Errors never auto-dismiss. */
+    const _msgTimers = new Map();
+
     function showMsg(elId, msg, isErr = false) {
       const el = document.getElementById(elId);
       if (!el) return;
       el.textContent = msg;
       el.style.color = isErr ? "var(--red)" : "var(--green)";
-      setTimeout(() => { el.textContent = ""; }, 5000);
+      const prev = _msgTimers.get(elId);
+      if (prev) clearTimeout(prev);
+      _msgTimers.delete(elId);
+      if (!isErr) {
+        _msgTimers.set(elId, setTimeout(() => {
+          el.textContent = "";
+          _msgTimers.delete(elId);
+        }, 5000));
+      }
+    }
+
+    /**
+     * toast — stacked notification, bottom-right.
+     * level: "ok" (auto-dismiss) | "warn" (auto-dismiss) | "error" (manual).
+     * Click any toast to dismiss it.
+     */
+    function toast(msg, level = "ok") {
+      const host = document.getElementById("toastHost");
+      if (!host) return;
+      const color = level === "error" ? "var(--red)"
+                  : level === "warn"  ? "var(--orange)"
+                  : "var(--green)";
+      const el = document.createElement("div");
+      el.style.cssText =
+        "pointer-events:auto;max-width:360px;padding:10px 14px;border-radius:6px;" +
+        "background:var(--surface);border:1px solid " + color + ";border-left:3px solid " + color + ";" +
+        "color:" + color + ";font-family:var(--font);font-size:12px;line-height:1.5;" +
+        "box-shadow:0 4px 18px rgba(0,0,0,0.6);cursor:pointer;word-break:break-word;";
+      el.textContent = (level === "error" ? "\u2717 " : "\u2713 ") + msg;
+      el.addEventListener("click", () => el.remove());
+      host.appendChild(el);
+      while (host.children.length > 6) host.firstElementChild.remove();
+      if (level !== "error") setTimeout(() => el.remove(), 4500);
+    }
+
+    /* -----------------------------------------------------------------------
+       Modal — in-page confirm / prompt / choice picker.
+       Native dialogs can be permanently suppressed in Chromium kiosk mode,
+       which would silently turn Void into a no-op.
+    ----------------------------------------------------------------------- */
+    let _modalResolve = null;
+
+    function _modalClose(value) {
+      document.getElementById("modalOverlay").style.display = "none";
+      document.getElementById("modalChoices").innerHTML = "";
+      const inputEl = document.getElementById("modalInput");
+      inputEl.style.display = "none";
+      inputEl.value = "";
+      const r = _modalResolve;
+      _modalResolve = null;
+      if (r) r(value);
+    }
+
+    function _modalOpen({ title, body, okLabel = "OK", cancelLabel = "Cancel", input = null, choices = null }) {
+      if (_modalResolve) _modalClose(null);   // supersede any open modal
+      document.getElementById("modalTitle").textContent = title || "";
+      document.getElementById("modalBody").textContent  = body  || "";
+      const okBtn     = document.getElementById("modalOk");
+      const cancelBtn = document.getElementById("modalCancel");
+      okBtn.textContent     = okLabel;
+      cancelBtn.textContent = cancelLabel;
+      okBtn.style.display   = choices ? "none" : "";
+      const choicesEl = document.getElementById("modalChoices");
+      choicesEl.innerHTML = "";
+      if (choices) {
+        choices.forEach(c => {
+          const b = document.createElement("button");
+          b.className = "btn btn-default";
+          b.style.textAlign = "left";
+          b.textContent = c;
+          b.addEventListener("click", () => _modalClose({ choice: c }));
+          choicesEl.appendChild(b);
+        });
+      }
+      const inputEl = document.getElementById("modalInput");
+      if (input) {
+        inputEl.style.display = "";
+        inputEl.placeholder = input.placeholder || "";
+        inputEl.value = input.value || "";
+      }
+      document.getElementById("modalOverlay").style.display = "flex";
+      const p = new Promise(resolve => { _modalResolve = resolve; });
+      setTimeout(() => { (input ? inputEl : okBtn).focus(); }, 0);
+      return p;
+    }
+
+    document.getElementById("modalCancel").addEventListener("click", () => _modalClose(null));
+    document.getElementById("modalOk").addEventListener("click", () => {
+      const inputEl = document.getElementById("modalInput");
+      _modalClose({ ok: true, value: inputEl.style.display === "none" ? "" : inputEl.value });
+    });
+    document.getElementById("modalOverlay").addEventListener("click", (e) => {
+      if (e.target.id === "modalOverlay") _modalClose(null);
+    });
+    document.getElementById("modalInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") document.getElementById("modalOk").click();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && _modalResolve) _modalClose(null);
+    });
+
+    /** modalConfirm — Promise<boolean>. */
+    async function modalConfirm(title, body, okLabel = "Confirm") {
+      const r = await _modalOpen({ title, body, okLabel });
+      return !!(r && r.ok);
+    }
+
+    /**
+     * modalVoidReason — same canned taxonomy as the GM console.
+     * Returns the reason string, "" if OTHER was submitted empty, null on cancel.
+     */
+    async function modalVoidReason() {
+      const pick = await _modalOpen({
+        title: "Void reason",
+        body: "Why is this run being voided?",
+        choices: ["EQUIPMENT FAULT", "WRONG PLAYER", "OTHER"],
+      });
+      if (!pick || !pick.choice) return null;
+      if (pick.choice !== "OTHER") return pick.choice;
+      const free = await _modalOpen({
+        title: "Void reason — other",
+        body: "Describe the reason. A reason is required.",
+        okLabel: "Void run",
+        input: { placeholder: "Reason…" },
+      });
+      if (!free || !free.ok) return null;
+      return (free.value || "").trim();
+    }
+
+    /* ---- Time formatting -------------------------------------------------
+       These read the browser wall clock, but only to render a human-readable
+       "N ago" next to an absolute server timestamp. Nothing here computes a
+       gameplay duration — the server owns the stopwatch.
+    ---------------------------------------------------------------------- */
+    function fmtUptime(sec) {
+      if (sec == null || isNaN(sec)) return "—";
+      const s = Math.max(0, Math.floor(sec));
+      const d = Math.floor(s / 86400);
+      const h = Math.floor((s % 86400) / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      if (d) return `${d}d ${h}h`;
+      if (h) return `${h}h ${m}m`;
+      if (m) return `${m}m`;
+      return `${s}s`;
+    }
+
+    /** isoOrNull — guard against monotonic floats being rendered as timestamps. */
+    function isoOrNull(v) { return (typeof v === "string" && v) ? v : null; }
+
+    /** relTime — {text: "4 min ago", title: "<absolute>"} from an ISO string. */
+    function relTime(iso) {
+      const s = isoOrNull(iso);
+      if (!s) return { text: "—", title: "" };
+      const t = Date.parse(s);
+      if (isNaN(t)) return { text: s, title: s };
+      const diff = Math.floor((Date.now() - t) / 1000);
+      let text;
+      if (diff < 5)          text = "just now";
+      else if (diff < 60)    text = `${diff} sec ago`;
+      else if (diff < 3600)  text = `${Math.floor(diff / 60)} min ago`;
+      else if (diff < 86400) text = `${Math.floor(diff / 3600)} hr ago`;
+      else                   text = `${Math.floor(diff / 86400)} d ago`;
+      return { text, title: new Date(t).toLocaleString() };
+    }
+
+    function setRelTime(elId, iso) {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      const r = relTime(iso);
+      el.textContent = r.text;
+      el.title = r.title;
     }
 
     /**
@@ -1297,34 +1568,19 @@
       ws.onopen = () => { wsLed.className="ws-led ok"; wsLbl.textContent="live"; wsDelay=1000; };
       ws.onmessage = (evt) => {
         let m; try { m = JSON.parse(evt.data); } catch { return; }
-        if (m.state) headerState.textContent = m.state;
-        /* Update master mode active indicator */
-        const masterStatusEl = document.getElementById("masterStatus");
-        if (masterStatusEl) {
-          if (m.state === "MASTER") {
-            masterStatusEl.textContent = "MASTER MODE: ACTIVE";
-            masterStatusEl.className = "active";
-          } else {
-            masterStatusEl.textContent = "MASTER MODE: INACTIVE";
-            masterStatusEl.className = "inactive";
-          }
+        if (m.state && m.state !== _fsmState) {
+          _fsmState = m.state;
+          headerState.textContent = m.state;
+          onFsmStateChanged();
         }
-        /* Refresh dashboard stats if on that tab */
-        if (document.getElementById("tab-dashboard").classList.contains("active")) {
-          updateDashboardFromWs(m);
-        }
-        /* Live hardware update from WS */
+        /* Broadcasts arrive at 10Hz — only render into the visible tab. */
+        if (tabActive("dashboard")) updateDashboardFromWs(m);
         if (m.boards) {
-          updateHardwareFromWs(m.boards);
-          updateMasterChannelsFromWs(m.boards);
+          if (tabActive("hardware"))   updateHardwareFromWs(m.boards);
+          if (tabActive("mastermode")) updateMasterChannelsFromWs(m.boards);
+          if (tabActive("beams"))      updateBeamGridFromWs(m.boards);
         }
-        if (m.inputs) {
-          renderInputs(m.inputs);
-        }
-        // Update beams grid with live relay states
-        if (m.boards) {
-          updateBeamGridFromWs(m.boards);
-        }
+        if (m.inputs && tabActive("hardware")) renderInputs(m.inputs);
       };
       ws.onclose = () => {
         wsLed.className="ws-led err"; wsLbl.textContent="reconnecting…";
@@ -1333,6 +1589,64 @@
       ws.onerror = () => ws.close();
     }
 
+    /** Called only when the FSM state actually changes — not on every frame. */
+    function onFsmStateChanged() {
+      const isMaster = _fsmState === "MASTER";
+      const masterStatusEl = document.getElementById("masterStatus");
+      if (masterStatusEl) {
+        masterStatusEl.textContent = isMaster ? "MASTER MODE: ACTIVE" : "MASTER MODE: INACTIVE";
+        masterStatusEl.className   = isMaster ? "active" : "inactive";
+      }
+      applyMasterLock();
+      updatePreviewUi();
+    }
+
+    /**
+     * applyMasterLock — direct hardware control is only accepted in MASTER.
+     * Disable the preset/channel grids and the show Play button outside it
+     * rather than letting the operator fire requests the backend will 409.
+     */
+    function applyMasterLock() {
+      const isMaster = _fsmState === "MASTER";
+      ["presetGrid", "channelGrid"].forEach(gid => {
+        const grid = document.getElementById(gid);
+        if (!grid) return;
+        grid.querySelectorAll("button:not([data-nolock])").forEach(b => {
+          b.disabled = !isMaster;
+          b.style.opacity = isMaster ? "" : "0.4";
+          b.style.cursor  = isMaster ? "" : "not-allowed";
+          b.title = isMaster ? (b.dataset.baseTitle || "") : "Engage master mode to enable";
+        });
+        const hint = document.getElementById(gid + "Hint");
+        if (hint) hint.style.display = isMaster ? "none" : "";
+      });
+      const play = document.getElementById("sePlayBtn");
+      if (play) {
+        play.disabled = !isMaster;
+        play.style.opacity = isMaster ? "" : "0.4";
+        play.style.cursor  = isMaster ? "" : "not-allowed";
+        play.title = isMaster ? "" : "Requires master mode";
+      }
+      const playHint = document.getElementById("sePlayHint");
+      if (playHint) playHint.style.display = isMaster ? "none" : "";
+    }
+
+    /**
+     * waitForMaster — resolve true once the WS-tracked state reaches MASTER,
+     * false on timeout. Replaces blind sleeps after /master/engage.
+     */
+    function waitForMaster(timeoutMs = 3000) {
+      return new Promise(resolve => {
+        if (_fsmState === "MASTER") { resolve(true); return; }
+        const t0 = Date.now();
+        const iv = setInterval(() => {
+          if (_fsmState === "MASTER") { clearInterval(iv); resolve(true); }
+          else if (Date.now() - t0 > timeoutMs) { clearInterval(iv); resolve(false); }
+        }, 100);
+      });
+    }
+
+    applyMasterLock();
     connectWS();
 
     /* -----------------------------------------------------------------------
@@ -1343,13 +1657,17 @@
         const d = await apiFetch("/api/admin/status");
         applyDashboard(d);
       } catch (e) {
-        console.error("Dashboard load error:", e);
+        const faultList = document.getElementById("faultList");
+        if (faultList) {
+          faultList.innerHTML =
+            `<div class="fault-item">Dashboard load failed: ${esc(e.message)}</div>`;
+        }
       }
     }
 
     function applyDashboard(d) {
       document.getElementById("dState").textContent      = d.state      || "—";
-      document.getElementById("dUptime").textContent     = d.uptime     || "—";
+      document.getElementById("dUptime").textContent     = fmtUptime(d.uptime_s);
       document.getElementById("dRunsToday").textContent  = d.runs_today ?? "—";
       const cleanEl = document.getElementById("dClean");
       cleanEl.textContent = d.clean ?? "—";
@@ -1360,16 +1678,30 @@
       const abortedEl = document.getElementById("dAborted");
       abortedEl.textContent = d.aborted ?? "—";
       abortedEl.style.color = "var(--orange)";
-      document.getElementById("dOutboxDepth").textContent = d.outbox_depth ?? "—";
-      document.getElementById("dLastPush").textContent   = d.last_push  || "—";
-      document.getElementById("dLastErr").textContent    = d.last_error || "—";
+      // Outbox depth — a backing-up outbox must be impossible to miss
+      const depthEl = document.getElementById("dOutboxDepth");
+      const depth = d.outbox_depth;
+      depthEl.textContent = depth ?? "—";
+      depthEl.className = "info-val outbox-depth-val" +
+        (depth == null ? "" : (depth > 0 ? " nonzero" : " zero"));
+
+      // last_push is a monotonic float — only the ISO field is a real timestamp
+      setRelTime("dLastPush", d.last_push_iso);
+      const lastErrEl = document.getElementById("dLastErr");
+      lastErrEl.textContent = d.last_error || "—";
+      lastErrEl.style.color = d.last_error ? "var(--red)" : "";
 
       const faultList = document.getElementById("faultList");
       const faults = d.faults || [];
       if (faults.length === 0) {
         faultList.innerHTML = '<span style="color:var(--muted); font-size:13px;">No active faults.</span>';
       } else {
-        faultList.innerHTML = faults.map(f => `<div class="fault-item">${esc(f)}</div>`).join("");
+        faultList.innerHTML = faults.map(f => {
+          if (f && typeof f === "object") {
+            return `<div class="fault-item"><strong>${esc(f.subsystem)}</strong> — ${esc(f.message)}</div>`;
+          }
+          return `<div class="fault-item">${esc(f)}</div>`;
+        }).join("");
       }
     }
 
@@ -1429,7 +1761,6 @@
         renderBoards(d.boards || []);
         // Inputs are updated live via WS (renderInputs)
         renderCameras(d.cameras || []);
-        loadHazer();
       } catch (e) {
         document.getElementById("boardsBody").innerHTML =
           `<tr><td colspan="6" style="color:var(--red)">${esc(e.message)}</td></tr>`;
@@ -1492,85 +1823,124 @@
     /* -----------------------------------------------------------------------
        HAZER
     ----------------------------------------------------------------------- */
+    function applyHazerEnabled(d) {
+      const enabledEl = document.getElementById("hazerEnabledVal");
+      enabledEl.textContent = d.enabled ? "ON" : "OFF";
+      enabledEl.style.color = d.enabled ? "var(--green)" : "var(--muted)";
+      const statusEl = document.getElementById("hazerStatus");
+      if (statusEl) {
+        statusEl.innerHTML = `<span class="led ${d.available === false ? "err" : "ok"}"></span>` +
+          (d.available === false ? "UNAVAILABLE" : (d.enabled ? "AVAILABLE · ON" : "AVAILABLE · IDLE"));
+      }
+    }
+
+    function applyHazerSliders(d) {
+      document.getElementById("hazerFanSlider").value      = d.fan ?? 0;
+      document.getElementById("hazerFanVal").textContent   = d.fan ?? 0;
+      document.getElementById("hazerHazeSlider").value     = d.haze ?? 0;
+      document.getElementById("hazerHazeVal").textContent  = d.haze ?? 0;
+    }
+
     async function loadHazer() {
+      const infoEl = document.getElementById("hazerInfo");
+      const ctrlEl = document.getElementById("hazerControls");
       try {
         const d = await apiFetch("/api/admin/hazer");
-        const infoEl = document.getElementById("hazerInfo");
-        const ctrlEl = document.getElementById("hazerControls");
         if (!d.available) {
+          infoEl.style.display = "";
           infoEl.textContent = "Hazer not available.";
           ctrlEl.style.display = "none";
           return;
         }
         infoEl.style.display = "none";
         ctrlEl.style.display = "";
-        const enabledEl = document.getElementById("hazerEnabledVal");
-        enabledEl.textContent = d.enabled ? "ON" : "OFF";
-        enabledEl.style.color = d.enabled ? "var(--green)" : "var(--muted)";
-        document.getElementById("hazerFanSlider").value = d.fan ?? 0;
-        document.getElementById("hazerFanVal").textContent = d.fan ?? 0;
-        document.getElementById("hazerHazeSlider").value = d.haze ?? 0;
-        document.getElementById("hazerHazeVal").textContent = d.haze ?? 0;
+        applyHazerEnabled(d);
+        applyHazerSliders(d);
       } catch (e) {
-        document.getElementById("hazerInfo").textContent = "Error: " + e.message;
+        infoEl.style.display = "";
+        infoEl.textContent = "Hazer status failed: " + e.message;
+        ctrlEl.style.display = "none";
       }
     }
 
-    async function postHazer(body) {
+    /**
+     * postHazer — write hazer settings. Returns the server echo, or null on
+     * failure (after toasting and hard-correcting the sliders back to truth).
+     * syncSliders=false keeps the operator's local slider position — the
+     * control must not jump under their finger on a slow or clamped write.
+     */
+    async function postHazer(body, syncSliders = true) {
       try {
         const d = await apiPost("/api/admin/hazer", body);
-        const enabledEl = document.getElementById("hazerEnabledVal");
-        enabledEl.textContent = d.enabled ? "ON" : "OFF";
-        enabledEl.style.color = d.enabled ? "var(--green)" : "var(--muted)";
-        document.getElementById("hazerFanSlider").value = d.fan ?? 0;
-        document.getElementById("hazerFanVal").textContent = d.fan ?? 0;
-        document.getElementById("hazerHazeSlider").value = d.haze ?? 0;
-        document.getElementById("hazerHazeVal").textContent = d.haze ?? 0;
-      } catch (e) { console.error("Hazer POST error:", e); }
+        applyHazerEnabled(d);
+        if (syncSliders) applyHazerSliders(d);
+        return d;
+      } catch (e) {
+        toast("Hazer write failed: " + e.message, "error");
+        try { applyHazerSliders(await apiFetch("/api/admin/hazer")); } catch {}
+        return null;
+      }
     }
 
     document.getElementById("btnHazerToggle").addEventListener("click", async function () {
       // Read current state then toggle
       try {
-        const d = await apiFetch("/api/admin/hazer");
-        await btnLoading(this, postHazer({ enabled: !d.enabled }));
-      } catch (e) { console.error("Hazer toggle error:", e); }
+        const cur = await apiFetch("/api/admin/hazer");
+        const d = await btnLoading(this, postHazer({ enabled: !cur.enabled }));
+        if (d) toast(`Hazer ${d.enabled ? "enabled" : "disabled"}.`);
+      } catch (e) { toast("Hazer toggle failed: " + e.message, "error"); }
     });
 
-    document.getElementById("hazerFanSlider").addEventListener("input", function () {
-      document.getElementById("hazerFanVal").textContent = this.value;
-    });
-    document.getElementById("hazerFanSlider").addEventListener("change", function () {
-      postHazer({ fan: parseInt(this.value, 10) });
-    });
+    /* Sliders: debounce on `input`, keep the local value optimistic. */
+    const _hazerTimers = {};
+    function hazerSlide(kind) {
+      const slider = document.getElementById(kind === "fan" ? "hazerFanSlider" : "hazerHazeSlider");
+      const valEl  = document.getElementById(kind === "fan" ? "hazerFanVal"    : "hazerHazeVal");
+      valEl.textContent = slider.value;
+      clearTimeout(_hazerTimers[kind]);
+      _hazerTimers[kind] = setTimeout(() => {
+        postHazer({ [kind]: parseInt(slider.value, 10) }, false);
+      }, 250);
+    }
 
-    document.getElementById("hazerHazeSlider").addEventListener("input", function () {
-      document.getElementById("hazerHazeVal").textContent = this.value;
-    });
-    document.getElementById("hazerHazeSlider").addEventListener("change", function () {
-      postHazer({ haze: parseInt(this.value, 10) });
-    });
+    document.getElementById("hazerFanSlider").addEventListener("input",  () => hazerSlide("fan"));
+    document.getElementById("hazerHazeSlider").addEventListener("input", () => hazerSlide("haze"));
 
     /* -----------------------------------------------------------------------
        RUNS
     ----------------------------------------------------------------------- */
+    const RUNS_PAGE = 50;
     let _runsOffset = 0;
     let _runsAccumulated = [];
+    let _runsTotal = null;
 
     async function loadRuns(reset = true) {
       if (reset) {
         _runsOffset = 0;
         _runsAccumulated = [];
+        document.getElementById("runsBody").innerHTML =
+          '<tr><td colspan="8" style="color:var(--muted); padding:16px;">Loading…</td></tr>';
       }
       const q = document.getElementById("runSearch").value.trim();
+      const countEl = document.getElementById("runsCount");
       try {
-        const d = await apiFetch(`/api/admin/runs?limit=50&offset=${_runsOffset}&q=${encodeURIComponent(q)}`);
+        const d = await apiFetch(
+          `/api/admin/runs?limit=${RUNS_PAGE}&offset=${_runsOffset}&q=${encodeURIComponent(q)}`);
         const newRuns = d.runs || [];
+        _runsTotal = typeof d.total === "number" ? d.total : null;
         _runsAccumulated = reset ? newRuns : [..._runsAccumulated, ...newRuns];
         renderRuns(_runsAccumulated);
-        // Show/hide "Load more" based on whether a full page was returned
-        document.getElementById("btnRunsLoadMore").style.display = newRuns.length < 50 ? "none" : "";
+        countEl.textContent = _runsTotal != null
+          ? `${_runsAccumulated.length} of ${_runsTotal}${q ? ` matching "${q}"` : ""}`
+          : `${_runsAccumulated.length} shown`;
+        // Search is now server-side, so a short page really means "no more rows"
+        const more = _runsTotal != null
+          ? _runsAccumulated.length < _runsTotal
+          : newRuns.length === RUNS_PAGE;
+        document.getElementById("btnRunsLoadMore").style.display = more ? "" : "none";
       } catch (e) {
+        countEl.textContent = "";
+        document.getElementById("btnRunsLoadMore").style.display = "none";
         document.getElementById("runsBody").innerHTML =
           `<tr><td colspan="8" style="color:var(--red)">${esc(e.message)}</td></tr>`;
       }
@@ -1582,78 +1952,96 @@
         tbody.innerHTML = '<tr><td colspan="8" style="color:var(--muted); padding:16px;">No runs found.</td></tr>';
         return;
       }
-      tbody.innerHTML = runs.map((r, i) => `
-        <tr class="clickable" data-run-idx="${i}">
+      tbody.innerHTML = runs.map((r, i) => {
+        const started = r.started_at ? relTime(r.started_at) : { text: "—", title: "" };
+        const btnStyle = "font-size:10px;padding:4px 8px;";
+        return `
+        <tr class="clickable" data-run-idx="${i}" data-run-id="${esc(r.id)}">
           <td>${esc(r.player_nickname)}</td>
           <td><span class="badge ${esc(r.outcome)}">${esc(r.outcome)}</span></td>
           <td style="font-family:monospace">${fmtMs(r.elapsed_ms)}</td>
-          <td>${r.segment_reached ?? "—"}</td>
+          <td>${esc(r.segment_reached)}</td>
           <td>${esc(r.detection_mode)}</td>
           <td>${esc(r.busting_beam_id)}</td>
-          <td style="font-family:monospace">${esc((r.started_at||"").slice(0,16))}</td>
+          <td style="font-family:monospace" title="${esc(started.title)}">${esc(started.text)}</td>
           <td>
             ${r.outcome !== "voided"
-              ? `<button class="btn btn-default" style="font-size:10px;padding:4px 8px;"
-                   onclick="voidRun('${r.id}',event)">Void</button>`
-              : `<button class="btn btn-default" style="font-size:10px;padding:4px 8px;"
-                   onclick="unvoidRun('${r.id}',event)">Unvoid</button>`}
+              ? `<button class="btn btn-default run-void-btn" data-run-id="${esc(r.id)}" style="${btnStyle}">Void</button>`
+              : `<button class="btn btn-default run-unvoid-btn" data-run-id="${esc(r.id)}" style="${btnStyle}">Unvoid</button>`}
           </td>
         </tr>
         <tr id="events-${i}">
           <td colspan="8" style="padding:0;">
-            <div class="run-events" id="evts-${i}">Loading…</div>
+            <div class="run-events" id="evts-${i}"></div>
           </td>
-        </tr>
-      `).join("");
+        </tr>`;
+      }).join("");
+    }
 
-      // Expand/collapse events on row click
-      document.querySelectorAll(".clickable[data-run-idx]").forEach(row => {
-        row.addEventListener("click", (e) => {
-          if (e.target.tagName === "BUTTON") return;
-          const idx = row.dataset.runIdx;
-          const pane = document.getElementById(`evts-${idx}`);
-          const isOpen = pane.classList.contains("open");
-          pane.classList.toggle("open", !isOpen);
-          if (!isOpen && pane.textContent === "Loading…") {
-            const runId = runs[idx].id;
-            apiFetch(`/api/admin/runs/${runId}/events`)
-              .then(d => {
-                pane.textContent = (d.events || [])
-                  .map(ev => `${ev.ts_wall} [${ev.type}] ${ev.source}: ${ev.payload_json || ""}`)
-                  .join("\n") || "(no events)";
-              })
-              .catch(err => { pane.textContent = `Error: ${err.message}`; });
-          }
+    /* One delegated listener on the tbody — run ids never end up inside an
+       inline onclick JS string literal. */
+    document.getElementById("runsBody").addEventListener("click", (ev) => {
+      const voidBtn = ev.target.closest(".run-void-btn");
+      if (voidBtn) { ev.stopPropagation(); voidRun(voidBtn.dataset.runId, voidBtn); return; }
+      const unvoidBtn = ev.target.closest(".run-unvoid-btn");
+      if (unvoidBtn) { ev.stopPropagation(); unvoidRun(unvoidBtn.dataset.runId, unvoidBtn); return; }
+      const row = ev.target.closest("tr.clickable[data-run-idx]");
+      if (row) toggleRunEvents(row.dataset.runIdx, row.dataset.runId);
+    });
+
+    function toggleRunEvents(idx, runId) {
+      const pane = document.getElementById(`evts-${idx}`);
+      if (!pane) return;
+      const isOpen = pane.classList.contains("open");
+      pane.classList.toggle("open", !isOpen);
+      if (isOpen || pane.dataset.loaded === "1") return;
+      pane.textContent = "Loading…";
+      apiFetch(`/api/admin/runs/${encodeURIComponent(runId)}/events`)
+        .then(d => {
+          pane.dataset.loaded = "1";
+          pane.textContent = (d.events || [])
+            .map(ev => `${ev.ts_wall} [${ev.type}] ${ev.source}: ${ev.payload_json || ""}`)
+            .join("\n") || "(no events)";
+        })
+        .catch(err => {
+          // Leave `loaded` unset so collapsing and re-expanding retries
+          pane.dataset.loaded = "";
+          pane.textContent = `Error: ${err.message} — collapse and re-open to retry`;
         });
-      });
     }
 
-    async function voidRun(runId, evt) {
-      evt.stopPropagation();
-      const reason = prompt("Void reason:");
+    async function voidRun(runId, btn) {
+      const reason = await modalVoidReason();
       if (reason === null) return;
+      if (!reason.trim()) { toast("Void cancelled — a reason is required.", "error"); return; }
       try {
-        await apiPost(`/api/admin/runs/${runId}/void`, { reason });
+        await btnLoading(btn, apiPost(`/api/admin/runs/${encodeURIComponent(runId)}/void`, { reason }));
+        toast(`Run voided — ${reason}`);
         loadRuns(true);
-      } catch (e) { alert("Void failed: " + e.message); }
+      } catch (e) { toast("Void failed: " + e.message, "error"); }
     }
 
-    async function unvoidRun(runId, evt) {
-      evt.stopPropagation();
+    async function unvoidRun(runId, btn) {
+      const ok = await modalConfirm(
+        "Unvoid this run?",
+        "The run returns to the leaderboard as a clean run.",
+        "Unvoid");
+      if (!ok) return;
       try {
-        await apiPost(`/api/admin/runs/${runId}/unvoid`, {});
+        await btnLoading(btn, apiPost(`/api/admin/runs/${encodeURIComponent(runId)}/unvoid`, {}));
+        toast("Run unvoided.");
         loadRuns(true);
-      } catch (e) { alert("Unvoid failed: " + e.message); }
+      } catch (e) { toast("Unvoid failed: " + e.message, "error"); }
     }
 
     document.getElementById("btnRunRefresh").addEventListener("click", () => loadRuns(true));
     document.getElementById("runSearch").addEventListener("keydown", e => { if (e.key==="Enter") loadRuns(true); });
     document.getElementById("btnRunsLoadMore").addEventListener("click", () => {
-      _runsOffset += 50;
+      _runsOffset += RUNS_PAGE;
       loadRuns(false);
     });
     document.getElementById("btnExportCsv").addEventListener("click", () => {
-      window.location = "/api/admin/export/runs.csv";
+      startDownload("/api/admin/export/runs.csv");
     });
 
     /* -----------------------------------------------------------------------
@@ -1684,7 +2072,7 @@
           <td class="${rankClass}">${rank}</td>
           <td>${esc(e.player_nickname)}</td>
           <td class="lb-time">${fmtMs(e.elapsed_ms)}</td>
-          <td style="font-family:monospace">${esc((e.started_at||"").slice(0,10))}</td>
+          <td style="font-family:monospace">${esc(e.started_at ? e.started_at.slice(0,10) : null)}</td>
           <td>${esc(e.detection_mode)}</td>
         </tr>`;
       }).join("");
@@ -1704,7 +2092,7 @@
 
     document.getElementById("btnLbRefresh").addEventListener("click", loadLeaderboard);
     document.getElementById("btnLbExportCsv").addEventListener("click", () => {
-      window.location = "/api/admin/export/leaderboard.csv";
+      startDownload("/api/admin/export/leaderboard.csv");
     });
 
     /* -----------------------------------------------------------------------
@@ -1713,116 +2101,199 @@
     async function loadSyncStatus() {
       try {
         const d = await apiFetch("/api/admin/outbox");
-        document.getElementById("syncDepth").textContent   = d.depth ?? "—";
-        document.getElementById("syncLastOk").textContent  = d.last_push_ok_at  || "—";
-        document.getElementById("syncLastErr").textContent = d.last_error || "—";
+        const depthEl = document.getElementById("syncDepth");
+        depthEl.textContent = d.depth ?? "—";
+        depthEl.style.color = d.depth ? "var(--red)" : "var(--green)";
+        // last_push_ok_at may be monotonic — only render a real ISO timestamp
+        setRelTime("syncLastOk", isoOrNull(d.last_push_iso) || isoOrNull(d.last_push_ok_at));
+        const errEl = document.getElementById("syncLastErr");
+        errEl.textContent = d.last_error || "—";
+        errEl.style.color = d.last_error ? "var(--red)" : "";
         document.getElementById("syncPaused").textContent  = d.paused ? "YES" : "No";
         document.getElementById("syncPaused").style.color  = d.paused ? "var(--red)" : "var(--green)";
         document.getElementById("btnPauseResume").textContent = d.paused ? "Resume Backup" : "Pause Backup";
       } catch (e) {
-        console.error("Sync status error:", e);
+        ["syncDepth","syncLastOk","syncLastErr","syncPaused"].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) { el.textContent = "—"; el.title = ""; }
+        });
+        showMsg("syncActionMsg", "Sync status unavailable: " + e.message, true);
       }
     }
 
-    document.getElementById("btnPushNow").addEventListener("click", async () => {
+    document.getElementById("btnPushNow").addEventListener("click", async function () {
       try {
-        await apiPost("/api/admin/outbox/push");
+        await btnLoading(this, apiPost("/api/admin/outbox/push"));
         showMsg("syncActionMsg", "Push triggered.");
+        toast("Outbox push triggered.");
         setTimeout(loadSyncStatus, 1500);
-      } catch (e) { showMsg("syncActionMsg", e.message, true); }
+      } catch (e) {
+        showMsg("syncActionMsg", e.message, true);
+        toast("Push failed: " + e.message, "error");
+      }
     });
 
-    document.getElementById("btnPauseResume").addEventListener("click", async () => {
+    document.getElementById("btnPauseResume").addEventListener("click", async function () {
       try {
         const d = await apiFetch("/api/admin/outbox");
-        await apiPost(d.paused ? "/api/admin/outbox/resume" : "/api/admin/outbox/pause");
+        await btnLoading(this, apiPost(d.paused ? "/api/admin/outbox/resume" : "/api/admin/outbox/pause"));
         showMsg("syncActionMsg", d.paused ? "Sync resumed." : "Sync paused.");
+        toast(d.paused ? "Cloud sync resumed." : "Cloud sync paused.", d.paused ? "ok" : "warn");
         setTimeout(loadSyncStatus, 800);
-      } catch (e) { showMsg("syncActionMsg", e.message, true); }
+      } catch (e) {
+        showMsg("syncActionMsg", e.message, true);
+        toast("Pause/resume failed: " + e.message, "error");
+      }
     });
 
-    document.getElementById("btnRetryFailed").addEventListener("click", async () => {
+    document.getElementById("btnRetryFailed").addEventListener("click", async function () {
       try {
-        await apiPost("/api/admin/outbox/reset-backoff");
+        await btnLoading(this, apiPost("/api/admin/outbox/reset-backoff"));
         showMsg("syncActionMsg", "Backoff reset on failed rows.");
-      } catch (e) { showMsg("syncActionMsg", e.message, true); }
+        toast("Backoff reset on failed rows.");
+      } catch (e) {
+        showMsg("syncActionMsg", e.message, true);
+        toast("Retry failed: " + e.message, "error");
+      }
     });
 
-    document.getElementById("btnTestEndpoint").addEventListener("click", async () => {
+    document.getElementById("btnTestEndpoint").addEventListener("click", async function () {
       try {
-        const d = await apiFetch("/api/admin/outbox/test");
+        const d = await btnLoading(this, apiFetch("/api/admin/outbox/test"));
         showMsg("syncActionMsg", `Endpoint OK: ${JSON.stringify(d.result) || "200"}`);
-      } catch (e) { showMsg("syncActionMsg", `Failed: ${e.message}`, true); }
+        toast("Endpoint reachable.");
+      } catch (e) {
+        showMsg("syncActionMsg", `Failed: ${e.message}`, true);
+        toast("Endpoint test failed: " + e.message, "error");
+      }
     });
 
     document.getElementById("btnExportSnapshot").addEventListener("click", () => {
-      window.location = "/api/admin/snapshot";
+      startDownload("/api/admin/snapshot");
     });
 
     /* -----------------------------------------------------------------------
        CONFIG
     ----------------------------------------------------------------------- */
+    const CFG_FILES = ["game", "hardware", "mazes", "beams"];
+    /* Dirty tracking — the config tab must never silently discard typed edits. */
+    const _cfgDirty = {};
+
     document.querySelectorAll(".cfg-tab-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         const cfg = btn.dataset.cfg;
         document.querySelectorAll(".cfg-tab-btn").forEach(b => {
-          b.style.background = "transparent";
-          b.style.color = "var(--muted)";
+          const on = b === btn;
+          b.classList.toggle("active", on);
+          b.style.background = on ? "var(--surface2)" : "transparent";
+          b.style.color      = on ? "var(--accent)"   : "var(--muted)";
         });
-        btn.style.background = "var(--surface2)";
-        btn.style.color = "var(--accent)";
-        ["game","hardware","mazes","beams"].forEach(f => {
+        CFG_FILES.forEach(f => {
           document.getElementById(`cfgCard-${f}`).style.display = f === cfg ? "" : "none";
         });
       });
     });
 
+    CFG_FILES.forEach(f => {
+      const ta = document.getElementById(`cfgEditor-${f}`);
+      if (!ta) return;
+      ta.addEventListener("input", () => {
+        if (_cfgDirty[f]) return;
+        _cfgDirty[f] = true;
+        const m = document.getElementById(`cfgMsg-${f}`);
+        if (m) { m.textContent = "Unsaved changes."; m.style.color = "var(--orange)"; }
+      });
+    });
+
     async function loadCfgFile(file) {
+      const el = document.getElementById(`cfgEditor-${file}`);
       try {
         const d = await apiFetch(`/api/admin/config/${file}`);
-        document.getElementById(`cfgEditor-${file}`).value = d.content || "";
+        el.value = d.content || "";
+        _cfgDirty[file] = false;
+        const m = document.getElementById(`cfgMsg-${file}`);
+        if (m && m.textContent === "Unsaved changes.") m.textContent = "";
       } catch (e) {
-        document.getElementById(`cfgEditor-${file}`).value = `# Error: ${e.message}`;
+        el.value = `# Error: ${e.message}`;
+        _cfgDirty[file] = false;
+        toast(`Could not read ${file}: ${e.message}`, "error");
       }
     }
 
     async function saveCfg(file) {
-      if (!confirm("Apply changes? This takes effect immediately.")) return;
+      const ok = await modalConfirm(
+        "Apply changes?",
+        `${file} is written and applied immediately.`,
+        "Save & apply");
+      if (!ok) return;
       const content = document.getElementById(`cfgEditor-${file}`).value;
       const msgEl = document.getElementById(`cfgMsg-${file}`);
+      const btn = document.querySelector(`#cfgCard-${file} .btn-primary`);
+      const req = apiPost(`/api/admin/config/${file}`, { content });
       try {
-        await apiPost(`/api/admin/config/${file}`, { content });
+        await (btn ? btnLoading(btn, req) : req);
+        _cfgDirty[file] = false;
         msgEl.textContent = "Saved.";
         msgEl.style.color = "var(--green)";
+        toast(`${file} saved and applied.`);
+        setTimeout(() => { msgEl.textContent = ""; }, 5000);
+        // Other tabs cache this file's contents — drop them and reload the
+        // visible tab so nothing is edited against stale geometry.
+        invalidateConfigCaches();
         loadAuditLog();
       } catch (e) {
         msgEl.textContent = e.message;
         msgEl.style.color = "var(--red)";
+        toast(`Save failed: ${e.message}`, "error");
       }
-      setTimeout(() => { msgEl.textContent = ""; }, 5000);
+    }
+
+    function invalidateConfigCaches() {
+      _cachedBeams = [];
+      _beamsById   = new Map();
+      meAllBeams   = [];
+      meAllPresets = {};
+      meStrips     = {};        // loadPresets only re-seeds this when it's empty
+      meCurrentDescription = "";
+      _showsCache  = {};
+      switch (_activeTab) {
+        case "beams":      loadBeams(); break;
+        case "presets":    loadPresets(); break;
+        case "hardware":   loadHardware(); break;
+        case "mastermode": loadMasterMode(); break;
+      }
     }
 
     async function loadConfig() {
-      await Promise.all(["game","hardware","mazes","beams"].map(f => loadCfgFile(f)));
+      const clean = CFG_FILES.filter(f => !_cfgDirty[f]);
+      const dirty = CFG_FILES.filter(f => _cfgDirty[f]);
+      await Promise.all(clean.map(f => loadCfgFile(f)));
+      if (dirty.length) toast(`Unsaved edits kept in: ${dirty.join(", ")}`, "warn");
       loadAuditLog();
     }
 
     async function loadAuditLog() {
+      const tbody = document.getElementById("auditBody");
       try {
         const d = await apiFetch("/api/admin/config/audit");
-        const tbody = document.getElementById("auditBody");
         const rows = d.entries || [];
         if (!rows.length) {
           tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">No changes recorded.</td></tr>';
         } else {
-          tbody.innerHTML = rows.map(r => `
+          tbody.innerHTML = rows.map(r => {
+            const t = relTime(r.ts);
+            return `
             <tr>
-              <td style="font-family:monospace">${esc((r.ts||"").slice(0,16))}</td>
+              <td style="font-family:monospace" title="${esc(t.title)}">${esc(t.text)}</td>
               <td>${esc(r.path)}</td>
               <td>${esc(r.actor)}</td>
-            </tr>`).join("");
+            </tr>`;
+          }).join("");
         }
-      } catch {}
+      } catch (e) {
+        tbody.innerHTML =
+          `<tr><td colspan="3" style="color:var(--red)">Audit log failed: ${esc(e.message)}</td></tr>`;
+      }
     }
 
     /* -----------------------------------------------------------------------
@@ -1864,21 +2335,21 @@
         const plate = ROW_PLATES[rn];
 
         h += `<div style="display:grid;grid-template-columns:1fr ${T}px 1fr ${T}px 1fr;grid-template-rows:${T}px ${VLEN}px;">`;
-        const hA = (s,cs) => s ? `class="mestrip" data-sid="${s.id}" style="background:${cs.bg};border-radius:1px;cursor:pointer;transition:background .1s;"` : `style=""`;
+        const hA = (s,cs) => s ? `class="mestrip" data-sid="${esc(s.id)}" title="${esc(s.id)}" style="background:${cs.bg};border-radius:1px;cursor:pointer;transition:background .1s;"` : `style=""`;
         h += `<div ${hA(s1,c1)}></div>`;
         h += `<div style="background:${c2.bg};border-radius:1px;"></div>`;
         h += `<div ${hA(s3,c3)}></div>`;
         h += `<div style="background:${c4.bg};border-radius:1px;"></div>`;
         h += `<div ${hA(s5,c5)}></div>`;
         h += `<div></div>`;
-        h += s2?`<div class="mestrip" data-sid="${s2.id}" style="background:${c2.bg};border-radius:1px;cursor:pointer;transition:background .1s;"></div>`:`<div></div>`;
+        h += s2?`<div class="mestrip" data-sid="${esc(s2.id)}" title="${esc(s2.id)}" style="background:${c2.bg};border-radius:1px;cursor:pointer;transition:background .1s;"></div>`:`<div></div>`;
         h += `<div style="display:flex;align-items:center;justify-content:center;">`;
         if (plate) {
           const col = plate==="START" ? "var(--green)" : "#0070ea";
           h += `<span style="font-size:8px;font-weight:800;color:${col};letter-spacing:1px;">${plate}</span>`;
         }
         h += `</div>`;
-        h += s4?`<div class="mestrip" data-sid="${s4.id}" style="background:${c4.bg};border-radius:1px;cursor:pointer;transition:background .1s;"></div>`:`<div></div>`;
+        h += s4?`<div class="mestrip" data-sid="${esc(s4.id)}" title="${esc(s4.id)}" style="background:${c4.bg};border-radius:1px;cursor:pointer;transition:background .1s;"></div>`:`<div></div>`;
         h += `<div></div>`;
         h += `</div>`;
       }
@@ -1942,8 +2413,9 @@
         // Maze selector (only maze_1/2/3)
         const select = document.getElementById("mePresetSelect");
         select.innerHTML = MAZE_NAMES.map(n =>
-          `<option value="${n}" ${n===meCurrentMaze?"selected":""}>${n.replace("_"," ").toUpperCase()}</option>`
+          `<option value="${esc(n)}" ${n===meCurrentMaze?"selected":""}>${esc(n.replace("_"," ").toUpperCase())}</option>`
         ).join("");
+        select.value = meCurrentMaze;
 
         // Show editor preset dropdown (all presets)
         const seSelect = document.getElementById("seAddPreset");
@@ -1957,19 +2429,38 @@
           const isMaze = MAZE_NAMES.includes(name);
           return `<div class="info-row">
             <span class="info-key" style="${isMaze?"color:var(--accent);":""}">${esc(name)}</span>
-            <span class="info-val" style="font-size:12px;">${chStr} — ${esc(p.description || "")}</span>
+            <span class="info-val" style="font-size:12px;">${esc(chStr)} — ${esc(p.description || "")}</span>
           </div>`;
         }).join("");
 
         meRenderGrid();
-      } catch (e) { console.error("loadPresets error:", e); }
+      } catch (e) {
+        document.getElementById("presetList").innerHTML =
+          `<span style="color:var(--red)">Preset load failed: ${esc(e.message)}</span>`;
+        document.getElementById("meGrid").innerHTML =
+          `<div class="beams-placeholder" style="color:var(--red)">${esc(e.message)}</div>`;
+        toast("Preset load failed: " + e.message, "error");
+      }
+      loadShows();
     }
 
-    document.getElementById("meLoadBtn").addEventListener("click", () => {
-      meCurrentMaze = document.getElementById("mePresetSelect").value;
-      const p = meAllPresets[meCurrentMaze];
-      meLoadFromPreset(p);
+    /**
+     * meSelectMaze — the grid, the description and the save target must always
+     * describe the same maze, otherwise Save overwrites the wrong one.
+     */
+    function meSelectMaze(name) {
+      meCurrentMaze = name;
+      document.getElementById("mePresetSelect").value = name;
+      meLoadFromPreset(meAllPresets[meCurrentMaze]);
       meRenderGrid();
+    }
+
+    document.getElementById("mePresetSelect").addEventListener("change", function () {
+      meSelectMaze(this.value);
+    });
+
+    document.getElementById("meLoadBtn").addEventListener("click", () => {
+      meSelectMaze(document.getElementById("mePresetSelect").value);
     });
 
     document.getElementById("meClearBtn").addEventListener("click", () => {
@@ -1981,29 +2472,86 @@
       meRenderGrid();
     });
 
-    document.getElementById("mePreviewBtn").addEventListener("click", async () => {
-      const channels = meGetOnChannels();
-      try {
-        await apiPost("/api/admin/master/engage", {});
-        await new Promise(r => setTimeout(r, 300));
-        await apiPost("/api/admin/master/apply_channels", { channels });
-      } catch (e) { console.error("Preview error:", e); }
-    });
+    /** updatePreviewUi — show EXIT PREVIEW only while preview is actually live. */
+    function updatePreviewUi() {
+      const exitBtn = document.getElementById("meExitPreviewBtn");
+      if (!exitBtn) return;
+      if (_fsmState !== "MASTER") mePreviewActive = false;
+      exitBtn.style.display = mePreviewActive ? "" : "none";
+    }
 
-    document.getElementById("meSaveBtn").addEventListener("click", async () => {
-      const name = meCurrentMaze;
+    document.getElementById("mePreviewBtn").addEventListener("click", async function () {
       const channels = meGetOnChannels();
       const msg = document.getElementById("meSaveMsg");
+      const ok = await modalConfirm(
+        "Preview live on hardware?",
+        `This engages MASTER MODE and drives ${channels.length} strips on the real maze. ` +
+        "Gameplay is blocked until you exit preview.",
+        "Engage & preview");
+      if (!ok) return;
       try {
-        await apiPost("/api/admin/presets", { name, channels, description: meCurrentDescription });
+        await btnLoading(this, (async () => {
+          if (_fsmState !== "MASTER") {
+            await apiPost("/api/admin/master/engage", {});
+            // Wait for the FSM to actually report MASTER — never a blind sleep
+            const engaged = await waitForMaster(3000);
+            if (!engaged) throw new Error("master mode did not engage within 3s");
+          }
+          await apiPost("/api/admin/master/apply_channels", { channels });
+        })());
+        mePreviewActive = true;
+        updatePreviewUi();
+        msg.textContent = `Previewing ${channels.length} strips live.`;
+        msg.style.color = "var(--green)";
+        toast("Preview live — master mode engaged.", "warn");
+      } catch (e) {
+        mePreviewActive = false;
+        updatePreviewUi();
+        msg.textContent = "Preview failed: " + e.message;
+        msg.style.color = "var(--red)";
+        toast("Preview failed: " + e.message, "error");
+      }
+    });
+
+    document.getElementById("meExitPreviewBtn").addEventListener("click", async function () {
+      const msg = document.getElementById("meSaveMsg");
+      try {
+        await btnLoading(this, apiPost("/api/admin/master/exit", {}));
+        mePreviewActive = false;
+        updatePreviewUi();
+        msg.textContent = "Preview stopped.";
+        msg.style.color = "var(--muted)";
+        toast("Exited master mode.");
+      } catch (e) {
+        msg.textContent = "Exit failed: " + e.message;
+        msg.style.color = "var(--red)";
+        toast("Exit preview failed: " + e.message, "error");
+      }
+    });
+
+    document.getElementById("meSaveBtn").addEventListener("click", async function () {
+      // Save target is whatever the selector says — never a stale meCurrentMaze
+      const name = document.getElementById("mePresetSelect").value || meCurrentMaze;
+      const channels = meGetOnChannels();
+      // Description must belong to the maze being written, not a previous load
+      const description = name === meCurrentMaze
+        ? meCurrentDescription
+        : ((meAllPresets[name] || {}).description || "");
+      const msg = document.getElementById("meSaveMsg");
+      try {
+        await btnLoading(this, apiPost("/api/admin/presets", { name, channels, description }));
+        meCurrentMaze = name;
+        meCurrentDescription = description;
         msg.textContent = `Saved ${name} (${channels.length} strips)`;
         msg.style.color = "var(--green)";
+        toast(`Saved ${name} — ${channels.length} strips.`);
+        setTimeout(() => { msg.textContent = ""; }, 4000);
         loadPresets();
       } catch (e) {
         msg.textContent = e.message;
         msg.style.color = "var(--red)";
+        toast(`Save ${name} failed: ${e.message}`, "error");
       }
-      setTimeout(() => { msg.textContent = ""; }, 4000);
     });
 
     /* -----------------------------------------------------------------------
@@ -2012,6 +2560,13 @@
     let seSteps = [];   // [{preset, hold_ms}, ...]
     let sePlayTimer = null;
     let sePlayingIdx = -1;  // index of currently-playing step, -1 = not playing
+    /* Monotonic generation token. playStep() awaits a POST before rescheduling,
+       so a second Play would otherwise resume the suspended chain and leave two
+       self-rescheduling loops running forever. A chain whose captured token no
+       longer matches simply returns. */
+    let sePlayToken = 0;
+    let _showsCache = {};
+    let seCurrentDescription = "";
 
     function seRenderTimeline(playingIdx = sePlayingIdx) {
       const el = document.getElementById("seTimeline");
@@ -2045,12 +2600,24 @@
       }
     });
 
+    function seStopPlayback() {
+      sePlayToken++;
+      if (sePlayTimer) { clearTimeout(sePlayTimer); sePlayTimer = null; }
+      sePlayingIdx = -1;
+      seRenderTimeline(-1);
+    }
+
     document.getElementById("sePlayBtn").addEventListener("click", async () => {
-      if (!seSteps.length) return;
+      if (!seSteps.length) { toast("No steps to play.", "warn"); return; }
+      if (_fsmState !== "MASTER") { toast("Play requires master mode.", "error"); return; }
       const loop = document.getElementById("seLoop").checked;
+      seStopPlayback();            // invalidates any chain already in flight
+      const token = sePlayToken;
       let idx = 0;
 
       async function playStep() {
+        if (token !== sePlayToken) return;      // superseded by Play or Stop
+        if (!seSteps.length) { seStopPlayback(); return; }
         if (idx >= seSteps.length) {
           if (loop) { idx = 0; } else {
             sePlayTimer = null;
@@ -2064,36 +2631,80 @@
         seRenderTimeline(idx);
         try {
           await apiPost("/api/admin/master/apply_preset", { preset: step.preset });
-        } catch (e) { console.error("Show play error:", e); }
+        } catch (e) {
+          if (token !== sePlayToken) return;
+          seStopPlayback();
+          toast(`Show stopped: ${e.message}`, "error");
+          return;
+        }
+        if (token !== sePlayToken) return;
         idx++;
         sePlayTimer = setTimeout(playStep, step.hold_ms);
       }
-      // Stop any existing playback
-      if (sePlayTimer) clearTimeout(sePlayTimer);
       playStep();
     });
 
-    document.getElementById("seStopBtn").addEventListener("click", () => {
-      if (sePlayTimer) { clearTimeout(sePlayTimer); sePlayTimer = null; }
-      sePlayingIdx = -1;
+    document.getElementById("seStopBtn").addEventListener("click", seStopPlayback);
+
+    /** loadShows — the editor must show what is already saved before overwriting it. */
+    async function loadShows() {
+      const sel = document.getElementById("seShowSelect");
+      const prev = sel.value;
+      try {
+        const d = await apiFetch("/api/admin/shows");
+        _showsCache = d.shows || {};
+        sel.innerHTML = `<option value="">— New show —</option>` +
+          Object.keys(_showsCache).map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+        sel.value = _showsCache[prev] ? prev : "";
+      } catch (e) {
+        _showsCache = {};
+        sel.innerHTML = `<option value="">— New show —</option>`;
+        toast("Could not load shows: " + e.message, "warn");
+      }
+    }
+
+    document.getElementById("seShowSelect").addEventListener("change", function () {
+      seStopPlayback();
+      const name = this.value;
+      if (!name) {
+        seSteps = [];
+        seCurrentDescription = "";
+        document.getElementById("seShowName").value = "";
+        seRenderTimeline(-1);
+        return;
+      }
+      const show = _showsCache[name] || {};
+      seSteps = (show.steps || []).map(s => ({
+        preset: s.preset, hold_ms: s.hold_ms ?? 300,
+      }));
+      seCurrentDescription = show.description || "";
+      document.getElementById("seShowName").value = name;
+      document.getElementById("seLoop").checked = !!show.loop;
       seRenderTimeline(-1);
     });
 
-    document.getElementById("seSaveBtn").addEventListener("click", async () => {
+    document.getElementById("seSaveBtn").addEventListener("click", async function () {
       const name = document.getElementById("seShowName").value.trim();
       const msg = document.getElementById("seSaveMsg");
       if (!name) { msg.textContent = "Enter a show name."; msg.style.color = "var(--red)"; return; }
       if (!seSteps.length) { msg.textContent = "No steps to save."; msg.style.color = "var(--red)"; return; }
       const loop = document.getElementById("seLoop").checked;
+      // Send the description back so the backend doesn't drop it on write
+      const description = (_showsCache[name] || {}).description ?? seCurrentDescription ?? "";
       try {
-        await apiPost("/api/admin/shows", { name, steps: seSteps, loop });
+        await btnLoading(this, apiPost("/api/admin/shows", { name, steps: seSteps, loop, description }));
+        seCurrentDescription = description;
         msg.textContent = `Saved "${name}".`;
         msg.style.color = "var(--green)";
+        toast(`Show "${name}" saved.`);
+        setTimeout(() => { msg.textContent = ""; }, 4000);
+        await loadShows();
+        document.getElementById("seShowSelect").value = _showsCache[name] ? name : "";
       } catch (e) {
         msg.textContent = e.message;
         msg.style.color = "var(--red)";
+        toast(`Show save failed: ${e.message}`, "error");
       }
-      setTimeout(() => { msg.textContent = ""; }, 4000);
     });
 
     seRenderTimeline();
@@ -2101,10 +2712,9 @@
     /* -----------------------------------------------------------------------
        BEAMS
     ----------------------------------------------------------------------- */
-    /* --- Physical grid rendering --- */
-    const STRIP_COLOR = "#264f9a";
-    // Pressure plates are IN specific rows (not between rows)
-    const ROW_PLATES = { 1: "START", 7: "CP1", 9: "CP2" };
+    /* --- Physical grid rendering ---
+       STRIP_COLOR / ROW_PLATES are declared near the top of the script so that
+       neither the WS handler nor the maze editor can touch them in the TDZ. */
 
     function renderGrid(beams) {
       const c = document.getElementById("gridContainer");
@@ -2149,7 +2759,7 @@
         h += `<div style="display:grid;grid-template-columns:1fr ${T}px 1fr ${T}px 1fr;grid-template-rows:${T}px ${VLEN}px;margin-bottom:0;">`;
 
         // Top row: 3 horizontal segments + 2 junction nodes
-        const hAttr = (s,cs) => s ? `class="gstrip" data-bid="${s.id}" title="${s.id}" style="background:${cs.bg};opacity:${cs.op};border-radius:1px;cursor:pointer;transition:all .12s;"` : `style=""`;
+        const hAttr = (s,cs) => s ? `class="gstrip" data-bid="${esc(s.id)}" title="${esc(s.id)}" style="background:${cs.bg};opacity:${cs.op};border-radius:1px;cursor:pointer;transition:all .12s;"` : `style=""`;
         h += `<div ${hAttr(s1,c1)}></div>`;
         h += `<div style="background:${c2.op!=="0"?c2.bg:"transparent"};opacity:${c2.op};border-radius:1px;"></div>`;
         h += `<div ${hAttr(s3,c3)}></div>`;
@@ -2158,7 +2768,7 @@
 
         // Bottom row: verticals + center (plate if applicable)
         h += `<div></div>`;
-        h += s2?`<div class="gstrip" data-bid="${s2.id}" title="${s2.id}" style="background:${c2.bg};opacity:${c2.op};border-radius:1px;cursor:pointer;transition:all .12s;"></div>`:`<div></div>`;
+        h += s2?`<div class="gstrip" data-bid="${esc(s2.id)}" title="${esc(s2.id)}" style="background:${c2.bg};opacity:${c2.op};border-radius:1px;cursor:pointer;transition:all .12s;"></div>`:`<div></div>`;
         h += `<div style="display:flex;align-items:center;justify-content:center;">`;
         if (plate === "START") {
           h += plateHtml("START","rgba(0,255,136,0.12)","var(--green)");
@@ -2166,7 +2776,7 @@
           h += plateHtml(plate,"rgba(0,112,234,0.10)","#0070ea");
         }
         h += `</div>`;
-        h += s4?`<div class="gstrip" data-bid="${s4.id}" title="${s4.id}" style="background:${c4.bg};opacity:${c4.op};border-radius:1px;cursor:pointer;transition:all .12s;"></div>`:`<div></div>`;
+        h += s4?`<div class="gstrip" data-bid="${esc(s4.id)}" title="${esc(s4.id)}" style="background:${c4.bg};opacity:${c4.op};border-radius:1px;cursor:pointer;transition:all .12s;"></div>`:`<div></div>`;
         h += `<div></div>`;
 
         h += `</div>`;
@@ -2188,50 +2798,63 @@
 
     async function toggleBeamMask(beamId, masked) {
       try {
-        await apiPost(`/api/admin/beams/${beamId}/mask`, { masked });
+        await apiPost(`/api/admin/beams/${encodeURIComponent(beamId)}/mask`, { masked });
+        toast(`${beamId} ${masked ? "masked" : "unmasked"}.`);
         loadBeams();
-      } catch (e) { console.error("Mask toggle failed:", e); }
+      } catch (e) { toast(`Mask ${beamId} failed: ${e.message}`, "error"); }
     }
 
     async function loadBeams() {
+      const el = document.getElementById("maskedBeamList");
       try {
         const d = await apiFetch("/api/admin/beams");
         const allBeams = d.beams || [];
         _cachedBeams = allBeams;
+        // Map lookup — the WS overlay touches every strip element at 10Hz
+        _beamsById = new Map(allBeams.map(b => [b.id, b]));
         renderGrid(allBeams);
         const masked = allBeams.filter(b => b.masked);
-        const el = document.getElementById("maskedBeamList");
         if (!masked.length) {
           el.innerHTML = '<span style="color:var(--muted)">No strips masked.</span>';
         } else {
-          el.innerHTML = masked.map(b =>
-            `<div class="info-row">
+          el.innerHTML = masked.map(b => {
+            const when = relTime(b.masked_at);
+            return `<div class="info-row">
               <span class="info-key">${esc(b.id)}</span>
-              <span class="info-val">${esc(b.type || "")} — ${esc(b.masked_reason || "manual")} (${esc(b.masked_at || "")})</span>
-            </div>`).join("");
+              <span class="info-val" title="${esc(when.title)}">${esc(b.type || "")} — ${esc(b.masked_reason || "manual")} (${esc(when.text)})</span>
+            </div>`;
+          }).join("");
         }
-      } catch (e) { console.error("loadBeams error:", e); }
+      } catch (e) {
+        _cachedBeams = [];
+        _beamsById = new Map();
+        document.getElementById("gridContainer").innerHTML =
+          `<div class="beams-placeholder" style="color:var(--red)">Beam load failed: ${esc(e.message)}</div>`;
+        el.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`;
+        toast("Beam load failed: " + e.message, "error");
+      }
     }
 
-    document.getElementById("btnUnmaskAll").addEventListener("click", async () => {
-      if (!confirm("Unmask all strips?")) return;
+    document.getElementById("btnUnmaskAll").addEventListener("click", async function () {
+      const ok = await modalConfirm(
+        "Unmask all strips?",
+        "Every masked strip returns to active detection immediately.",
+        "Unmask all");
+      if (!ok) return;
       try {
-        await apiPost("/api/admin/beams/unmask_all");
+        await btnLoading(this, apiPost("/api/admin/beams/unmask_all"));
+        toast("All strips unmasked.");
         loadBeams();
-      } catch (e) { alert(e.message); }
+      } catch (e) { toast("Unmask all failed: " + e.message, "error"); }
     });
 
     document.getElementById("btnRefreshBeams").addEventListener("click", loadBeams);
 
-    // Cache beams for WS relay state overlay
-    let _cachedBeams = [];
-
     function updateBeamGridFromWs(boardsMap) {
       // Color each strip in the beams grid based on live relay state
-      if (!_cachedBeams.length) return;
+      if (!_beamsById.size) return;
       document.querySelectorAll(".gstrip[data-bid]").forEach(el => {
-        const bid = el.dataset.bid;
-        const beam = _cachedBeams.find(b => b.id === bid);
+        const beam = _beamsById.get(el.dataset.bid);
         if (!beam) return;
         const boardState = boardsMap[beam.board_id];
         if (!boardState || !boardState.coils) return;
@@ -2251,26 +2874,60 @@
     /* -----------------------------------------------------------------------
        MASTER MODE
     ----------------------------------------------------------------------- */
+    /** gridMessage — explicit empty/error state with a Retry. Never invents a board. */
+    function gridMessage(gridId, text, isErr, onRetry) {
+      const grid = document.getElementById(gridId);
+      grid.innerHTML = "";
+      const box = document.createElement("div");
+      box.style.cssText = "width:100%;font-size:12px;font-family:var(--font);color:" +
+        (isErr ? "var(--red)" : "var(--muted)") + ";";
+      box.textContent = text;
+      grid.appendChild(box);
+      if (onRetry) {
+        const retry = document.createElement("button");
+        retry.className = "btn btn-default";
+        retry.style.cssText = "font-size:11px;padding:5px 12px;margin-top:8px;";
+        retry.textContent = "Retry";
+        retry.dataset.nolock = "1";   // stays clickable outside master mode
+        retry.addEventListener("click", onRetry);
+        grid.appendChild(retry);
+      }
+    }
+
     async function loadMasterMode() {
       /* Populate preset buttons */
+      const grid = document.getElementById("presetGrid");
       try {
         const d = await apiFetch("/api/admin/presets");
-        const grid = document.getElementById("presetGrid");
-        grid.innerHTML = "";
-        Object.keys(d.presets || {}).forEach(name => {
-          const btn = document.createElement("button");
-          btn.className = "preset-btn";
-          btn.textContent = name;
-          btn.addEventListener("click", async () => {
-            await apiPost("/api/admin/master/apply_preset", { preset: name });
-            await refreshChannelGrid();
+        const names = Object.keys(d.presets || {});
+        if (!names.length) {
+          gridMessage("presetGrid", "No presets defined in mazes.yaml.", false, loadMasterMode);
+        } else {
+          grid.innerHTML = "";
+          names.forEach(name => {
+            const btn = document.createElement("button");
+            btn.className = "preset-btn";
+            btn.textContent = name;
+            btn.dataset.baseTitle = `Apply preset ${name}`;
+            btn.addEventListener("click", async () => {
+              if (_fsmState !== "MASTER") { toast("Engage master mode first.", "error"); return; }
+              try {
+                await btnLoading(btn, apiPost("/api/admin/master/apply_preset", { preset: name }));
+                toast(`Applied preset ${name}.`);
+              } catch (e) { toast(`Apply ${name} failed: ${e.message}`, "error"); }
+              await refreshChannelGrid();
+            });
+            grid.appendChild(btn);
           });
-          grid.appendChild(btn);
-        });
-      } catch {}
+        }
+      } catch (e) {
+        gridMessage("presetGrid", `Preset load failed: ${e.message}`, true, loadMasterMode);
+        toast("Preset load failed: " + e.message, "error");
+      }
 
       /* Populate channel toggles — iterate all boards from /api/admin/hardware */
       await refreshChannelGrid();
+      applyMasterLock();
     }
 
     async function refreshChannelGrid() {
@@ -2278,14 +2935,11 @@
       try {
         const hw = await apiFetch("/api/admin/hardware");
         const boards = hw.boards || [];
-        grid.innerHTML = "";
         if (!boards.length) {
-          // Fallback: single board, channels 1-16
-          for (let i = 1; i <= 16; i++) {
-            grid.appendChild(makeChannelBtn("board1", i, null));
-          }
+          gridMessage("channelGrid", "No relay boards configured in hardware.yaml.", false, refreshChannelGrid);
           return;
         }
+        grid.innerHTML = "";
         boards.forEach(board => {
           // Label group
           const label = document.createElement("div");
@@ -2298,80 +2952,147 @@
             grid.appendChild(makeChannelBtn(board.id, i, isOn));
           }
         });
-      } catch {
-        // Fallback on error
-        grid.innerHTML = "";
-        for (let i = 1; i <= 16; i++) {
-          grid.appendChild(makeChannelBtn("board1", i, null));
-        }
+      } catch (e) {
+        gridMessage("channelGrid", `Hardware read failed: ${e.message}`, true, refreshChannelGrid);
       }
+      applyMasterLock();
+    }
+
+    /** shortBoardId — compact grid label; ids need not end in digits (SM-NODE-DMX). */
+    function shortBoardId(boardId) {
+      let s = String(boardId || "");
+      const m = s.match(/(\d+)$/);
+      if (m) {
+        s = m[1];
+      } else {
+        const parts = s.split(/[-_.\s]+/).filter(Boolean);
+        if (parts.length) s = parts[parts.length - 1];
+      }
+      return s.length > 6 ? s.slice(0, 6) + "\u2026" : (s || "?");
     }
 
     function makeChannelBtn(boardId, ch, initialState) {
       const btn = document.createElement("button");
       btn.className = "channel-btn" + (initialState ? " on" : "");
-      // Shorten board_id to numeric suffix (e.g. "SM-NODE-1" → "1") for compact display
-      const shortId = boardId.replace(/^.*?(\d+)$/, "$1") || boardId;
-      const label = `${shortId}:${ch}`;
+      const label = `${shortBoardId(boardId)}:${ch}`;
       btn.textContent = label;
       if (label.length > 10) btn.style.fontSize = "9px";
       btn.style.width = "72px"; // wider to fit board_id:ch_num label
       btn.dataset.boardId = boardId;
       btn.dataset.ch = ch;
+      btn.dataset.baseTitle = `${boardId} channel ${ch}`;
+      btn.title = btn.dataset.baseTitle;
       btn.addEventListener("click", async () => {
+        if (_fsmState !== "MASTER") { toast("Engage master mode first.", "error"); return; }
         const on = btn.classList.contains("on");
+        // No optimistic .on write — the 10Hz coil readback in
+        // updateMasterChannelsFromWs is the only source of truth. Show pending.
+        btn.disabled = true;
+        btn.style.outline = "1px dashed var(--accent)";
         try {
           await apiPost("/api/admin/master/toggle_channel", { board_id: boardId, channel: ch, state: !on });
-          btn.classList.toggle("on", !on);
-        } catch (e) { console.error("Toggle channel failed:", e); }
+        } catch (e) {
+          toast(`Channel ${boardId}:${ch} failed — ${e.message}`, "error");
+        } finally {
+          btn.disabled = false;
+          btn.style.outline = "";
+        }
       });
       return btn;
     }
 
-    document.getElementById("btnEngageMaster").addEventListener("click", async () => {
-      if (!confirm("Engage master mode? Game runs will be excluded from leaderboard.")) return;
-      await apiPost("/api/admin/master/engage");
-    });
-    document.getElementById("btnExitMaster").addEventListener("click", async () => {
-      await apiPost("/api/admin/master/exit");
+    document.getElementById("btnEngageMaster").addEventListener("click", async function () {
+      const ok = await modalConfirm(
+        "Engage master mode?",
+        "Direct hardware control. Runs performed in master mode are excluded from the leaderboard.",
+        "Engage");
+      if (!ok) return;
+      try {
+        await btnLoading(this, apiPost("/api/admin/master/engage"));
+        const engaged = await waitForMaster(3000);
+        if (engaged) toast("Master mode engaged.", "warn");
+        else toast("Engage accepted but the FSM never reported MASTER.", "error");
+      } catch (e) { toast("Engage failed: " + e.message, "error"); }
     });
 
-    document.getElementById("btnSwStart").addEventListener("click", () => apiPost("/api/admin/master/stopwatch", {action:"start"}));
-    document.getElementById("btnSwStop").addEventListener("click",  () => apiPost("/api/admin/master/stopwatch", {action:"stop"}));
-    document.getElementById("btnSwReset").addEventListener("click", () => apiPost("/api/admin/master/stopwatch", {action:"reset"}));
+    document.getElementById("btnExitMaster").addEventListener("click", async function () {
+      try {
+        await btnLoading(this, apiPost("/api/admin/master/exit"));
+        mePreviewActive = false;
+        updatePreviewUi();
+        toast("Exited master mode.");
+      } catch (e) { toast("Exit failed: " + e.message, "error"); }
+    });
+
+    function masterStopwatch(btn, action) {
+      btnLoading(btn, apiPost("/api/admin/master/stopwatch", { action }))
+        .then(() => toast(`Stopwatch ${action}.`))
+        .catch(e => toast(`Stopwatch ${action} failed: ${e.message}`, "error"));
+    }
+
+    document.getElementById("btnSwStart").addEventListener("click", function () { masterStopwatch(this, "start"); });
+    document.getElementById("btnSwStop").addEventListener("click",  function () { masterStopwatch(this, "stop"); });
+    document.getElementById("btnSwReset").addEventListener("click", function () { masterStopwatch(this, "reset"); });
 
     /* -----------------------------------------------------------------------
        LOGS
     ----------------------------------------------------------------------- */
+    const LOG_MAX_LINES = 2000;   // bounded buffer — a tail can run for hours
     let logEventSource = null;
+    let logLines = [];
 
-    document.getElementById("btnLogTail").addEventListener("click", () => {
-      if (logEventSource) logEventSource.close();
+    function appendLogLine(line) {
+      const output = document.getElementById("logOutput");
+      logLines.push(line);
+      if (logLines.length > LOG_MAX_LINES + 200) {
+        // Trim in chunks so the full rebuild is amortised, not per-line
+        logLines = logLines.slice(-LOG_MAX_LINES);
+        output.textContent = logLines.join("\n") + "\n";
+      } else {
+        output.textContent += line + "\n";
+      }
+      output.scrollTop = output.scrollHeight;
+    }
+
+    /** closeLogStream — idempotent; also called on tab change and unload. */
+    function closeLogStream(note) {
+      if (!logEventSource) return;
+      logEventSource.close();
+      logEventSource = null;
+      if (note) appendLogLine(note);
+    }
+
+    document.getElementById("btnLogTail").addEventListener("click", async () => {
+      closeLogStream();
       const unit = document.getElementById("logUnit").value;
       const filter = document.getElementById("logFilter").value;
-      const output = document.getElementById("logOutput");
-      output.textContent = `Streaming ${unit}...\n`;
+      logLines = [`Streaming ${unit}...`];
+      document.getElementById("logOutput").textContent = logLines.join("\n") + "\n";
 
-      const url = `/api/admin/logs/stream?unit=${encodeURIComponent(unit)}&filter=${encodeURIComponent(filter)}`;
+      let url;
+      try {
+        url = await withDownloadToken(
+          `/api/admin/logs/stream?unit=${encodeURIComponent(unit)}&filter=${encodeURIComponent(filter)}`);
+      } catch (e) {
+        appendLogLine(`[could not start stream: ${e.message}]`);
+        return;
+      }
       logEventSource = new EventSource(url);
-      logEventSource.onmessage = (e) => {
-        output.textContent += e.data + "\n";
-        output.scrollTop = output.scrollHeight;
-      };
+      logEventSource.onmessage = (e) => appendLogLine(e.data);
       logEventSource.onerror = () => {
-        output.textContent += "\n[stream ended]\n";
-        logEventSource.close();
-        logEventSource = null;
+        // CLOSED = the server ended the response; CONNECTING = transport error
+        // and the browser is about to retry, which we don't want for a tail.
+        const ended = !!logEventSource && logEventSource.readyState === EventSource.CLOSED;
+        closeLogStream(ended ? "[stream ended by server]" : "[connection error — stream stopped]");
+        if (!ended) toast("Log stream connection error.", "error");
       };
     });
 
     document.getElementById("btnLogStop").addEventListener("click", () => {
-      if (logEventSource) {
-        logEventSource.close();
-        logEventSource = null;
-        document.getElementById("logOutput").textContent += "\n[stopped]\n";
-      }
+      closeLogStream("[stopped]");
     });
+
+    window.addEventListener("beforeunload", () => closeLogStream());
 
     /* -----------------------------------------------------------------------
        DEV
@@ -2422,9 +3143,10 @@
     });
 
     /* -----------------------------------------------------------------------
-       Initial load
+       Initial load — go through onTabActivated so the dashboard's 30s
+       auto-refresh interval actually starts.
     ----------------------------------------------------------------------- */
-    loadDashboard();
+    onTabActivated("dashboard");
   </script>
 </body>
 </html>

@@ -42,6 +42,8 @@ class ReconcileLoop:
         self._resolver = resolver
         self._backend = backend
         self._metrics_emit = metrics_emit
+        # board_id → cumulative mismatch count, surfaced on the admin hardware page
+        self.mismatch_counts: dict[str, int] = {}
 
     async def run(self) -> None:
         """
@@ -86,6 +88,7 @@ class ReconcileLoop:
                 "reconcile MISMATCH board='%s': %s — re-asserting",
                 board_id, ", ".join(diff),
             )
+            self.mismatch_counts[board_id] = self.mismatch_counts.get(board_id, 0) + 1
             self._metrics_emit(
                 "relay.mismatch",
                 value=len(diff),

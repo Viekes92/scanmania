@@ -81,10 +81,25 @@ class ScanManiaApp:
     Call build() to get the ASGI app ready for uvicorn.
     """
 
-    def __init__(self, config: Any, db: Database, hub: WebSocketHub) -> None:
+    def __init__(
+        self,
+        config: Any,
+        db: Database,
+        hub: WebSocketHub,
+        config_dir: Any = None,
+        fake_mode: bool = False,
+    ) -> None:
         self._config = config
         self._db = db
         self._hub = hub
+        # The admin portal must edit the SAME directory the process loaded from
+        # (/etc/scanmania/config in production), not the repo checkout — see
+        # CLAUDE.md invariant 3.
+        if config_dir is None:
+            import config.loader as loader_module
+            config_dir = loader_module.CONFIG_DIR
+        self._config_dir = Path(config_dir)
+        self._fake_mode = fake_mode
         self.app = FastAPI(title="ScanMania", version="1.0")
         self._runner: Any = None  # Set by main after runner is initialised
 
@@ -202,8 +217,9 @@ class ScanManiaApp:
             self._db,
             self,  # pass self so admin routes can call get_outbox()
             self._on_admin_action,
-            str(Path(__file__).parent.parent / "config"),
+            str(self._config_dir),
             get_runner=lambda: self._runner,
+            fake_mode=self._fake_mode,
         )
         self.app.include_router(admin_router)
 

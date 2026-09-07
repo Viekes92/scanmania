@@ -129,6 +129,30 @@ def resolve_config_dir(args: argparse.Namespace) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Admin password
+# ---------------------------------------------------------------------------
+
+def _ensure_admin_password() -> None:
+    """
+    The admin API fails closed when SCANMANIA_ADMIN_PASSWORD is unset. Generate a
+    per-boot password and log it at WARNING so an operator can always recover it
+    from `journalctl -u scanmania-core`, rather than being locked out entirely.
+    """
+    import secrets
+    from web.routes_admin import ENV_PASSWORD_KEY
+
+    if os.environ.get(ENV_PASSWORD_KEY):
+        return
+    generated = secrets.token_urlsafe(12)
+    os.environ[ENV_PASSWORD_KEY] = generated
+    log.warning(
+        "%s is not set — generated a temporary admin password for this boot: %s",
+        ENV_PASSWORD_KEY, generated,
+    )
+    log.warning("Set %s in the service environment to make it permanent.", ENV_PASSWORD_KEY)
+
+
+# ---------------------------------------------------------------------------
 # Backend factory
 # ---------------------------------------------------------------------------
 
@@ -216,6 +240,8 @@ async def async_main(args: argparse.Namespace) -> int:
     # ================================================================
     config_dir = resolve_config_dir(args)
     log.info("Loading config from %s", config_dir)
+
+    _ensure_admin_password()
 
     import config.loader as loader_module
     loader_module.CONFIG_DIR = config_dir
@@ -319,7 +345,7 @@ async def async_main(args: argparse.Namespace) -> int:
         tasks.append(asyncio.create_task(hazer.run(), name="hazer"))
 
     # WebServer
-    web_app = ScanManiaApp(cfg, db, hub)
+    web_app = ScanManiaApp(cfg, db, hub, config_dir=config_dir, fake_mode=args.fake_all)
     web_app.set_runner(runner)
     if hazer:
         web_app.set_hazer(hazer)

@@ -1616,7 +1616,7 @@
       clearTimeout(hazerDebounce);
       hazerDebounce = setTimeout(async () => {
         try {
-          await fetch("/api/admin/hazer", {
+          await fetch("/api/gm/hazer", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ fan: parseInt(hazerFanSlider.value), haze: parseInt(hazerHazeSlider.value) }),
@@ -1629,7 +1629,7 @@
     hazerHazeSlider.addEventListener("input", () => { hazerHazeVal.textContent = hazerHazeSlider.value; sendHazerUpdate(); });
 
     // Load initial hazer state
-    fetch("/api/admin/hazer").then(r=>r.json()).then(d => {
+    fetch("/api/gm/hazer").then(r=>r.json()).then(d => {
       if (d.available) updateHazerUI(d);
       else { hHazerLed.className = "health-led warn"; hHazerLabel.textContent = "Hazer N/A"; }
     }).catch(() => { hHazerLed.className = "health-led warn"; });

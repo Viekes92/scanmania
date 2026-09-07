@@ -7,6 +7,90 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Admin panel audit — backend and frontend
+
+#### Fixed (correctness / data loss)
+
+- **Logs tab was completely unreachable.** `/api/admin/logs/{unit}` was registered before
+  `/api/admin/logs/stream`; Starlette matches in registration order, so the path parameter
+  swallowed `stream`. The stream route is now registered first, with a comment pinning the order.
+
+- **Admin edited the wrong config directory in production.** `web/server.py` hardcoded
+  `<repo>/config` while `__main__.py` resolves `/etc/scanmania/config`. Every admin config write
+  on the NUC targeted files the process never loaded, silently breaking invariant 3. The resolved
+  directory is now threaded from `__main__.py` through `ScanManiaApp` into `register_routes`.
+
+- **Unvoid guessed the original outcome.** Voiding overwrote `runs.outcome`, so unvoiding had to
+  invent a replacement and could resurrect a busted run onto the leaderboard. Schema v2 adds
+  `runs.pre_void_outcome`; unvoid now restores the real value and returns 409 when it is unknown.
+  Voiding with an empty reason is rejected with 422.
+
+- **Config writes could brick the next boot.** A saved file is now validated by running the real
+  loader over a temp directory containing the full candidate config set before anything is written.
+  Writes are serialised under a lock, written atomically with `fsync` on both file and directory,
+  and the audit row records the true before/after content.
+
+- **Master mode wrote coils directly**, bypassing `PresetResolver` and leaving `_desired` stale
+  (invariant 4). `apply_channels()` and `apply_direct()` in `iobackend/presets.py` now own these
+  writes and keep desired state in sync, so the reconciler cannot fight an admin write.
+
+- **The admin API could reset a live player's stopwatch** (invariant 2). All master-mode
+  operations are now gated behind `_require_master()` and raise `MasterModeRequired`.
+
+- **Master-mode failures were invisible.** Routes awaited nothing and always returned `ok: true`.
+  They now await the runner and translate failures into 404 / 409 / 422 / 502.
+
+#### Fixed (security)
+
+- **Removed the default admin password** that was committed in the repo. Auth now fails closed on
+  an unset `SCANMANIA_ADMIN_PASSWORD` (503). To avoid locking out an operator, `__main__.py`
+  generates a per-boot password and logs it at WARNING, recoverable via `journalctl`.
+
+- **Gated every unauthenticated admin read** that exposed operational data, hardware topology,
+  config audit history (including full file contents), or sync error text. `/api/admin/runs`,
+  `/beams` and `/leaderboard` stay open by design — the GM console and outdoor display consume
+  them and have no password.
+
+- **Downloads and the log stream are authenticated.** `window.location` and `EventSource` cannot
+  send headers, so they now use short-lived, single-use download tokens issued over the
+  header-authenticated channel.
+
+- **CSV formula injection** — exported fields beginning with `=`, `+`, `-`, `@`, tab or CR are
+  prefixed with a quote.
+
+- **Non-ASCII password header returned 500** instead of failing auth, because Starlette decodes
+  headers as latin-1 and `hmac.compare_digest` rejects non-ASCII `str`.
+
+- **Dev triggers are restricted to `--fake-all`** and return 404 otherwise;
+  `GET /api/admin/dev/available` lets the UI hide the controls.
+
+- **Journal unit names are validated against an allowlist**, and request bodies are typed and
+  bounded via Pydantic models (channel counts, show steps, name patterns, string lengths).
+
+#### Fixed (responsiveness)
+
+- **The event loop no longer blocks.** `subprocess.run` for journalctl became
+  `asyncio.create_subprocess_exec` with a timeout, and config file reads/writes moved to
+  `asyncio.to_thread`.
+
+- **Run search and pagination moved server-side** (`list_runs(q=...)`, `count_runs`), instead of
+  fetching every run and filtering in the browser.
+
+#### Added
+
+- `GET /api/admin/shows`, real uptime and a `faults` list on `/api/admin/status`, per-board Modbus
+  error counts and reconcile mismatch counters, and `GameRunner.reload_config()` so config saves
+  apply without a restart (deferred, with a note, while a run is in progress).
+
+- `/api/gm/hazer` (unauthenticated, matching the rest of `/api/gm/*`) so the passwordless GM
+  console keeps working now that `/api/admin/hazer` requires auth.
+
+#### Changed
+
+- Admin frontend: fixed the maze editor saving the wrong preset, the show editor's play loop,
+  403 handling with forced re-login, HTML escaping, delegated run-row listeners, a capped log
+  buffer, updates gated to the visible tab, and in-page modals replacing `confirm`/`prompt`.
+
 ---
 
 ## Phase 2 — Runner wired, hardware configured, 72 tests green

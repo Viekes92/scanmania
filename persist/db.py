@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS runs (
     busting_beam_id  TEXT,
     segment_reached  INTEGER,
     voided_reason    TEXT,
+    -- outcome as it was immediately before void_run() overwrote it, so unvoid
+    -- can restore the truth instead of promoting a busted run to 'clean'
+    pre_void_outcome TEXT,
     created_at       TEXT NOT NULL
 );
 
@@ -100,7 +103,7 @@ CREATE INDEX IF NOT EXISTS idx_health_ts          ON health(ts);
 """
 
 # Current schema version — bump when adding migrations.
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 
 def _now_iso() -> str:
@@ -154,7 +157,17 @@ class Database:
             row = await cur.fetchone()
         current = row[0] if row else 0
         if current < _SCHEMA_VERSION:
-            # Future migrations go here as: if current < N: ...
+            if current < 2:
+                # v2: remember the pre-void outcome so unvoid can restore it.
+                # The DDL already declares the column for fresh databases, so
+                # ALTER on an existing one may report a duplicate — ignore that.
+                try:
+                    await self._db.execute(
+                        "ALTER TABLE runs ADD COLUMN pre_void_outcome TEXT"
+                    )
+                except Exception as exc:
+                    if "duplicate column" not in str(exc).lower():
+                        raise
             await self._db.execute("DELETE FROM _schema_version")
             await self._db.execute(
                 "INSERT INTO _schema_version VALUES (?)", (_SCHEMA_VERSION,)
@@ -236,6 +249,7 @@ class Database:
     _ALLOWED_RUN_COLUMNS = frozenset({
         "outcome", "voided_reason", "ended_at", "elapsed_ms",
         "detection_mode", "busting_beam_id", "segment_reached",
+        "pre_void_outcome",
     })
 
     async def update_run(self, run_id: str, **kwargs: Any) -> None:
@@ -259,20 +273,84 @@ class Database:
             row = await cur.fetchone()
         return dict(row) if row else None
 
-    async def list_runs(self, limit: int = 50, offset: int = 0) -> list[dict]:
+    @staticmethod
+    def _run_search_clause(q: str) -> tuple[str, list[Any]]:
+        """
+        Build the WHERE fragment for a run search.
+
+        Matching is done in SQL (not after pagination) so that LIMIT/OFFSET
+        page through the filtered result set rather than the full table.
+        """
+        if not q:
+            return "", []
+        like = f"%{q.lower()}%"
+        clause = (
+            " WHERE lower(COALESCE(p.nickname, '')) LIKE ?"
+            " OR lower(r.id) LIKE ?"
+            " OR lower(r.outcome) LIKE ?"
+        )
+        return clause, [like, like, like]
+
+    async def list_runs(
+        self, limit: int = 50, offset: int = 0, q: str = ""
+    ) -> list[dict]:
+        where_sql, params = self._run_search_clause(q)
         async with self._db.execute(
-            """SELECT r.*, p.nickname AS player_nickname
-               FROM runs r LEFT JOIN players p ON p.id = r.player_id
-               ORDER BY r.started_at DESC LIMIT ? OFFSET ?""",
-            (limit, offset),
+            f"""SELECT r.*, p.nickname AS player_nickname
+                FROM runs r LEFT JOIN players p ON p.id = r.player_id
+                {where_sql}
+                ORDER BY r.started_at DESC LIMIT ? OFFSET ?""",
+            (*params, limit, offset),
         ) as cur:
             rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def count_runs(self, q: str = "") -> int:
+        """Total number of runs matching the same filter as list_runs()."""
+        where_sql, params = self._run_search_clause(q)
+        async with self._db.execute(
+            f"""SELECT COUNT(*) FROM runs r
+                LEFT JOIN players p ON p.id = r.player_id
+                {where_sql}""",
+            params,
+        ) as cur:
+            row = await cur.fetchone()
+        return int(row[0]) if row else 0
+
+    async def count_runs_by_outcome(self, since_date: str | None = None) -> dict[str, int]:
+        """
+        Return {outcome: count} for all runs, optionally scoped to started_at >= since_date.
+
+        Used by the admin dashboard so its counters share one time scope instead
+        of mixing "today" with "the last N rows".
+        """
+        if since_date:
+            query = "SELECT outcome, COUNT(*) FROM runs WHERE started_at >= ? GROUP BY outcome"
+            params: tuple = (since_date,)
+        else:
+            query = "SELECT outcome, COUNT(*) FROM runs GROUP BY outcome"
+            params = ()
+        async with self._db.execute(query, params) as cur:
+            rows = await cur.fetchall()
+        return {r[0]: int(r[1]) for r in rows}
+
     async def void_run(self, run_id: str, reason: str) -> None:
-        """Mark a run as voided with a reason. Idempotent."""
+        """
+        Mark a run as voided with a reason. Idempotent.
+
+        The previous outcome is preserved in pre_void_outcome so unvoid restores
+        it; without this a voided bust would come back as 'clean' and re-enter
+        the leaderboard with its elapsed time.
+        """
         await self._db.execute(
-            "UPDATE runs SET outcome = 'voided', voided_reason = ? WHERE id = ?",
+            """UPDATE runs
+               SET pre_void_outcome = CASE
+                       WHEN outcome = 'voided' THEN pre_void_outcome
+                       ELSE outcome
+                   END,
+                   outcome = 'voided',
+                   voided_reason = ?
+               WHERE id = ?""",
             (reason, run_id),
         )
         await self._db.commit()

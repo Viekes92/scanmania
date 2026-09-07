@@ -115,24 +115,57 @@ class PresetResolver:
 
         return state
 
-    async def apply_preset(self, preset_name: str, backend: IOBackend) -> None:
+    async def apply_preset(self, preset_name: str, backend: IOBackend) -> bool:
         """
         Resolve preset and write coils to all boards via backend.
 
         Updates desired state. One write_coils call per board.
+        Returns True only if every board write succeeded. The game path ignores
+        the return value (reconciliation repairs failures); admin routes use it
+        to report hardware failure to the operator.
         """
         state = self.resolve(preset_name)
         self._desired = state
         log.debug("Applying preset '%s'", preset_name)
 
+        all_ok = True
         for board_id, coils in state.items():
             board = backend.get_board(board_id)
             ok = await board.write_coils(coils)
             if not ok:
+                all_ok = False
                 log.error(
                     "apply_preset '%s': write_coils failed on board '%s' (status=%s)",
                     preset_name, board_id, board.status,
                 )
+        return all_ok
+
+    async def apply_channels(self, channels: list[int], backend: IOBackend) -> list[int]:
+        """
+        Apply a raw 1-indexed global channel list (master-mode use only).
+
+        Updates desired state so the reconciler does not fight the write.
+        Returns the list of channels that were out of range and skipped.
+        """
+        state = self._empty_board_state()
+        rejected: list[int] = []
+        for ch in channels:
+            try:
+                board_id, local_idx = self._channel_to_board(ch)
+            except ValueError:
+                rejected.append(ch)
+                continue
+            state[board_id][local_idx] = True
+
+        self._desired = state
+        for board_id, coils in state.items():
+            board = backend.get_board(board_id)
+            ok = await board.write_coils(coils)
+            if not ok:
+                raise RuntimeError(
+                    f"write_coils failed on board '{board_id}' (status={board.status})"
+                )
+        return rejected
 
     async def apply_direct(
         self, board_id: str, channel: int, state: bool, backend: IOBackend
@@ -155,9 +188,8 @@ class PresetResolver:
         board = backend.get_board(board_id)
         ok = await board.write_coils(list(self._desired[board_id]))
         if not ok:
-            log.error(
-                "apply_direct: write_coils failed on board '%s' (status=%s)",
-                board_id, board.status,
+            raise RuntimeError(
+                f"write_coils failed on board '{board_id}' (status={board.status})"
             )
 
     def desired_state(self) -> dict[str, list[bool]]:

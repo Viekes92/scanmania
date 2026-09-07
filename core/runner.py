@@ -42,6 +42,11 @@ import core.metrics as metrics
 
 log = logging.getLogger(__name__)
 
+
+class MasterModeRequired(RuntimeError):
+    """Raised when a master-mode-only operation is attempted outside MASTER."""
+
+
 # Input ID → FSM event mapping (matches Pico firmware wire contract)
 _INPUT_EVENT_MAP = {
     ("plate", 1): PlateHigh,
@@ -76,6 +81,7 @@ class GameRunner:
         self.db = db
         self._hub = hub
 
+        self.started_at_mono: float = time.monotonic()
         self.state: str = "BOOT"
         self.context: FSMContext = FSMContext(
             detection_mode=getattr(config.game, "detection_mode", "auto")
@@ -606,86 +612,136 @@ class GameRunner:
             log.warning("Unknown GM action: %r", action)
 
     def on_admin_action(self, action: str, payload: dict) -> None:
-        """Translate an admin action string to an FSM event or direct operation."""
+        """
+        Translate an admin action string to an FSM event.
+
+        Only fire-and-forget actions live here. The master-mode relay and
+        stopwatch operations are awaited directly by the admin routes so that
+        failures surface as HTTP errors instead of a log line.
+        """
         if action == "master_engage":
             self._event_queue.put_nowait(MasterModeEngage())
         elif action == "master_exit":
             self._event_queue.put_nowait(MasterModeExit())
-        elif action == "master_apply_preset":
-            asyncio.ensure_future(self._master_apply_preset(payload.get("preset", "")))
-        elif action == "master_toggle_channel":
-            asyncio.ensure_future(self._master_toggle_channel(
-                payload.get("board_id", ""), payload.get("channel", 1), payload.get("state", False),
-            ))
-        elif action == "master_apply_channels":
-            asyncio.ensure_future(self._master_apply_channels(payload.get("channels", [])))
-        elif action == "master_stopwatch":
-            self._master_stopwatch(payload.get("action", ""))
         elif action == "dev_trigger":
             self._handle_dev_trigger(payload)
         else:
             log.debug("Admin action %r (no handler)", action)
 
-    async def _master_apply_preset(self, preset_name: str) -> None:
-        """Apply a preset directly in master mode."""
-        if self.state != "MASTER" or not self._resolver or not self.io:
-            log.warning("master_apply_preset: not in MASTER mode or no resolver")
-            return
-        try:
-            await self._resolver.apply_preset(preset_name, self.io)
-            log.info("Master: applied preset %r", preset_name)
-        except Exception as exc:
-            log.error("Master: apply_preset failed: %s", exc)
+    # ------------------------------------------------------------------
+    # Config reload
+    # ------------------------------------------------------------------
 
-    async def _master_apply_channels(self, channels: list[int]) -> None:
-        """Apply a raw channel list directly in master mode (no preset name needed)."""
-        if self.state != "MASTER" or not self._resolver or not self.io:
-            log.warning("master_apply_channels: not in MASTER mode")
-            return
-        try:
-            # Build per-board coil arrays from the channel list
-            state = self._resolver._empty_board_state()
-            for ch in channels:
-                try:
-                    board_id, local_idx = self._resolver._channel_to_board(ch)
-                    state[board_id][local_idx] = True
-                except ValueError:
-                    pass
-            for board_id, coils in state.items():
-                board = self.io.get_board(board_id)
-                await board.write_coils(coils)
-            log.info("Master: applied %d channels directly", len(channels))
-        except Exception as exc:
-            log.error("Master: apply_channels failed: %s", exc)
+    def reload_config(self, new_config: Any) -> None:
+        """
+        Swap in a freshly loaded AppConfig and rebuild the preset resolver.
+
+        Called by the admin routes after a config file is written so that edits
+        take effect without a service restart. Desired coil state is reset to
+        all-off by the new resolver; the reconciler re-asserts it on its next
+        pass. Never called during a run — the routes refuse to reload unless the
+        FSM is in a quiescent state.
+        """
+        from iobackend.presets import PresetResolver
+        self.config = new_config
+        self._resolver = PresetResolver(new_config.mazes, new_config.hardware)
+        log.info("Config reloaded: %d boards, %d beams, %d presets",
+                 len(new_config.hardware.relay_boards),
+                 len(new_config.beams.beams),
+                 len(new_config.mazes.presets))
+
+    # ------------------------------------------------------------------
+    # Health
+    # ------------------------------------------------------------------
+
+    def faults(self) -> list[dict]:
+        """Return the current active faults for the admin dashboard."""
+        out: list[dict] = []
+        for board_id, st in self._board_states.items():
+            status = st.get("status")
+            if status and status != "OK":
+                out.append({"subsystem": board_id, "message": f"relay board {status}"})
+        if not getattr(self.inputs, "is_connected", True):
+            out.append({"subsystem": "inputs", "message": "Opta not connected"})
+        if self.context.detection_mode != "auto":
+            out.append({
+                "subsystem": "vision",
+                "message": f"detection mode is {self.context.detection_mode}",
+            })
+        if self.context.beams_masked:
+            out.append({
+                "subsystem": "beams",
+                "message": f"{len(self.context.beams_masked)} beam(s) masked",
+            })
+        if self.state == "FAULT":
+            out.append({"subsystem": "fsm", "message": "FSM in FAULT state"})
+        return out
+
+    def _require_master(self) -> None:
+        """Raise MasterModeRequired unless the FSM is in MASTER."""
+        if self.state != "MASTER":
+            raise MasterModeRequired(f"not in MASTER mode (state={self.state})")
+
+    async def _master_apply_preset(self, preset_name: str) -> None:
+        """
+        Apply a preset directly in master mode.
+
+        Raises MasterModeRequired if not in MASTER, KeyError for an unknown
+        preset, and RuntimeError if a relay board write fails.
+        """
+        self._require_master()
+        if not self._resolver or not self.io:
+            raise RuntimeError("relay backend not available")
+        ok = await self._resolver.apply_preset(preset_name, self.io)
+        if not ok:
+            raise RuntimeError(f"one or more boards rejected preset {preset_name!r}")
+        log.info("Master: applied preset %r", preset_name)
+
+    async def _master_apply_channels(self, channels: list[int]) -> list[int]:
+        """
+        Apply a raw channel list directly in master mode (no preset name needed).
+
+        Goes through PresetResolver so desired state stays in sync and the
+        reconciler does not immediately overwrite the write (invariant 4).
+        Returns the channels that were out of range and skipped.
+        """
+        self._require_master()
+        if not self._resolver or not self.io:
+            raise RuntimeError("relay backend not available")
+        rejected = await self._resolver.apply_channels(channels, self.io)
+        log.info("Master: applied %d channels directly (%d rejected)",
+                 len(channels) - len(rejected), len(rejected))
+        return rejected
 
     async def _master_toggle_channel(self, board_id: str, channel: int, state: bool) -> None:
-        """Toggle a single relay channel on a specific board in master mode."""
-        if self.state != "MASTER" or not self.io:
-            log.warning("master_toggle_channel: not in MASTER mode")
-            return
-        try:
-            board = self.io.get_board(board_id)
-            coil_idx = channel - 1  # channel is 1-indexed per board
-            coils = list(getattr(board, "last_coils", [False] * 16))
-            if 0 <= coil_idx < len(coils):
-                coils[coil_idx] = state
-                await board.write_coils(coils)
-                log.info("Master: %s ch %d → %s", board_id, channel, state)
-            else:
-                log.warning("Master: channel %d out of range for %s", channel, board_id)
-        except KeyError:
-            log.error("Master: unknown board_id %r", board_id)
-        except Exception as exc:
-            log.error("Master: toggle_channel failed: %s", exc)
+        """
+        Toggle a single relay channel on a specific board in master mode.
+
+        Raises MasterModeRequired, ValueError (unknown board / bad channel) or
+        RuntimeError (write failed).
+        """
+        self._require_master()
+        if not self._resolver or not self.io:
+            raise RuntimeError("relay backend not available")
+        await self._resolver.apply_direct(board_id, channel, state, self.io)
+        log.info("Master: %s ch %d → %s", board_id, channel, state)
 
     def _master_stopwatch(self, action: str) -> None:
-        """Control stopwatch in master mode."""
+        """
+        Control the stopwatch in master mode.
+
+        Gated on MASTER: without this guard an admin request could reset a live
+        player's clock, violating invariant 2 (the server owns the stopwatch).
+        """
+        self._require_master()
         if action == "start":
             self.stopwatch.start()
         elif action == "stop":
             self.stopwatch.stop()
         elif action == "reset":
             self.stopwatch.reset()
+        else:
+            raise ValueError(f"unknown stopwatch action {action!r}")
         log.info("Master: stopwatch %s", action)
 
     def _handle_dev_trigger(self, payload: dict) -> None:

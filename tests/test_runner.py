@@ -31,7 +31,7 @@ from core.events import (
     DetectionModeChanged, ArmTimeout, MaxRunExceeded, ResultDisplayTimeout,
     ProcessRestart,
 )
-from core.runner import GameRunner
+from core.runner import GameRunner, MasterModeRequired
 
 
 # ---------------------------------------------------------------------------
@@ -519,39 +519,56 @@ async def test_admin_action_master_exit_enqueues_event(runner):
 
 
 @pytest.mark.asyncio
-async def test_admin_action_master_stopwatch_start(runner):
-    """on_admin_action('master_stopwatch', action='start') starts the stopwatch."""
-    runner.on_admin_action("master_stopwatch", {"action": "start"})
-    # Stopwatch should now be running (started_at set)
+async def test_master_stopwatch_start(runner):
+    """_master_stopwatch('start') starts the stopwatch while in MASTER."""
+    runner.state = "MASTER"
+    runner._master_stopwatch("start")
     assert runner.stopwatch.is_running
 
 
 @pytest.mark.asyncio
-async def test_admin_action_master_stopwatch_stop(runner):
-    """on_admin_action('master_stopwatch', action='stop') stops the stopwatch."""
+async def test_master_stopwatch_stop(runner):
+    """_master_stopwatch('stop') stops the stopwatch while in MASTER."""
+    runner.state = "MASTER"
     runner.stopwatch.start()
-    runner.on_admin_action("master_stopwatch", {"action": "stop"})
+    runner._master_stopwatch("stop")
     assert not runner.stopwatch.is_running
 
 
 @pytest.mark.asyncio
-async def test_admin_action_master_stopwatch_reset(runner):
-    """on_admin_action('master_stopwatch', action='reset') resets elapsed to zero."""
+async def test_master_stopwatch_reset(runner):
+    """_master_stopwatch('reset') resets elapsed to zero while in MASTER."""
+    runner.state = "MASTER"
     runner.stopwatch.start()
     await asyncio.sleep(0.01)
     runner.stopwatch.stop()
-    runner.on_admin_action("master_stopwatch", {"action": "reset"})
+    runner._master_stopwatch("reset")
     assert runner.stopwatch.elapsed_ms() == 0
 
 
 @pytest.mark.asyncio
-async def test_admin_action_master_apply_preset_noop_when_not_master(runner):
-    """master_apply_preset does nothing if state is not MASTER (no exception)."""
-    # Runner starts in BOOT; not MASTER — should log warning and return.
-    runner.on_admin_action("master_apply_preset", {"preset": "attract"})
-    # Allow the created coroutine to execute.
-    await asyncio.sleep(0.05)
-    # No exception raised; state unchanged.
+async def test_master_stopwatch_rejected_outside_master(runner):
+    """Invariant 2: the stopwatch cannot be driven from admin outside MASTER."""
+    runner.stopwatch.start()
+    with pytest.raises(MasterModeRequired):
+        runner._master_stopwatch("reset")
+    assert runner.stopwatch.is_running
+
+
+@pytest.mark.asyncio
+async def test_master_stopwatch_unknown_action_raises(runner):
+    """An unknown stopwatch action is a 422-worthy ValueError, not a silent no-op."""
+    runner.state = "MASTER"
+    with pytest.raises(ValueError):
+        runner._master_stopwatch("rewind")
+
+
+@pytest.mark.asyncio
+async def test_master_apply_preset_rejected_when_not_master(runner):
+    """_master_apply_preset raises outside MASTER instead of touching coils."""
+    # Runner starts in BOOT; not MASTER.
+    with pytest.raises(MasterModeRequired):
+        await runner._master_apply_preset("attract")
     assert runner.state == BOOT
 
 

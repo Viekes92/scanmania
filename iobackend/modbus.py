@@ -73,6 +73,7 @@ class ModbusBoard:
         self._sock: socket.socket | None = None
         self._status: Status = "DISCONNECTED"
         self._consecutive_failures: int = 0
+        self._error_count: int = 0
         self._last_coils: list[bool] = [False] * _COIL_COUNT
         self._lock = asyncio.Lock()
 
@@ -342,6 +343,11 @@ class ModbusBoard:
         """Last known coil state (from read or write)."""
         return list(self._last_coils)
 
+    @property
+    def error_count(self) -> int:
+        """Cumulative transaction failures since process start (admin diagnostics)."""
+        return self._error_count
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -353,6 +359,7 @@ class ModbusBoard:
 
     def _record_failure(self, reason: str) -> bool:
         self._consecutive_failures += 1
+        self._error_count += 1
         log.warning("ModbusBoard '%s' failure #%d: %s",
                     self.board_id, self._consecutive_failures, reason)
         if self._consecutive_failures >= _FAILURE_THRESHOLD:

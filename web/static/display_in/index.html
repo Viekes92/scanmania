@@ -591,12 +591,7 @@
         showScene("countdown");
         const step  = msg.countdown_step  ?? 0;
         const total = msg.countdown_total ?? COUNTDOWN_TOTAL;
-        // 3-2-1 countdown mapped to pulse progress
-        const fraction = total > 0 ? step / total : 0;
-        if (fraction >= 1) cdStep.textContent = "GO!";
-        else if (fraction >= 0.66) cdStep.textContent = "1";
-        else if (fraction >= 0.33) cdStep.textContent = "2";
-        else cdStep.textContent = "3";
+        cdStep.textContent = total - step; // countdown: "8, 7, 6…"
         setRingProgress(step, total);
 
       } else if (RUN_STATES.has(state)) {

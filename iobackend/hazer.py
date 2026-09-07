@@ -52,6 +52,10 @@ class HazerController:
         self._haze = default_haze
         self._enabled = True
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Art-Net is fire-and-forget UDP, so this is only ever "our last sendto
+        # did not raise" — never proof the node received anything. The GM DMX
+        # LED says so too: green means we are transmitting, not that it landed.
+        self._last_send_ok = True
         log.info("HazerController: %s fan=ch%d haze=ch%d",
                  artnet_ip, fan_channel, haze_channel)
 
@@ -82,6 +86,11 @@ class HazerController:
     def fan(self) -> int:
         return self._fan
 
+    @property
+    def link_ok(self) -> bool:
+        """True while the Art-Net keepalive is going out without a socket error."""
+        return self._last_send_ok
+
     def _send(self) -> None:
         dmx = bytearray(512)
         if self._enabled:
@@ -90,7 +99,9 @@ class HazerController:
         packet = _build_artdmx(self._universe, dmx)
         try:
             self._sock.sendto(packet, (self._ip, ARTNET_PORT))
+            self._last_send_ok = True
         except OSError as exc:
+            self._last_send_ok = False
             log.warning("Hazer send failed: %s", exc)
 
     async def run(self) -> None:

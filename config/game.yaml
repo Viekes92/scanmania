@@ -36,14 +36,18 @@ count_in:
   pulses:
     # [on_ms, off_ms] — regenerate the curve with tools/ramp.py, then hand-tune the tail.
     # The relay clatter IS the sound design. These timings drive that ramp.
-    - [280, 320]   # pulse 0 — longest, baseline captured here
-    - [200, 250]
-    - [150, 190]
-    - [110, 140]
-    - [80,  100]
-    - [60,   75]
-    - [45,   55]
-    - [35,   40]
+    #
+    # Total MUST stay ~3000 ms: the in-container display counts real seconds down
+    # from the GO deadline, so a shorter ramp shows "3, 2, 1" faster than 1 Hz and
+    # a longer one starts at 4. Sum the column after any edit.
+    - [480, 370]   # pulse 0 — longest, baseline captured here.  850   "3"
+    - [420, 330]   #                                            1600   "2"
+    - [280, 220]   #                                            2100
+    - [210, 170]   #                                            2480   "1"
+    - [130, 110]   #                                            2720
+    - [ 85,  65]   #                                            2870
+    - [ 50,  40]   #                                            2960
+    - [ 22,  18]   #                                            3000 = GO
 
   solid_at_end: true
   # If true, after the last pulse the preset stays solid (GO state). Always true for normal play.

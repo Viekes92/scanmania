@@ -36,6 +36,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   editor inputs. The old limit rejected legitimate slow attract sequences with a 422; the loader and
   show player never had a cap.
 
+### Fixed — count-in and GM health LEDs
+
+- **The count-in raced 8→7→6 instead of counting seconds.** `display_in` rendered the *pulse
+  index* (`countdown_total - countdown_step`), and the pulse ramp is deliberately accelerating —
+  eight pulses in 2.13 s. The runner now broadcasts `countdown_remaining_ms` (a real deadline,
+  computed server-side per invariant 2) and the display shows `ceil(remaining / 1000)`. The
+  ramp in `config/game.yaml` was retimed to exactly 3000 ms so the digits land on 3, 2, 1 at
+  one-second intervals; the accelerating relay clatter is preserved, just with a slower opening.
+  The GO deadline is anchored in `_handle_start_count_in` rather than inside the ramp task,
+  because `BroadcastState` runs first and would otherwise emit one frame with no deadline set.
+
+- **The GM console's SM-NODE-DMX LED was amber forever.** It was set to "unknown" at init and
+  never updated — there was no DMX health anywhere in the WebSocket message. `HazerController`
+  now tracks whether its Art-Net keepalive is sending without a socket error, exposes it as
+  `link_ok`, and the GM console polls `/api/gm/hazer` every 5 s to drive the LED. Art-Net is
+  fire-and-forget UDP, so green means "we are transmitting", not "the node acknowledged" —
+  noted in the code so nobody reads more into it later.
+
 ### Fixed — kiosk displays
 
 Neither HDMI panel had ever shown the right thing. Three independent causes in `kiosk.sh`:

@@ -1018,6 +1018,8 @@ def register_routes(
             "enabled": hazer.enabled,
             "haze": hazer.haze,
             "fan": hazer.fan,
+            # Drives the SM-NODE-DMX LED on the GM console.
+            "link_ok": hazer.link_ok,
         }
 
     async def _apply_hazer(body: HazerBody) -> dict:

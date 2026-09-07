@@ -101,6 +101,9 @@ class GameRunner:
         self._self_test_task: asyncio.Task | None = None
         self._countdown_step: int = 0
         self._countdown_total: int = 0
+        # monotonic_ns at which the ramp reaches GO, or None outside COUNTDOWN.
+        self._countdown_go_ns: int | None = None
+        self._countdown_start_ns: int = 0
         self._last_outcome: str | None = None
         # Invariant 4's safety backstop. Started in run(); exposed so the admin
         # hardware page can read mismatch_counts.
@@ -265,6 +268,7 @@ class GameRunner:
         self._last_rank = None
         self._countdown_step = 0
         self._countdown_total = 0
+        self._countdown_go_ns = None
 
         old_state = self.state
         new_state, side_effects = transition(self.state, _AttractTick(), self.context)
@@ -427,6 +431,15 @@ class GameRunner:
         log.info("[SideEffect] StartCountIn")
         if self._count_in_task and not self._count_in_task.done():
             self._count_in_task.cancel()
+        # Anchor the ramp here rather than inside the task. StartCountIn is
+        # followed immediately by BroadcastState, which would otherwise go out
+        # with no deadline set and flash the wrong digit for one frame.
+        self._countdown_start_ns = time.monotonic_ns()
+        if self.config is not None:
+            total_ms = sum(
+                p.on_ms + p.off_ms for p in self.config.game.count_in.pulses
+            )
+            self._countdown_go_ns = self._countdown_start_ns + total_ms * 1_000_000
         self._count_in_task = asyncio.create_task(
             self._run_count_in_ramp(), name="count_in_ramp"
         )
@@ -448,8 +461,9 @@ class GameRunner:
         count_in_preset = self.config.game.count_in.preset
         self._countdown_total = len(pulses)
         self._countdown_step = 0
-        now_ns = time.monotonic_ns()
-        next_edge_ns = now_ns
+        # Same anchor _handle_start_count_in used for the GO deadline, so the
+        # last pulse edge and the broadcast countdown reach zero together.
+        next_edge_ns = self._countdown_start_ns
 
         for i, pulse in enumerate(pulses):
             self._countdown_step = i
@@ -967,6 +981,13 @@ class GameRunner:
             "pending_break": self.context.pending_break,
             "countdown_step": self._countdown_step,
             "countdown_total": self._countdown_total,
+            # Milliseconds until GO. The pulse ramp accelerates, so the pulse
+            # index is not a seconds countdown — the display needs the deadline
+            # to render 3-2-1. Server-side per invariant 2.
+            "countdown_remaining_ms": (
+                max(0, (self._countdown_go_ns - time.monotonic_ns()) // 1_000_000)
+                if self._countdown_go_ns is not None else None
+            ),
             "outcome": self._last_outcome,
             "rank": self._last_rank,
             "boards": self._board_states,

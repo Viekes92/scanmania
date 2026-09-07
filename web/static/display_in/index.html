@@ -453,8 +453,9 @@
          state:           "ATTRACT" | "RUN_SEG_1" | "BUSTED" | … ,
          elapsed_ms:      4321,
          server_mono_now_ns: <integer nanoseconds>,
-         countdown_step:  null | 0-7,
+         countdown_step:  null | 0-7,       // pulse index, drives the ring
          countdown_total: 8,
+         countdown_remaining_ms: null | ms until GO, drives the 3-2-1 digit
          segment:         1 | 2 | 3,
          rank:            null | 3,
          player_nickname: "Joenne"
@@ -591,7 +592,10 @@
         showScene("countdown");
         const step  = msg.countdown_step  ?? 0;
         const total = msg.countdown_total ?? COUNTDOWN_TOTAL;
-        cdStep.textContent = total - step; // countdown: "8, 7, 6…"
+        // Seconds to GO, not the pulse index. The ramp accelerates, so counting
+        // pulses raced 8→1 through a 3 s window. Clamped to 1 so the last frame
+        // before RUN never flashes a "0".
+        cdStep.textContent = Math.max(1, Math.ceil((msg.countdown_remaining_ms ?? 0) / 1000));
         setRingProgress(step, total);
 
       } else if (RUN_STATES.has(state)) {

@@ -1261,7 +1261,7 @@
       if (msg.inputs) {
         setLed(hOptaLed, msg.inputs.connected ? "ok" : "err");
       }
-      // DMX node: no health data yet — leave as-is (warn = unknown)
+      // DMX node LED is driven by refreshHazer()'s poll, not the WS message.
       // Issue 51: camera LED left as "warn" (unknown) — do NOT hardcode "ok"
 
       /* --- Beam strip --- */
@@ -1603,6 +1603,10 @@
       hHazerLabel.textContent = d.enabled ? "Hazer ON" : "Hazer OFF";
       hazerFanSlider.value = d.fan; hazerFanVal.textContent = d.fan;
       hazerHazeSlider.value = d.haze; hazerHazeVal.textContent = d.haze;
+      // The DMX node is the Art-Net target the hazer sits on, so its health is
+      // the hazer link. Art-Net is fire-and-forget UDP: "ok" means we are
+      // transmitting without a socket error, not that the node acknowledged.
+      setLed(hDmxLed, d.link_ok === false ? "err" : "ok");
     }
 
     document.getElementById("hHazerToggle").addEventListener("click", async () => {
@@ -1628,11 +1632,24 @@
     hazerFanSlider.addEventListener("input", () => { hazerFanVal.textContent = hazerFanSlider.value; sendHazerUpdate(); });
     hazerHazeSlider.addEventListener("input", () => { hazerHazeVal.textContent = hazerHazeSlider.value; sendHazerUpdate(); });
 
-    // Load initial hazer state
-    fetch("/api/gm/hazer").then(r=>r.json()).then(d => {
-      if (d.available) updateHazerUI(d);
-      else { hHazerLed.className = "health-led warn"; hHazerLabel.textContent = "Hazer N/A"; }
-    }).catch(() => { hHazerLed.className = "health-led warn"; });
+    // Hazer + DMX node state. Polled, not one-shot: the DMX LED used to be set
+    // to "warn" at init and never touched again, so it sat amber forever even
+    // with the node up.
+    function refreshHazer() {
+      fetch("/api/gm/hazer").then(r=>r.json()).then(d => {
+        if (d.available) updateHazerUI(d);
+        else {
+          hHazerLed.className = "health-led warn";
+          hHazerLabel.textContent = "Hazer N/A";
+          setLed(hDmxLed, "warn");
+        }
+      }).catch(() => {
+        hHazerLed.className = "health-led warn";
+        setLed(hDmxLed, "warn");
+      });
+    }
+    refreshHazer();
+    setInterval(refreshHazer, 5000);
     btnVeto.addEventListener("click",    () => gmPost("veto-break"));
 
     /* --- Detection mode switcher --- */

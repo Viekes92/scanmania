@@ -133,10 +133,18 @@ class ModbusInputs:
             log.debug("ModbusInputs read error: %s", exc)
             return None
 
+        # recv() returning 0 bytes is EOF — the peer closed the connection. The
+        # socket is dead, so polling it again just burns the retry budget; mark
+        # it disconnected and let run() reconnect on the next iteration.
+        if not resp:
+            log.warning("ModbusInputs: connection closed by peer")
+            self._connected = False
+            return None
+
         # Parse response: MBAP(7) + function(1) + byte_count(1) + data(N)
-        if not resp or len(resp) < 10:
+        if len(resp) < 10:
             log.warning("ModbusInputs: short response (%d bytes): %s",
-                        len(resp) if resp else 0, resp.hex() if resp else "None")
+                        len(resp), resp.hex())
             return None
 
         # Check function code (byte 7)

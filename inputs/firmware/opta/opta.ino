@@ -35,6 +35,12 @@ unsigned long bootAt = 0;
 unsigned long mbPolls = 0;
 unsigned long lastMbAt = 0;
 
+// Last sign of life from the Modbus client — set on connect and on every frame.
+// Kept separate from lastMbAt, which drives the USER LED and must only reflect
+// real polls, not a bare TCP connect.
+unsigned long mbSeenAt = 0;
+const unsigned long MB_STALE_MS = 2000;
+
 // Button press counter (for manual input triggering)
 int btnPresses = 0;
 unsigned long lastBtnPress = 0;
@@ -77,13 +83,35 @@ void setup() {
 
 void loop() {
   // ---- Modbus TCP ----
+  // Every accepted connection MUST be stopped or its lwIP socket is leaked. The
+  // NUC reconnects whenever a poll fails, so a leak here drains the pool within
+  // seconds: later connects then either get closed immediately (the NUC sees a
+  // 0-byte read) or time out outright.
+  //
+  // Release the current client before taking a new one. A half-dead connection
+  // (NUC has closed, FIN not yet seen) would otherwise block every new one and
+  // the link would never recover.
+  if (mbClient) {
+    if (!mbClient.connected()) {
+      mbClient.stop();
+      Serial.println("[MB] Client disconnected");
+    } else if (mbSeenAt > 0 && (millis() - mbSeenAt) > MB_STALE_MS) {
+      // The NUC polls every 50 ms; this much silence means it is gone.
+      mbClient.stop();
+      mbSeenAt = 0;
+      Serial.println("[MB] Client stale — dropped");
+    }
+  }
+
   if (!mbClient || !mbClient.connected()) {
     EthernetClient newClient = mbSrv.available();
     if (newClient) {
       mbClient = newClient;
+      mbSeenAt = millis();  // grace period before the stale check can fire
       Serial.println("[MB] Client connected");
     }
   }
+
   if (mbClient && mbClient.connected() && mbClient.available() >= 12) {
     handleModbus();
   }
@@ -194,6 +222,7 @@ void handleModbus() {
   byte func = buf[7];
 
   lastMbAt = millis();
+  mbSeenAt = lastMbAt;
   mbPolls++;
 
   if (func == 0x02) {

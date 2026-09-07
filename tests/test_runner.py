@@ -1043,3 +1043,38 @@ async def test_run_id_assigned_after_start_stopwatch(runner):
     assert runner.context.run_id is not None
     runner._cancel_task("_arm_timeout_task")
     runner._cancel_task("_max_run_task")
+
+
+# ===========================================================================
+# Config reload
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_reload_config_rearms_running_show(runner, fake_config):
+    """
+    A show holds a reference to its own step list, so swapping the config alone
+    would leave it playing the pre-edit sequence. reload_config() must restart it.
+    """
+    await runner.dispatch(BootComplete())
+    await runner.dispatch(SelfTestPass())
+    await _drain(runner, iterations=3, pause=0)
+
+    assert runner._show_name == "attract"
+    old_task = runner._show_task
+    assert old_task is not None and not old_task.done()
+
+    from config.loader import ShowStep
+    fake_config.mazes.shows["attract"].steps = [ShowStep("blackout", 50)]
+    await runner.reload_config(fake_config)
+
+    assert runner._show_task is not old_task, "show task was not re-armed"
+    assert runner._show_name == "attract"
+    runner._cancel_task("_show_task")
+
+
+@pytest.mark.asyncio
+async def test_reload_config_does_not_start_a_show_when_none_playing(runner, fake_config):
+    """Reloading in BOOT must not spontaneously light the maze."""
+    assert runner._show_name is None
+    await runner.reload_config(fake_config)
+    assert runner._show_task is None

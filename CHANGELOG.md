@@ -7,6 +7,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Editing the show that is currently playing did nothing until a restart.** `_run_show()` holds a
+  reference to the step list it was handed, so `GameRunner.reload_config()` swapping `self.config`
+  left the old sequence looping. Saving `attract` from the admin panel reported a successful reload
+  while the maze kept running the pre-edit steps. The runner now tracks the playing show's name and
+  re-arms it against the reloaded config. `reload_config()` is `async` as a result — its only
+  caller, `_reload_config()` in `web/routes_admin.py`, now awaits it.
+
 ### Admin panel audit — backend and frontend
 
 #### Fixed (correctness / data loss)

@@ -95,6 +95,8 @@ class GameRunner:
         self._max_run_task: asyncio.Task | None = None
         self._run_started_at_iso: str | None = None
         self._show_task: asyncio.Task | None = None
+        # Name of the show _show_task is playing, so reload_config() can re-arm it.
+        self._show_name: str | None = None
         self._self_test_task: asyncio.Task | None = None
         self._countdown_step: int = 0
         self._countdown_total: int = 0
@@ -294,6 +296,7 @@ class GameRunner:
         """Apply a named preset via the io backend. Cancels any running show or count-in."""
         log.info("[SideEffect] ApplyPreset(%r)", effect.preset_name)
         self._cancel_task("_show_task")
+        self._show_name = None
         self._cancel_task("_count_in_task")
         if self._resolver and self.io:
             try:
@@ -319,6 +322,7 @@ class GameRunner:
             await self._handle_apply_preset(ApplyPreset(effect.show_name))
             return
 
+        self._show_name = effect.show_name
         self._show_task = asyncio.create_task(
             self._run_show(show, effect.show_name), name=f"show_{effect.show_name}"
         )
@@ -632,7 +636,7 @@ class GameRunner:
     # Config reload
     # ------------------------------------------------------------------
 
-    def reload_config(self, new_config: Any) -> None:
+    async def reload_config(self, new_config: Any) -> None:
         """
         Swap in a freshly loaded AppConfig and rebuild the preset resolver.
 
@@ -641,6 +645,11 @@ class GameRunner:
         all-off by the new resolver; the reconciler re-asserts it on its next
         pass. Never called during a run — the routes refuse to reload unless the
         FSM is in a quiescent state.
+
+        A running show holds a reference to its old step list, so swapping the
+        config alone leaves it playing the pre-edit sequence until a restart.
+        Re-arm it against the new config so editing the show you are watching
+        actually does something.
         """
         from iobackend.presets import PresetResolver
         self.config = new_config
@@ -649,6 +658,11 @@ class GameRunner:
                  len(new_config.hardware.relay_boards),
                  len(new_config.beams.beams),
                  len(new_config.mazes.presets))
+
+        if self._show_name and self._show_task and not self._show_task.done():
+            name = self._show_name
+            log.info("Re-arming show '%s' against the reloaded config", name)
+            await self._handle_play_show(PlayShow(name))
 
     # ------------------------------------------------------------------
     # Health

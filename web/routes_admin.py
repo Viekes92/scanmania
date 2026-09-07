@@ -315,7 +315,7 @@ def register_routes(
         except Exception as exc:
             log.error("Config reload failed: %s", exc)
             return f"reload failed: {exc}"
-        runner.reload_config(new_cfg)
+        await runner.reload_config(new_cfg)
         return None
 
     # ------------------------------------------------------------------

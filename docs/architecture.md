@@ -98,6 +98,40 @@ Vision detects break on beam b07
 
 systemd hardware watchdog enabled via `RuntimeWatchdogSec`. A kernel hang reboots the NUC into `SELF_TEST → ATTRACT`.
 
+> On the NUC these are currently collapsed into a single `scanmania.service` plus
+> `scanmania-kiosk.service`. The split above is the target, not the deployed shape.
+
+## Coil reconciliation
+
+`iobackend/reconcile.py` is invariant 4's safety backstop. `GameRunner.run()` starts it as
+the `reconcile` task; every 500 ms it reads actual coil state from each board concurrently
+and compares it to `PresetResolver.desired_state()`. A difference is logged, counted per
+board, emitted as `relay.mismatch`, and re-asserted with a full `write_coils`.
+
+The re-assert here is the one permitted exception to "only `presets.py` writes coils".
+
+It takes a **callable** returning the resolver rather than the resolver itself.
+`GameRunner.reload_config()` builds a new `PresetResolver`, and a captured reference would
+leave the reconciler enforcing the pre-edit desired state forever — quietly undoing every
+config change. Per-board mismatch counts surface on the admin hardware page as
+`mismatch_count`.
+
+## Deploying
+
+`tools/deploy.sh`, run on the box:
+
+```bash
+ssh root@172.16.0.10 '/opt/scanmania/tools/deploy.sh'
+```
+
+`git pull` alone is not enough — it does not restart the service, install new dependencies,
+or back up the database before an automatic schema migration. The script does all of that
+and refuses to run if there is uncommitted work outside `config/`.
+
+`config/` is the exception because the admin panel writes into the live checkout, so shows
+and beam geometry legitimately drift on the box. The script commits and pushes that drift
+before pulling, which is why live show tuning ends up in git rather than being lost.
+
 ## State machine summary
 
 See `docs/game-rules.md` for prose. Key states:

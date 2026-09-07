@@ -38,6 +38,7 @@ from core.events import (
 )
 from core.fsm import FSMContext, transition
 from core.stopwatch import Stopwatch, server_clock_message
+from iobackend.reconcile import ReconcileLoop
 import core.metrics as metrics
 
 log = logging.getLogger(__name__)
@@ -101,6 +102,9 @@ class GameRunner:
         self._countdown_step: int = 0
         self._countdown_total: int = 0
         self._last_outcome: str | None = None
+        # Invariant 4's safety backstop. Started in run(); exposed so the admin
+        # hardware page can read mismatch_counts.
+        self.reconciler: Any = None
         # Cached hardware readback (updated every ~2s by _hardware_poller)
         self._board_states: dict[str, dict] = {}  # board_id → {status, coils, rtt_ms}
         self._cached_leaderboard: list[dict] = []
@@ -153,6 +157,17 @@ class GameRunner:
             asyncio.create_task(self._event_drain(), name="event_drain"),
             asyncio.create_task(self._hardware_poller(), name="hardware_poller"),
         ]
+
+        # Invariant 4: re-assert coils that drift from the desired state. Reads
+        # the resolver through a callable so a config reload doesn't strand it on
+        # the old one.
+        if self.io is not None:
+            self.reconciler = ReconcileLoop(
+                get_resolver=lambda: self._resolver,
+                backend=self.io,
+                metrics_emit=metrics.emit,
+            )
+            tasks.append(asyncio.create_task(self.reconciler.run(), name="reconcile"))
 
         try:
             await asyncio.gather(*tasks)

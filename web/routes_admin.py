@@ -733,6 +733,8 @@ def register_routes(
         runner = _runner()
         cached = runner._board_states if runner else {}
         io_backend = getattr(runner, "io", None) if runner else None
+        reconciler = getattr(runner, "reconciler", None) if runner else None
+        mismatches = getattr(reconciler, "mismatch_counts", {}) or {}
 
         boards = []
         for b in hw.get("relay_boards", []) or []:
@@ -754,6 +756,7 @@ def register_routes(
                 "status": state.get("status", "?"),
                 "rtt_ms": state.get("rtt_ms"),
                 "error_count": error_count,
+                "mismatch_count": mismatches.get(board_id, 0),
                 "coils": state.get("coils", [False] * b.get("channels", 16)),
             })
 

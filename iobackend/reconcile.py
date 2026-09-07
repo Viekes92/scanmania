@@ -35,11 +35,14 @@ class ReconcileLoop:
 
     def __init__(
         self,
-        resolver: PresetResolver,
+        get_resolver: Callable[[], PresetResolver | None],
         backend: IOBackend,
         metrics_emit: Callable,
     ) -> None:
-        self._resolver = resolver
+        # A callable, not the resolver itself: GameRunner.reload_config() builds a
+        # new PresetResolver, and a captured reference would leave us reconciling
+        # against the pre-edit desired state forever.
+        self._get_resolver = get_resolver
         self._backend = backend
         self._metrics_emit = metrics_emit
         # board_id → cumulative mismatch count, surfaced on the admin hardware page
@@ -67,8 +70,11 @@ class ReconcileLoop:
         Read actual coil state from one board and compare to desired.
         Re-assert via write_coils (through PresetResolver's backend call) if different.
         """
+        resolver = self._get_resolver()
+        if resolver is None:
+            return
         board = self._backend.get_board(board_id)
-        desired = self._resolver.desired_state().get(board_id)
+        desired = resolver.desired_state().get(board_id)
         if desired is None:
             return  # board not tracked by resolver (shouldn't happen)
 

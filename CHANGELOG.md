@@ -16,6 +16,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   re-arms it against the reloaded config. `reload_config()` is `async` as a result — its only
   caller, `_reload_config()` in `web/routes_admin.py`, now awaits it.
 
+- **The invariant-4 safety backstop was never running.** `ReconcileLoop` was fully implemented
+  but never instantiated, so nothing detected or corrected relay coils that drifted from the
+  desired state. `GameRunner.run()` now starts it as the `reconcile` task. Its constructor takes a
+  callable returning the resolver instead of the resolver itself, so a config reload doesn't strand
+  it on the pre-edit desired state. Per-board `mismatch_count` added to `GET /api/admin/hardware`.
+  Covered by `tests/test_reconcile.py`.
+
+### Added
+
+- `tools/deploy.sh` — one-command update for the NUC. Refuses to run with uncommitted work outside
+  `config/`, commits and pushes live config drift (the admin panel writes into the checkout), backs
+  up the database before the automatic schema migration, pulls, reinstalls dependencies only if
+  `requirements.txt` changed, restarts both services and health-checks the API.
+
 ### Changed
 
 - Show step `hold_ms` ceiling raised from 10 s to 60 s in `ShowStepBody` and in the two admin show

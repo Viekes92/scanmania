@@ -93,6 +93,16 @@ class MasterPresetBody(BaseModel):
     preset: str = Field(max_length=64)
 
 
+class HazerBody(BaseModel):
+    enabled: bool | None = None
+    haze: int | None = None
+    fan: int | None = None
+
+
+class ApplyChannelsBody(BaseModel):
+    channels: list[int] = Field(default_factory=list)
+
+
 class MasterChannelBody(BaseModel):
     board_id: str = Field(default="", max_length=32)
     channel: int = Field(ge=1, le=16)
@@ -617,11 +627,6 @@ def register_routes(
             "fan": hazer.fan,
         }
 
-    class HazerBody(BaseModel):
-        enabled: bool | None = None
-        haze: int | None = None
-        fan: int | None = None
-
     @router.post("/api/admin/hazer")
     async def admin_hazer_set(body: HazerBody):
         hazer = getattr(app_ref, "get_hazer", lambda: None)()
@@ -672,9 +677,6 @@ def register_routes(
     async def admin_master_stopwatch(body: MasterStopwatchBody):
         on_action("master_stopwatch", {"action": body.action})
         return {"ok": True, "action": body.action}
-
-    class ApplyChannelsBody(BaseModel):
-        channels: list[int] = Field(default_factory=list)
 
     @router.post("/api/admin/master/apply_channels", dependencies=[Depends(_require_admin)])
     async def admin_master_apply_channels(body: ApplyChannelsBody):

@@ -613,13 +613,13 @@ def register_routes(
             "ok": True,
             "available": True,
             "enabled": hazer.enabled,
-            "intensity": hazer.intensity,
+            "haze": hazer.haze,
             "fan": hazer.fan,
         }
 
     class HazerBody(BaseModel):
         enabled: bool | None = None
-        intensity: int | None = None
+        haze: int | None = None
         fan: int | None = None
 
     @router.post("/api/admin/hazer", dependencies=[Depends(_require_admin)])
@@ -629,11 +629,11 @@ def register_routes(
             raise HTTPException(status_code=503, detail="Hazer not available")
         if body.enabled is not None:
             hazer.set_enabled(body.enabled)
-        if body.intensity is not None:
-            hazer.set_intensity(body.intensity)
+        if body.haze is not None:
+            hazer.set_haze(body.haze)
         if body.fan is not None:
             hazer.set_fan(body.fan)
-        return {"ok": True, "enabled": hazer.enabled, "intensity": hazer.intensity, "fan": hazer.fan}
+        return {"ok": True, "enabled": hazer.enabled, "haze": hazer.haze, "fan": hazer.fan}
 
     # Also expose on GM routes for quick toggle
     @router.post("/api/gm/hazer-toggle")

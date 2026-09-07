@@ -266,10 +266,10 @@ async def async_main(args: argparse.Namespace) -> int:
             hazer = HazerController(
                 artnet_ip=hazer_cfg["artnet_ip"],
                 universe=hazer_cfg.get("universe", 0),
-                channel=hazer_cfg.get("channel", 1),
-                fan_channel=hazer_cfg.get("fan_channel", 0),
-                default_intensity=hazer_cfg.get("default_intensity", 128),
+                fan_channel=hazer_cfg.get("fan_channel", 1),
+                haze_channel=hazer_cfg.get("haze_channel", 2),
                 default_fan=hazer_cfg.get("default_fan", 200),
+                default_haze=hazer_cfg.get("default_haze", 128),
             )
             if not hazer_cfg.get("enabled", True):
                 hazer.set_enabled(False)

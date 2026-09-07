@@ -228,7 +228,7 @@ def load_hardware() -> HardwareConfig:
         cameras=cameras,
         network=NetworkConfig(
             subnet=net.get("subnet", "10.0.0.0/24"),
-            nuc_ip=net.get("nuc_ip", "10.0.0.1"),
+            nuc_ip=net.get("nuc_ip", "172.16.0.1"),
             web_port=net.get("web_port", 8000),
         ),
         hazer=hazer_d,  # pass raw dict — __main__.py reads it directly

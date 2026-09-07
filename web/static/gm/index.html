@@ -872,22 +872,33 @@
         <div class="health-led ok" id="hBoardsLed"></div>
         <span>Relay boards</span>
       </div>
-      <div class="health-item" id="hPico">
-        <div class="health-led ok" id="hPicoLed"></div>
-        <span>Pico</span>
+      <div class="health-item" id="hOpta">
+        <div class="health-led ok" id="hOptaLed"></div>
+        <span>Opta inputs</span>
+      </div>
+      <div class="health-item" id="hDmx">
+        <div class="health-led ok" id="hDmxLed"></div>
+        <span>SM-NODE-DMX</span>
       </div>
       <div class="health-item" id="hCamera">
         <div class="health-led ok" id="hCameraLed"></div>
         <span>Camera</span>
       </div>
-      <div class="health-item" id="hSync">
-        <div class="health-led ok" id="hSyncLed"></div>
-        <span>Cloud sync</span>
-      </div>
-      <div class="health-item" id="hHazer" style="cursor:pointer;touch-action:manipulation;" title="Tap to toggle hazer">
+    </div>
+    <!-- Hazer controls -->
+    <div style="display:flex;gap:12px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+      <button class="health-item" id="hHazerToggle" style="cursor:pointer;touch-action:manipulation;border:none;">
         <div class="health-led ok" id="hHazerLed"></div>
-        <span>Hazer</span>
-      </div>
+        <span id="hHazerLabel">Hazer ON</span>
+      </button>
+      <label style="font-size:11px;color:var(--muted);font-family:var(--font);display:flex;align-items:center;gap:6px;">
+        Fan <input type="range" id="hazerFan" min="0" max="255" value="200" style="width:80px;accent-color:var(--accent);">
+        <span id="hazerFanVal">200</span>
+      </label>
+      <label style="font-size:11px;color:var(--muted);font-family:var(--font);display:flex;align-items:center;gap:6px;">
+        Haze <input type="range" id="hazerHaze" min="0" max="255" value="128" style="width:80px;accent-color:var(--accent);">
+        <span id="hazerHazeVal">128</span>
+      </label>
     </div>
   </div>
 
@@ -1038,9 +1049,9 @@
     const wsDot            = document.getElementById("wsDot");
     const wsLabel          = document.getElementById("wsLabel");
     const hBoardsLed       = document.getElementById("hBoardsLed");
-    const hPicoLed         = document.getElementById("hPicoLed");
+    const hOptaLed         = document.getElementById("hOptaLed");
+    const hDmxLed          = document.getElementById("hDmxLed");
     const hCameraLed       = document.getElementById("hCameraLed");
-    const hSyncLed         = document.getElementById("hSyncLed");
 
     /* -----------------------------------------------------------------------
        Stopwatch interpolation
@@ -1209,10 +1220,20 @@
       }
 
       /* --- Health strip --- */
-      setLed(hBoardsLed, health.boards  || "ok");
-      setLed(hPicoLed,   health.pico    || "ok");
-      setLed(hCameraLed, health.camera  || "ok");
-      setLed(hSyncLed,   health.sync    || "ok");
+      /* --- Health from WS board/input data --- */
+      // Relay boards: green if all OK, red if any failed
+      if (msg.boards && typeof msg.boards === "object") {
+        const boardVals = Object.values(msg.boards);
+        const allOk = boardVals.length > 0 && boardVals.every(b => b.status === "OK");
+        setLed(hBoardsLed, allOk ? "ok" : (boardVals.length ? "err" : "warn"));
+      }
+      // Opta inputs
+      if (msg.inputs) {
+        setLed(hOptaLed, msg.inputs.connected ? "ok" : "err");
+      }
+      // DMX node: always ok for now (no health check yet)
+      // Camera: always ok for now
+      setLed(hCameraLed, "ok");
 
       /* --- Beam strip --- */
       renderBeams(msg.beams || []);
@@ -1494,22 +1515,50 @@
     /* --- Assisted overlay --- */
     btnConfirm.addEventListener("click", () => gmPost("confirm-break"));
 
-    /* --- Hazer toggle --- */
-    document.getElementById("hHazer").addEventListener("click", async () => {
+    /* --- Hazer controls --- */
+    const hHazerLed = document.getElementById("hHazerLed");
+    const hHazerLabel = document.getElementById("hHazerLabel");
+    const hazerFanSlider = document.getElementById("hazerFan");
+    const hazerHazeSlider = document.getElementById("hazerHaze");
+    const hazerFanVal = document.getElementById("hazerFanVal");
+    const hazerHazeVal = document.getElementById("hazerHazeVal");
+    let hazerDebounce = null;
+
+    function updateHazerUI(d) {
+      hHazerLed.className = "health-led " + (d.enabled ? "ok" : "err");
+      hHazerLabel.textContent = d.enabled ? "Hazer ON" : "Hazer OFF";
+      hazerFanSlider.value = d.fan; hazerFanVal.textContent = d.fan;
+      hazerHazeSlider.value = d.haze; hazerHazeVal.textContent = d.haze;
+    }
+
+    document.getElementById("hHazerToggle").addEventListener("click", async () => {
       try {
         const resp = await fetch("/api/gm/hazer-toggle", { method: "POST" });
-        const d = await resp.json();
-        document.getElementById("hHazerLed").className = "health-led " + (d.enabled ? "ok" : "err");
+        updateHazerUI(await resp.json());
       } catch (e) { console.error("Hazer toggle failed:", e); }
     });
-    // Poll hazer status on load
+
+    function sendHazerUpdate() {
+      clearTimeout(hazerDebounce);
+      hazerDebounce = setTimeout(async () => {
+        try {
+          await fetch("/api/admin/hazer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fan: parseInt(hazerFanSlider.value), haze: parseInt(hazerHazeSlider.value) }),
+          });
+        } catch (e) { console.error("Hazer update failed:", e); }
+      }, 200);
+    }
+
+    hazerFanSlider.addEventListener("input", () => { hazerFanVal.textContent = hazerFanSlider.value; sendHazerUpdate(); });
+    hazerHazeSlider.addEventListener("input", () => { hazerHazeVal.textContent = hazerHazeSlider.value; sendHazerUpdate(); });
+
+    // Load initial hazer state
     fetch("/api/admin/hazer").then(r=>r.json()).then(d => {
-      if (d.available) {
-        document.getElementById("hHazerLed").className = "health-led " + (d.enabled ? "ok" : "err");
-      } else {
-        document.getElementById("hHazerLed").className = "health-led warn";
-      }
-    }).catch(() => {});
+      if (d.available) updateHazerUI(d);
+      else { hHazerLed.className = "health-led warn"; hHazerLabel.textContent = "Hazer N/A"; }
+    }).catch(() => { hHazerLed.className = "health-led warn"; });
     btnVeto.addEventListener("click",    () => gmPost("veto-break"));
 
     /* --- Detection mode switcher --- */

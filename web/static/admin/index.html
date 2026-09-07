@@ -812,7 +812,7 @@
             background:var(--surface2);border:1px solid var(--border);border-radius:4px;
             color:var(--text);min-width:140px;
           "></select>
-          <input id="seAddHoldMs" type="number" value="300" min="50" max="10000" style="
+          <input id="seAddHoldMs" type="number" value="300" min="50" max="60000" style="
             height:32px;padding:0 8px;font-family:var(--font);font-size:12px;
             background:var(--surface2);border:1px solid var(--border);border-radius:4px;
             color:var(--text);width:80px;
@@ -2578,7 +2578,7 @@
         <div class="${i === playingIdx ? "se-step-playing" : ""}" style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;">
           <span style="font-size:11px;font-weight:700;color:${i === playingIdx ? "var(--text)" : "var(--accent)"};width:20px;">${i === playingIdx ? "▶" : i+1}</span>
           <span style="font-size:12px;flex:1;">${esc(s.preset)}</span>
-          <input type="number" value="${s.hold_ms}" min="50" max="10000" style="
+          <input type="number" value="${s.hold_ms}" min="50" max="60000" style="
             width:70px;height:26px;padding:0 6px;font-family:var(--font);font-size:11px;
             background:var(--surface);border:1px solid var(--border);border-radius:3px;color:var(--text);
           " onchange="seSteps[${i}].hold_ms=parseInt(this.value)||300">

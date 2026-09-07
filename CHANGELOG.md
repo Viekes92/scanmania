@@ -16,6 +16,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   re-arms it against the reloaded config. `reload_config()` is `async` as a result — its only
   caller, `_reload_config()` in `web/routes_admin.py`, now awaits it.
 
+### Changed
+
+- Show step `hold_ms` ceiling raised from 10 s to 60 s in `ShowStepBody` and in the two admin show
+  editor inputs. The old limit rejected legitimate slow attract sequences with a 422; the loader and
+  show player never had a cap.
+
 ### Admin panel audit — backend and frontend
 
 #### Fixed (correctness / data loss)

@@ -184,7 +184,9 @@ class SavePresetBody(BaseModel):
 
 class ShowStepBody(BaseModel):
     preset: str = Field(min_length=1, max_length=64)
-    hold_ms: int = Field(default=300, ge=50, le=10_000)
+    # Upper bound is a guard rail against a stray extra zero wedging the maze on
+    # one step, not a design limit — the show player and loader have no cap.
+    hold_ms: int = Field(default=300, ge=50, le=60_000)
 
 
 class SaveShowBody(BaseModel):

@@ -76,13 +76,33 @@ Examples
 # Logging setup
 # ---------------------------------------------------------------------------
 
+class _ColorFormatter(logging.Formatter):
+    """Colored log formatter for terminal output."""
+    COLORS = {
+        "DEBUG":    "\033[90m",       # grey
+        "INFO":     "\033[36m",       # cyan
+        "WARNING":  "\033[33m",       # yellow
+        "ERROR":    "\033[31m",       # red
+        "CRITICAL": "\033[1;31m",     # bold red
+    }
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+
+    def format(self, record):
+        c = self.COLORS.get(record.levelname, "")
+        lvl = f"{c}{record.levelname:<7}{self.RESET}"
+        name = f"{self.DIM}{record.name}{self.RESET}"
+        ts = self.formatTime(record, "%H:%M:%S")
+        return f"{self.DIM}{ts}{self.RESET} {lvl} {name}: {record.getMessage()}"
+
+
 def configure_logging(level: str) -> None:
-    logging.basicConfig(
-        level=getattr(logging, level),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-        stream=sys.stdout,
-    )
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(_ColorFormatter())
+    logging.root.handlers.clear()
+    logging.root.addHandler(handler)
+    logging.root.setLevel(getattr(logging, level))
 
 
 # ---------------------------------------------------------------------------
@@ -188,10 +208,12 @@ async def async_main(args: argparse.Namespace) -> int:
     Start all services as asyncio tasks.
     Returns exit code (0 = clean shutdown).
     """
+    # ================================================================
+    #  PHASE 1 — Config & Database
+    # ================================================================
     config_dir = resolve_config_dir(args)
     log.info("Loading config from %s", config_dir)
 
-    # Patch config loader to use the resolved directory
     import config.loader as loader_module
     loader_module.CONFIG_DIR = config_dir
 
@@ -202,34 +224,46 @@ async def async_main(args: argparse.Namespace) -> int:
         log.error("Config load failed: %s", e)
         return 1
 
-    log.info("Config loaded OK: %d board(s), %d beam(s)",
-             len(cfg.hardware.relay_boards), len(cfg.beams.beams))
+    log.info("Config: %d boards, %d beams, %d presets",
+             len(cfg.hardware.relay_boards), len(cfg.beams.beams),
+             len(cfg.mazes.presets))
 
-    # ---- Database ----
     if args.fake_all:
         db_path = ":memory:"
     elif os.path.isdir("/var/lib/scanmania"):
         db_path = "/var/lib/scanmania/scanmania.db"
     else:
         db_path = str(Path(__file__).resolve().parent / "scanmania.db")
-        log.info("Production DB path not found; using local %s", db_path)
-    log.info("Initialising database at %s", db_path)
+    log.info("Database: %s", db_path)
     from persist.db import Database
     db = Database(db_path)
     await db.init()
 
-    # ---- Backends ----
+    # ================================================================
+    #  PHASE 2 — Hardware connections
+    # ================================================================
     backends = create_backends(args, cfg)
 
-    # Connect real Modbus boards if using the real IO backend
+    # Relay boards
     if hasattr(backends["io"], "connect_all"):
-        log.info("Connecting to relay boards…")
+        log.info("Connecting relay boards...")
         results = await backends["io"].connect_all()
         for bid, ok in results.items():
             if ok:
-                log.info("  %s: connected", bid)
+                log.info("  ✓ %s", bid)
             else:
-                log.warning("  %s: FAILED to connect", bid)
+                log.warning("  ✗ %s FAILED", bid)
+    else:
+        log.info("Relay boards: fake mode")
+
+    # Inputs (Opta)
+    if hasattr(backends["inputs"], "_ip"):
+        log.info("Inputs: %s:%s (Opta Modbus TCP)", backends["inputs"]._ip, backends["inputs"]._port)
+    else:
+        log.info("Inputs: fake mode")
+
+    # Vision
+    log.info("Vision: %s", type(backends["vision"]).__name__)
 
     # ---- Services (each is an async context manager or coroutine) ----
     # We collect all service tasks into a TaskGroup so a crash in one
@@ -243,21 +277,7 @@ async def async_main(args: argparse.Namespace) -> int:
 
     # WebSocket hub — shared between runner (for broadcasts) and web server
     from web.server import WebSocketHub, ScanManiaApp
-    hub = WebSocketHub()
-
-    # GameRunner — wires FSM to I/O, vision, inputs
-    from core.runner import GameRunner
-    runner = GameRunner(
-        cfg,
-        backends["io"],
-        backends["inputs"],
-        backends["vision"],
-        db,
-        hub=hub,
-    )
-    tasks.append(asyncio.create_task(runner.run(), name="runner"))
-
-    # Hazer — Art-Net DMX via ShowTec NET-2/3
+    # Hazer (Art-Net DMX)
     hazer = None
     hazer_cfg = getattr(cfg.hardware, "hazer", None) or {}
     if isinstance(hazer_cfg, dict) and hazer_cfg.get("artnet_ip"):
@@ -265,7 +285,7 @@ async def async_main(args: argparse.Namespace) -> int:
             from iobackend.hazer import HazerController
             hazer = HazerController(
                 artnet_ip=hazer_cfg["artnet_ip"],
-                universe=hazer_cfg.get("universe", 0),
+                universe=hazer_cfg.get("universe", 1),
                 fan_channel=hazer_cfg.get("fan_channel", 1),
                 haze_channel=hazer_cfg.get("haze_channel", 2),
                 default_fan=hazer_cfg.get("default_fan", 200),
@@ -273,14 +293,29 @@ async def async_main(args: argparse.Namespace) -> int:
             )
             if not hazer_cfg.get("enabled", True):
                 hazer.set_enabled(False)
-            tasks.append(asyncio.create_task(hazer.run(), name="hazer"))
-            log.info("Hazer: Art-Net → %s (ch %d, intensity %d)",
-                     hazer_cfg["artnet_ip"], hazer_cfg.get("channel", 1),
-                     hazer_cfg.get("default_intensity", 128))
+            log.info("Hazer: %s universe=%d (default %s)",
+                     hazer_cfg["artnet_ip"], hazer_cfg.get("universe", 1),
+                     "ON" if hazer_cfg.get("enabled", True) else "OFF")
         except Exception as e:
-            log.warning("Hazer unavailable: %s", e)
+            log.warning("Hazer: unavailable — %s", e)
+    else:
+        log.info("Hazer: not configured")
 
-    # WebServer — FastAPI + WebSocket hub, served via uvicorn
+    # ================================================================
+    #  PHASE 3 — Start services
+    # ================================================================
+    log.info("Starting services...")
+
+    hub = WebSocketHub()
+
+    from core.runner import GameRunner
+    runner = GameRunner(cfg, backends["io"], backends["inputs"], backends["vision"], db, hub=hub)
+    tasks.append(asyncio.create_task(runner.run(), name="runner"))
+
+    if hazer:
+        tasks.append(asyncio.create_task(hazer.run(), name="hazer"))
+
+    # WebServer
     web_app = ScanManiaApp(cfg, db, hub)
     web_app.set_runner(runner)
     if hazer:

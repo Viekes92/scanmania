@@ -273,7 +273,7 @@ def _break_effects_for_mode(ctx: FSMContext, event: BreakConfirmed, current_run_
         ]
         if ctx.run_id:
             effects += [
-                SaveRun(outcome=RunOutcome.busted, run_id=ctx.run_id),
+                SaveRun(outcome=RunOutcome.busted, run_id=ctx.run_id, busting_beam_id=event.beam_id),
                 QueueSync(run_id=ctx.run_id),
             ]
         effects.append(BroadcastState())

@@ -119,7 +119,7 @@
       top: 0;
       bottom: 0;
       width: 40px;
-      background: linear-gradient(to right, transparent, var(--bg));
+      background: linear-gradient(to right, transparent, var(--surface));
       pointer-events: none;
     }
 
@@ -540,6 +540,13 @@
     .mt-16 { margin-top: 16px; }
     .flex-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
+    /* Show editor — currently-playing step highlight */
+    .se-step-playing {
+      border-color: var(--accent) !important;
+      background: rgba(38, 79, 154, 0.15) !important;
+      box-shadow: 0 0 8px var(--accent-glow);
+    }
+
     /* Master mode status indicator */
     #masterStatus {
       font-size: 13px;
@@ -676,6 +683,40 @@
         <div id="inputsInfo" style="font-size:13px; color:var(--muted)">Loading…</div>
       </div>
 
+      <div class="card" id="hazerCard">
+        <div class="card-title">Hazer</div>
+        <div id="hazerInfo" style="font-size:13px; color:var(--muted); margin-bottom:12px;">Loading…</div>
+        <div id="hazerControls" style="display:none;">
+          <div class="info-row">
+            <span class="info-key">Connection</span>
+            <span class="info-val" id="hazerStatus">—</span>
+          </div>
+          <div class="info-row" style="align-items:center;">
+            <span class="info-key">Enabled</span>
+            <span class="info-val">
+              <button class="btn btn-default" id="btnHazerToggle" style="font-size:11px;padding:4px 12px;">Toggle</button>
+              <span id="hazerEnabledVal" style="margin-left:8px;font-weight:700;"></span>
+            </span>
+          </div>
+          <div class="info-row" style="align-items:center;">
+            <span class="info-key">Fan (0–255)</span>
+            <span class="info-val" style="display:flex;align-items:center;gap:10px;">
+              <input type="range" id="hazerFanSlider" min="0" max="255" value="0"
+                style="width:160px;accent-color:var(--accent);">
+              <span id="hazerFanVal" style="width:30px;text-align:right;">0</span>
+            </span>
+          </div>
+          <div class="info-row" style="align-items:center;">
+            <span class="info-key">Haze (0–255)</span>
+            <span class="info-val" style="display:flex;align-items:center;gap:10px;">
+              <input type="range" id="hazerHazeSlider" min="0" max="255" value="0"
+                style="width:160px;accent-color:var(--accent);">
+              <span id="hazerHazeVal" style="width:30px;text-align:right;">0</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-title">Cameras</div>
         <div id="cameraInfo" style="font-size:13px; color:var(--muted)">Loading…</div>
@@ -695,7 +736,7 @@
         <p style="font-size:11px;color:var(--muted);font-family:var(--font);margin-bottom:12px;line-height:1.6;">
           Horizontal strips cross the player's path. Vertical strips run along the walls. START at bottom, STOP at top.
         </p>
-        <div id="gridContainer"></div>
+        <div id="gridContainer" style="max-width:100%;overflow-x:auto;"></div>
         <div style="display:flex; gap:18px; margin-top:14px; flex-wrap:wrap;">
           <span style="font-size:11px;color:var(--muted);">Click strip to mask/unmask</span>
           <span style="font-size:11px;display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#264f9a;"></span> Active</span>
@@ -867,6 +908,9 @@
             <tr><td colspan="8" style="color:var(--muted); padding:16px;">Loading…</td></tr>
           </tbody>
         </table>
+      </div>
+      <div style="text-align:center;margin-top:12px;">
+        <button class="btn btn-default" id="btnRunsLoadMore" style="font-size:11px;padding:6px 20px;">Load more</button>
       </div>
     </div>
 
@@ -1154,17 +1198,23 @@
     });
 
     let _hwInterval = null;
+    let _dashInterval = null;
     function onTabActivated(id) {
       // Stop hardware polling when leaving the tab
       if (_hwInterval) { clearInterval(_hwInterval); _hwInterval = null; }
+      // Stop dashboard auto-refresh when leaving the dashboard tab
+      if (_dashInterval) { clearInterval(_dashInterval); _dashInterval = null; }
 
       switch (id) {
-        case "dashboard":   loadDashboard(); break;
+        case "dashboard":
+          loadDashboard();
+          _dashInterval = setInterval(loadDashboard, 30000);
+          break;
         case "hardware":
           loadHardware();  // initial load for structure (cameras, pico)
           // Live coil updates come via WS at 10Hz — no polling needed
           break;
-        case "runs":        loadRuns(); break;
+        case "runs":        loadRuns(true); break;
         case "leaderboard": loadLeaderboard(); break;
         case "cloudsync":   loadSyncStatus(); break;
         case "config":      loadConfig(); break;
@@ -1213,6 +1263,23 @@
       el.textContent = msg;
       el.style.color = isErr ? "var(--red)" : "var(--green)";
       setTimeout(() => { el.textContent = ""; }, 5000);
+    }
+
+    /**
+     * btnLoading — disable a button while an async operation runs, then re-enable.
+     * Usage: await btnLoading(btn, someAsyncFn());
+     */
+    async function btnLoading(btn, promise) {
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.style.opacity = "0.6";
+      try {
+        return await promise;
+      } finally {
+        btn.disabled = false;
+        btn.style.opacity = "";
+        btn.textContent = orig;
+      }
     }
 
     /* -----------------------------------------------------------------------
@@ -1366,6 +1433,7 @@
         document.getElementById("boardsBody").innerHTML =
           `<tr><td colspan="6" style="color:var(--red)">${esc(e.message)}</td></tr>`;
       }
+      loadHazer();
     }
 
     function renderBoards(boards) {
@@ -1421,13 +1489,86 @@
     }
 
     /* -----------------------------------------------------------------------
+       HAZER
+    ----------------------------------------------------------------------- */
+    async function loadHazer() {
+      try {
+        const d = await apiFetch("/api/admin/hazer");
+        const infoEl = document.getElementById("hazerInfo");
+        const ctrlEl = document.getElementById("hazerControls");
+        if (!d.available) {
+          infoEl.textContent = "Hazer not available.";
+          ctrlEl.style.display = "none";
+          return;
+        }
+        infoEl.style.display = "none";
+        ctrlEl.style.display = "";
+        const enabledEl = document.getElementById("hazerEnabledVal");
+        enabledEl.textContent = d.enabled ? "ON" : "OFF";
+        enabledEl.style.color = d.enabled ? "var(--green)" : "var(--muted)";
+        document.getElementById("hazerFanSlider").value = d.fan ?? 0;
+        document.getElementById("hazerFanVal").textContent = d.fan ?? 0;
+        document.getElementById("hazerHazeSlider").value = d.haze ?? 0;
+        document.getElementById("hazerHazeVal").textContent = d.haze ?? 0;
+      } catch (e) {
+        document.getElementById("hazerInfo").textContent = "Error: " + e.message;
+      }
+    }
+
+    async function postHazer(body) {
+      try {
+        const d = await apiPost("/api/admin/hazer", body);
+        const enabledEl = document.getElementById("hazerEnabledVal");
+        enabledEl.textContent = d.enabled ? "ON" : "OFF";
+        enabledEl.style.color = d.enabled ? "var(--green)" : "var(--muted)";
+        document.getElementById("hazerFanSlider").value = d.fan ?? 0;
+        document.getElementById("hazerFanVal").textContent = d.fan ?? 0;
+        document.getElementById("hazerHazeSlider").value = d.haze ?? 0;
+        document.getElementById("hazerHazeVal").textContent = d.haze ?? 0;
+      } catch (e) { console.error("Hazer POST error:", e); }
+    }
+
+    document.getElementById("btnHazerToggle").addEventListener("click", async function () {
+      // Read current state then toggle
+      try {
+        const d = await apiFetch("/api/admin/hazer");
+        await btnLoading(this, postHazer({ enabled: !d.enabled }));
+      } catch (e) { console.error("Hazer toggle error:", e); }
+    });
+
+    document.getElementById("hazerFanSlider").addEventListener("input", function () {
+      document.getElementById("hazerFanVal").textContent = this.value;
+    });
+    document.getElementById("hazerFanSlider").addEventListener("change", function () {
+      postHazer({ fan: parseInt(this.value, 10) });
+    });
+
+    document.getElementById("hazerHazeSlider").addEventListener("input", function () {
+      document.getElementById("hazerHazeVal").textContent = this.value;
+    });
+    document.getElementById("hazerHazeSlider").addEventListener("change", function () {
+      postHazer({ haze: parseInt(this.value, 10) });
+    });
+
+    /* -----------------------------------------------------------------------
        RUNS
     ----------------------------------------------------------------------- */
-    async function loadRuns() {
+    let _runsOffset = 0;
+    let _runsAccumulated = [];
+
+    async function loadRuns(reset = true) {
+      if (reset) {
+        _runsOffset = 0;
+        _runsAccumulated = [];
+      }
       const q = document.getElementById("runSearch").value.trim();
       try {
-        const d = await apiFetch(`/api/admin/runs?limit=50&q=${encodeURIComponent(q)}`);
-        renderRuns(d.runs || []);
+        const d = await apiFetch(`/api/admin/runs?limit=50&offset=${_runsOffset}&q=${encodeURIComponent(q)}`);
+        const newRuns = d.runs || [];
+        _runsAccumulated = reset ? newRuns : [..._runsAccumulated, ...newRuns];
+        renderRuns(_runsAccumulated);
+        // Show/hide "Load more" based on whether a full page was returned
+        document.getElementById("btnRunsLoadMore").style.display = newRuns.length < 50 ? "none" : "";
       } catch (e) {
         document.getElementById("runsBody").innerHTML =
           `<tr><td colspan="8" style="color:var(--red)">${esc(e.message)}</td></tr>`;
@@ -1492,7 +1633,7 @@
       if (reason === null) return;
       try {
         await apiPost(`/api/admin/runs/${runId}/void`, { reason });
-        loadRuns();
+        loadRuns(true);
       } catch (e) { alert("Void failed: " + e.message); }
     }
 
@@ -1500,12 +1641,16 @@
       evt.stopPropagation();
       try {
         await apiPost(`/api/admin/runs/${runId}/unvoid`, {});
-        loadRuns();
+        loadRuns(true);
       } catch (e) { alert("Unvoid failed: " + e.message); }
     }
 
-    document.getElementById("btnRunRefresh").addEventListener("click", loadRuns);
-    document.getElementById("runSearch").addEventListener("keydown", e => { if (e.key==="Enter") loadRuns(); });
+    document.getElementById("btnRunRefresh").addEventListener("click", () => loadRuns(true));
+    document.getElementById("runSearch").addEventListener("keydown", e => { if (e.key==="Enter") loadRuns(true); });
+    document.getElementById("btnRunsLoadMore").addEventListener("click", () => {
+      _runsOffset += 50;
+      loadRuns(false);
+    });
     document.getElementById("btnExportCsv").addEventListener("click", () => {
       window.location = "/api/admin/export/runs.csv";
     });
@@ -1865,16 +2010,17 @@
     ----------------------------------------------------------------------- */
     let seSteps = [];   // [{preset, hold_ms}, ...]
     let sePlayTimer = null;
+    let sePlayingIdx = -1;  // index of currently-playing step, -1 = not playing
 
-    function seRenderTimeline() {
+    function seRenderTimeline(playingIdx = sePlayingIdx) {
       const el = document.getElementById("seTimeline");
       if (!seSteps.length) {
         el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px;">No steps. Add presets below.</div>';
         return;
       }
       el.innerHTML = seSteps.map((s, i) => `
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;">
-          <span style="font-size:11px;font-weight:700;color:var(--accent);width:20px;">${i+1}</span>
+        <div class="${i === playingIdx ? "se-step-playing" : ""}" style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;">
+          <span style="font-size:11px;font-weight:700;color:${i === playingIdx ? "var(--text)" : "var(--accent)"};width:20px;">${i === playingIdx ? "▶" : i+1}</span>
           <span style="font-size:12px;flex:1;">${esc(s.preset)}</span>
           <input type="number" value="${s.hold_ms}" min="50" max="10000" style="
             width:70px;height:26px;padding:0 6px;font-family:var(--font);font-size:11px;
@@ -1905,9 +2051,16 @@
 
       async function playStep() {
         if (idx >= seSteps.length) {
-          if (loop) { idx = 0; } else { sePlayTimer = null; return; }
+          if (loop) { idx = 0; } else {
+            sePlayTimer = null;
+            sePlayingIdx = -1;
+            seRenderTimeline(-1);
+            return;
+          }
         }
         const step = seSteps[idx];
+        sePlayingIdx = idx;
+        seRenderTimeline(idx);
         try {
           await apiPost("/api/admin/master/apply_preset", { preset: step.preset });
         } catch (e) { console.error("Show play error:", e); }
@@ -1921,6 +2074,8 @@
 
     document.getElementById("seStopBtn").addEventListener("click", () => {
       if (sePlayTimer) { clearTimeout(sePlayTimer); sePlayTimer = null; }
+      sePlayingIdx = -1;
+      seRenderTimeline(-1);
     });
 
     document.getElementById("seSaveBtn").addEventListener("click", async () => {
@@ -2093,54 +2248,6 @@
     }
 
     /* -----------------------------------------------------------------------
-       LOGS
-    ----------------------------------------------------------------------- */
-    let logAbortCtrl = null;
-    const logOutput = document.getElementById("logOutput");
-
-    document.getElementById("btnLogTail").addEventListener("click", async () => {
-      if (logAbortCtrl) logAbortCtrl.abort();
-      logAbortCtrl = new AbortController();
-      const unit   = document.getElementById("logUnit").value;
-      const filter = document.getElementById("logFilter").value;
-      logOutput.textContent = "";
-      try {
-        const resp = await fetch(
-          `/api/admin/logs/stream?unit=${encodeURIComponent(unit)}&filter=${encodeURIComponent(filter)}&lines=200`,
-          {
-            headers: { "X-Admin-Password": getAdminPwd() },
-            signal: logAbortCtrl.signal,
-          },
-        );
-        if (!resp.ok) { logOutput.textContent = `Error ${resp.status}`; return; }
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const parts = buf.split("\n\n");
-          buf = parts.pop();
-          for (const part of parts) {
-            if (part.startsWith("data: ")) {
-              logOutput.textContent += part.slice(6) + "\n";
-              logOutput.scrollTop = logOutput.scrollHeight;
-            }
-          }
-        }
-        logOutput.textContent += "\n[stream ended]\n";
-      } catch (e) {
-        if (e.name !== "AbortError") logOutput.textContent += `\n[${e.message}]\n`;
-      }
-    });
-
-    document.getElementById("btnLogStop").addEventListener("click", () => {
-      if (logAbortCtrl) { logAbortCtrl.abort(); logAbortCtrl = null; }
-      logOutput.textContent += "\n[stopped]\n";
-    });
-
-    /* -----------------------------------------------------------------------
        MASTER MODE
     ----------------------------------------------------------------------- */
     async function loadMasterMode() {
@@ -2298,7 +2405,7 @@
         const resp = await fetch("/api/signin", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nickname }),
+          body: JSON.stringify({ first_name: nickname }),
         });
         const d = await resp.json();
         if (d.ok) {

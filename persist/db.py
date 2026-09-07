@@ -233,10 +233,18 @@ class Database:
         )
         await self._db.commit()
 
+    _ALLOWED_RUN_COLUMNS = frozenset({
+        "outcome", "voided_reason", "ended_at", "elapsed_ms",
+        "detection_mode", "busting_beam_id", "segment_reached",
+    })
+
     async def update_run(self, run_id: str, **kwargs: Any) -> None:
-        """Update arbitrary columns on a run row by keyword arguments."""
+        """Update allowed columns on a run row by keyword arguments."""
         if not kwargs:
             return
+        bad = set(kwargs) - self._ALLOWED_RUN_COLUMNS
+        if bad:
+            raise ValueError(f"update_run: disallowed columns {bad}")
         set_clause = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values()) + [run_id]
         await self._db.execute(

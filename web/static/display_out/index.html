@@ -20,6 +20,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SCANMANIA — Outdoor</title>
+  <link rel="icon" href="data:,">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -91,10 +92,18 @@
         0 2px 16px rgba(0,0,0,0.9);
       letter-spacing: 0.04em;
       opacity: 0;
-      transition: opacity 0.3s;
+      transition: opacity 0.3s, color 0.2s, text-shadow 0.2s;
     }
 
     #stopwatch.visible { opacity: 1; }
+
+    /* White stopwatch during active run for maximum contrast */
+    #stopwatch.run {
+      color: #ffffff;
+      text-shadow:
+        0 0 20px rgba(255, 255, 255, 0.5),
+        0 2px 16px rgba(0,0,0,0.9);
+    }
 
     /* -----------------------------------------------------------------------
        Game name — shown in ATTRACT
@@ -300,6 +309,85 @@
     }
 
     /* -----------------------------------------------------------------------
+       COUNTDOWN overlay — "GET READY" pulsing text centered on screen
+    ----------------------------------------------------------------------- */
+    @keyframes get-ready-pulse {
+      0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+      50%       { opacity: 0.55; transform: translate(-50%, -50%) scale(0.97); }
+    }
+
+    #countdownOverlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    #countdownOverlay.visible {
+      opacity: 1;
+      animation: get-ready-pulse 1.2s ease-in-out infinite;
+    }
+
+    #countdownGetReady {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(56px, 12vw, 160px);
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #264f9a;
+      text-shadow:
+        0 0 40px rgba(38, 79, 154, 0.8),
+        0 0 100px rgba(38, 79, 154, 0.4),
+        0 2px 24px rgba(0,0,0,0.9);
+    }
+
+    /* -----------------------------------------------------------------------
+       ABORTED overlay — orange tint + "RUN CANCELLED"
+    ----------------------------------------------------------------------- */
+    @keyframes aborted-flash {
+      0%, 100% { background-color: rgba(60, 20, 0, 0.65); }
+      20%       { background-color: rgba(130, 50, 0, 0.75); }
+    }
+
+    #abortedOverlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(60, 20, 0, 0.65);
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+
+    #abortedOverlay.visible { opacity: 1; animation: aborted-flash 0.8s ease-in-out 2; }
+
+    #abortedText {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(52px, 11vw, 160px);
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      color: #ff6600;
+      text-shadow:
+        0 0 60px rgba(255, 102, 0, 0.9),
+        0 0 120px rgba(255, 102, 0, 0.5);
+    }
+
+    #abortedTime {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(28px, 5vw, 64px);
+      color: rgba(255, 150, 80, 0.9);
+      margin-top: 16px;
+      text-shadow: 0 0 20px rgba(255,102,0,0.4);
+    }
+
+    /* -----------------------------------------------------------------------
        Reconnect indicator — very dim, non-intrusive
     ----------------------------------------------------------------------- */
     #reconnect {
@@ -393,6 +481,17 @@
       <div id="finishedRank"></div>
       <div id="finishedTime"></div>
     </div>
+
+    <!-- ABORTED overlay -->
+    <div id="abortedOverlay">
+      <div id="abortedText">RUN CANCELLED</div>
+      <div id="abortedTime"></div>
+    </div>
+
+    <!-- COUNTDOWN overlay -->
+    <div id="countdownOverlay">
+      <div id="countdownGetReady">GET READY</div>
+    </div>
   </div>
 
   <!-- Dim reconnect indicator -->
@@ -433,6 +532,9 @@
     const reconnectEl     = document.getElementById("reconnect");
     const nextUpBanner    = document.getElementById("nextUpBanner");
     const nextUpName      = document.getElementById("nextUpName");
+    const abortedOverlay  = document.getElementById("abortedOverlay");
+    const abortedTime     = document.getElementById("abortedTime");
+    const countdownOverlay = document.getElementById("countdownOverlay");
 
     /* -----------------------------------------------------------------------
        MJPEG fallback — if the stream image fails to load, hide it
@@ -523,6 +625,8 @@
       /* --- Clear overlays by default --- */
       bustOverlay.classList.remove("visible");
       finishedOverlay.classList.remove("visible");
+      abortedOverlay.classList.remove("visible");
+      countdownOverlay.classList.remove("visible");
 
       /* --- Next-up banner: show when player registered, hide otherwise --- */
       if (state === "REGISTERED" || state === "ARM") {
@@ -539,6 +643,7 @@
         stopInterp();
         stopwatchEl.textContent = "00:00.000";
         stopwatchEl.classList.remove("visible");
+        stopwatchEl.classList.remove("run");
         gameNameEl.classList.add("visible");
         leaderboard.classList.add("visible");
         leaderboard.classList.remove("faded");
@@ -547,15 +652,18 @@
         swRunning = false;
         stopInterp();
         stopwatchEl.classList.remove("visible");
+        stopwatchEl.classList.remove("run");
         gameNameEl.classList.add("visible");
         leaderboard.classList.add("visible");
         leaderboard.classList.add("faded");
+        countdownOverlay.classList.add("visible");
 
       } else if (RUN_STATES.has(state)) {
-        // Run in progress — big stopwatch, leaderboard fades
+        // Run in progress — big stopwatch (white for contrast), leaderboard fades
         swRunning = true;
         startInterp();
         stopwatchEl.classList.add("visible");
+        stopwatchEl.classList.add("run");
         gameNameEl.classList.remove("visible");
         leaderboard.classList.add("visible");
         leaderboard.classList.add("faded");
@@ -565,6 +673,7 @@
         stopInterp();
         stopwatchEl.textContent = fmtMs(swElapsedAtMsg);
         stopwatchEl.classList.add("visible");
+        stopwatchEl.classList.remove("run");
         gameNameEl.classList.remove("visible");
         leaderboard.classList.remove("visible");
         bustTime.textContent = fmtMs(swElapsedAtMsg);
@@ -575,17 +684,30 @@
         stopInterp();
         stopwatchEl.textContent = fmtMs(swElapsedAtMsg);
         stopwatchEl.classList.add("visible");
+        stopwatchEl.classList.remove("run");
         gameNameEl.classList.remove("visible");
         leaderboard.classList.remove("visible");
         finishedRank.textContent = msg.rank != null ? `Rank #${msg.rank}` : "";
         finishedTime.textContent = fmtMs(swElapsedAtMsg);
         finishedOverlay.classList.add("visible");
 
+      } else if (state === "ABORTED") {
+        swRunning = false;
+        stopInterp();
+        stopwatchEl.textContent = fmtMs(swElapsedAtMsg);
+        stopwatchEl.classList.add("visible");
+        stopwatchEl.classList.remove("run");
+        gameNameEl.classList.remove("visible");
+        leaderboard.classList.remove("visible");
+        abortedTime.textContent = fmtMs(swElapsedAtMsg);
+        abortedOverlay.classList.add("visible");
+
       } else if (state === "RESULT") {
         swRunning = false;
         stopInterp();
         stopwatchEl.textContent = fmtMs(swElapsedAtMsg);
         stopwatchEl.classList.add("visible");
+        stopwatchEl.classList.remove("run");
         gameNameEl.classList.remove("visible");
         leaderboard.classList.add("visible");
         leaderboard.classList.add("faded");
@@ -597,10 +719,11 @@
         }
 
       } else {
-        // RESET, FAULT, SELF_TEST, BOOT, MASTER, ABORTED
+        // RESET, FAULT, SELF_TEST, BOOT, MASTER
         swRunning = false;
         stopInterp();
         stopwatchEl.classList.remove("visible");
+        stopwatchEl.classList.remove("run");
         gameNameEl.classList.add("visible");
         leaderboard.classList.add("visible");
         leaderboard.classList.remove("faded");

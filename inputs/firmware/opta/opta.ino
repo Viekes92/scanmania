@@ -199,7 +199,31 @@ void handleModbus() {
   if (func == 0x02) {
     uint16_t startAddr = (buf[8] << 8) | buf[9];
     uint16_t qty = (buf[10] << 8) | buf[11];
-    if (qty > NUM_IN) qty = NUM_IN;
+    if (startAddr >= NUM_IN) {
+      // startAddr out of range — send Modbus exception 0x02 (Illegal Data Address)
+      byte exc[9];
+      exc[0] = buf[0]; exc[1] = buf[1];
+      exc[2] = 0; exc[3] = 0;
+      exc[4] = 0; exc[5] = 3;
+      exc[6] = buf[6];
+      exc[7] = func | 0x80;
+      exc[8] = 0x02;
+      mbClient.write(exc, 9);
+      return;
+    }
+    if (startAddr + qty > NUM_IN) qty = NUM_IN - startAddr;
+    if (qty == 0) {
+      // Nothing to read — send Modbus exception 0x03 (Illegal Data Value)
+      byte exc[9];
+      exc[0] = buf[0]; exc[1] = buf[1];
+      exc[2] = 0; exc[3] = 0;
+      exc[4] = 0; exc[5] = 3;
+      exc[6] = buf[6];
+      exc[7] = func | 0x80;
+      exc[8] = 0x03;
+      mbClient.write(exc, 9);
+      return;
+    }
 
     byte byteCount = (qty + 7) / 8;
     byte inputData[1] = { 0 };

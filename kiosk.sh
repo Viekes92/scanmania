@@ -39,7 +39,7 @@ if [ "$NUM" -ge 2 ]; then
     chromium --kiosk --noerrdialogs --disable-translate --no-first-run         --disable-infobars --disable-session-crashed-bubble         --window-position=0,0 --app="$SERVER/display/in" &
     
     # Outdoor display on second output
-    chromium --kiosk --noerrdialogs --disable-translate --no-first-run         --disable-infobars --disable-session-crashed-bubble         --window-position=$W1,0 --app="$SERVER/display/out" &
+    chromium --kiosk --noerrdialogs --disable-translate --no-first-run         --disable-infobars --disable-session-crashed-bubble         --user-data-dir=/tmp/chromium-display-out         --window-position=$W1,0 --app="$SERVER/display/out" &
 else
     # Single display: show in-container by default
     OUT1=$(echo "$OUTPUTS" | head -1)

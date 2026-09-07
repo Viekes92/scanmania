@@ -80,7 +80,7 @@ class ModbusInputs:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             sock.settimeout(self._timeout_s)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await asyncio.wait_for(
                 loop.run_in_executor(None, sock.connect, (self._ip, self._port)),
                 timeout=self._timeout_s * 2,
@@ -182,7 +182,7 @@ class ModbusInputs:
                 consecutive_failures = 0
 
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 states = await asyncio.wait_for(
                     loop.run_in_executor(None, self._read_inputs_sync),
                     timeout=self._timeout_s * 2,

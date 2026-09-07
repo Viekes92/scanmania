@@ -43,6 +43,20 @@ class Stopwatch:
         self._started_at_ns = time.monotonic_ns()
         self._stopped_elapsed_ns = None
 
+    def resume(self) -> None:
+        """
+        Resume from the stopped elapsed value.
+
+        Used by assisted-mode veto: the stopwatch was halted, the GM vetoed
+        the break, and the clock resumes from where it was frozen.
+        If not stopped, this is a no-op.
+        """
+        if self._stopped_elapsed_ns is None:
+            return  # not stopped, nothing to resume
+        # Set started_at so that current elapsed = frozen elapsed + time since resume
+        self._started_at_ns = time.monotonic_ns() - self._stopped_elapsed_ns
+        self._stopped_elapsed_ns = None
+
     def stop(self) -> None:
         """
         Stop the stopwatch and freeze the elapsed value.

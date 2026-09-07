@@ -96,6 +96,7 @@ class GameRunner:
         # Cached hardware readback (updated every ~2s by _hardware_poller)
         self._board_states: dict[str, dict] = {}  # board_id → {status, coils, rtt_ms}
         self._cached_leaderboard: list[dict] = []
+        self._last_rank: int | None = None
 
         # Preset resolver — bridges preset names to relay board coil writes
         self._resolver = None
@@ -184,11 +185,19 @@ class GameRunner:
                 self._timeout_after(arm_timeout_ms, ArmTimeout()), name="arm_timeout"
             )
 
-        # Entering MASTER: kill all background tasks for full manual control
+        # Entering MASTER: kill all background tasks and clear run context
         if new_state == "MASTER" and old_state != "MASTER":
             for attr in ("_show_task", "_count_in_task", "_arm_timeout_task",
                          "_result_timeout_task", "_max_run_task"):
                 self._cancel_task(attr)
+            # Clear stale run context so next game session starts fresh
+            self.context.run_id = None
+            self.context.player_id = None
+            self.context.player_nickname = None
+            self.context.segment = 1
+            self.context.pending_break = None
+            self._last_outcome = None
+            self._last_rank = None
 
         # When entering RESULT, start timeout for RESULT → RESET
         # (replaces the FINISHED/BUSTED→RESULT timer that just fired)
@@ -220,7 +229,7 @@ class GameRunner:
         Clears run context so the next player starts fresh.
         """
         # Cancel all outstanding timers
-        for attr in ("_arm_timeout_task", "_result_timeout_task", "_max_run_task", "_count_in_task"):
+        for attr in ("_arm_timeout_task", "_result_timeout_task", "_max_run_task", "_count_in_task", "_show_task", "_self_test_task"):
             self._cancel_task(attr)
         self.context.run_id = None
         self.context.player_id = None
@@ -230,6 +239,7 @@ class GameRunner:
         self.context.assisted_halt_elapsed_ms = None
         self._run_started_at_iso = None
         self._last_outcome = None
+        self._last_rank = None
         self._countdown_step = 0
         self._countdown_total = 0
 
@@ -326,12 +336,16 @@ class GameRunner:
             pass
 
     async def _handle_start_stopwatch(self, effect: StartStopwatch) -> None:
-        """Start the monotonic stopwatch and assign a run_id if none exists yet."""
+        """Start or resume the stopwatch. Resume if already has a run_id (veto case)."""
         if not self.context.run_id:
             self.context.run_id = str(uuid.uuid4())
             log.info("Run started: run_id=%s", self.context.run_id)
-        self.stopwatch.start()
-        self._run_started_at_iso = datetime.now(timezone.utc).isoformat()
+            self.stopwatch.start()
+            self._run_started_at_iso = datetime.now(timezone.utc).isoformat()
+        else:
+            # Veto case: resume from halted elapsed
+            self.stopwatch.resume()
+            log.info("Stopwatch resumed from %d ms", self.stopwatch.elapsed_ms())
         log.info("[SideEffect] StartStopwatch")
         # Start/restart max-run timer (cancel existing to avoid doubles after veto)
         self._cancel_task("_max_run_task")
@@ -493,9 +507,16 @@ class GameRunner:
                 "SaveRun: inserted run %s (outcome=%s, elapsed=%d ms)",
                 effect.run_id, effect.outcome, run["elapsed_ms"],
             )
-            # Refresh leaderboard cache for WS broadcast
+            # Refresh leaderboard cache and compute rank
             try:
                 self._cached_leaderboard = await self.db.get_leaderboard(scope="daily", limit=20)
+                # Compute rank for this run
+                self._last_rank = None
+                if effect.outcome == "clean":
+                    for i, entry in enumerate(self._cached_leaderboard, 1):
+                        if entry.get("id") == effect.run_id:
+                            self._last_rank = i
+                            break
             except Exception:
                 pass
         except Exception:
@@ -862,6 +883,7 @@ class GameRunner:
             "countdown_step": self._countdown_step,
             "countdown_total": self._countdown_total,
             "outcome": self._last_outcome,
+            "rank": self._last_rank,
             "boards": self._board_states,
             "leaderboard": self._cached_leaderboard,
             "inputs": {

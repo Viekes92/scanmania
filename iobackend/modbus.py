@@ -88,7 +88,7 @@ class ModbusBoard:
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             sock.settimeout(self._timeout_s)
             # Run blocking connect in a thread to not block the event loop
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await asyncio.wait_for(
                 loop.run_in_executor(None, sock.connect, (self._ip, self._port)),
                 timeout=self._timeout_s * 2,
@@ -174,7 +174,7 @@ class ModbusBoard:
                 return self._record_failure("write_coils: not connected")
 
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
 
                 # Build write_multiple_coils frame: slave(1) + func(0x0F) +
                 # start_addr(2) + coil_count(2) + byte_count(1) + coil_data(N)
@@ -222,7 +222,7 @@ class ModbusBoard:
                 return None
 
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 body = (
                     bytes([_SLAVE_ADDR, 0x01])
                     + (0).to_bytes(2, "big")           # start address
@@ -272,7 +272,7 @@ class ModbusBoard:
                 return self._record_failure("write_single_coil: not connected")
 
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 value = b"\xff\x00" if state else b"\x00\x00"
                 body = bytes([_SLAVE_ADDR, 0x05]) + channel.to_bytes(2, "big") + value
 
@@ -306,7 +306,7 @@ class ModbusBoard:
                 return self._record_failure("all_coils: not connected")
 
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 value = b"\xff\x00" if state else b"\x00\x00"
                 body = bytes([_SLAVE_ADDR, 0x05, 0x00, 0xFF]) + value
 

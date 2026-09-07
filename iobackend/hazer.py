@@ -38,7 +38,7 @@ class HazerController:
     def __init__(
         self,
         artnet_ip: str = "172.16.0.201",
-        universe: int = 0,
+        universe: int = 1,
         fan_channel: int = 1,
         haze_channel: int = 2,
         default_fan: int = 200,

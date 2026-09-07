@@ -54,6 +54,7 @@
 
       --radius: 10px;
       --btn-h:  72px;          /* minimum 48 px, targeting 72 for iPad comfort */
+      --font: 'Courier New', Courier, monospace;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -108,7 +109,7 @@
     }
 
     #stateLabel {
-      font-size: 28px;
+      font-size: 24px;
       font-weight: 900;
       letter-spacing: 2px;
       text-transform: uppercase;
@@ -626,7 +627,7 @@
 
     /* BUST — filled red, narrower (40%) */
     #btnConfirm {
-      flex: 0 0 40%;
+      flex: 4 1 0;
       background: var(--red);
       color: #000;
       border: 2px solid var(--red);
@@ -635,7 +636,7 @@
 
     /* CLEAR — filled green, wider (60%) */
     #btnVeto {
-      flex: 0 0 60%;
+      flex: 6 1 0;
       background: var(--green);
       color: #000;
       border: 2px solid var(--green);
@@ -647,6 +648,10 @@
     ----------------------------------------------------------------------- */
     #wsDisconnectBanner {
       display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
       width: 100%;
       padding: 12px 16px;
       font-size: 15px;
@@ -658,6 +663,7 @@
       background: var(--red);
       color: #000;
       flex-shrink: 0;
+      z-index: 200;
       animation: pulse-banner 1.4s ease-in-out infinite;
     }
 
@@ -748,6 +754,7 @@
     align-items:center;
     justify-content:center;
     padding:24px;
+    overflow-y:auto;
   ">
     <form id="signinForm" autocomplete="off" style="
       width:100%; max-width:480px;
@@ -975,7 +982,7 @@
   <div id="assistedOverlay">
     <div id="assistedTitle">BEAM BREAK DETECTED</div>
     <div id="assistedBeam">Beam —</div>
-    <img id="assistedThumb" src="" alt="Evidence thumbnail">
+    <img id="assistedThumb" src="" alt="Evidence thumbnail" style="display:none;">
     <div class="assisted-btns">
       <button id="btnVeto"    >CLEAR — RESUME</button>
       <button id="btnConfirm" >BUST</button>
@@ -1000,19 +1007,13 @@
          started_at_mono: <float, seconds>,
          server_mono_now: <float, seconds>,
          countdown_step: null | 0-7,
+         countdown_total: null | int,
          player_nickname: "Joenne",
          pending_break: null | "b03",
-         beams: [ { id, state: "ok"|"broken"|"masked" }, … ],
-         health: {
-           boards: "ok"|"warn"|"err",
-           pico:   "ok"|"warn"|"err",
-           camera: "ok"|"warn"|"err",
-           sync:   "ok"|"warn"|"err",
-           sync_paused: bool,
-           manual_degraded: bool,
-           masked_count: int
-         },
-         recent_runs: [ { outcome, elapsed_ms, player_nickname }, … ]
+         outcome: null | "clean" | "busted",
+         beams_masked: [ "b03", "b07", … ],   // array of masked beam IDs
+         boards: { "board_0": { status: "OK"|"ERR" }, … },
+         inputs: { connected: bool },
        }
     ----------------------------------------------------------------------- */
 
@@ -1103,6 +1104,7 @@
     function applyState(msg) {
       const state     = msg.state      || "ATTRACT";
       const detection = msg.detection_mode || "auto";
+      const prevState  = currentState;
       currentState     = state;
       currentDetection = detection;
 
@@ -1120,8 +1122,15 @@
         "RUN_SEG_1":  "RUN — SEG 1",
         "RUN_SEG_2":  "RUN — SEG 2",
         "RUN_SEG_3":  "RUN — SEG 3",
+        "SELF_TEST":  "SELF TEST",
+        "BOOT":       "BOOTING",
+        "RESET":      "RESETTING",
       };
-      const stateText = STATE_LABELS[state] || state;
+      let stateText = STATE_LABELS[state] || state;
+      // Issue 84: show countdown step next to state label
+      if (state === "COUNTDOWN" && msg.countdown_step != null && msg.countdown_total != null) {
+        stateText += ` ${msg.countdown_step}/${msg.countdown_total}`;
+      }
       stateLabel.textContent     = stateText;
       playerNameEl.textContent   = msg.player_nickname || "—";
       detectionBadge.textContent = detection.toUpperCase();
@@ -1161,6 +1170,14 @@
       // NEW PLAYER visibility handled by updateSigninVisibility()
       // FORCE RESET: always visible but small/muted (handled by CSS, no hide)
 
+      // Issue 53: reset all tap-to-confirm buttons on state change
+      [btnBust, btnVoid, btnForceReset].forEach(btn => {
+        if (btn._tapReset) btn._tapReset();
+      });
+
+      // Issue 17: close void overlay when leaving POST_RUN_STATES
+      if (!POST_RUN_STATES.has(state)) closeVoidOverlay();
+
       /* --- Stopwatch color by state --- */
       if (RUN_STATES.has(state)) {
         stopwatchEl.style.color = "#ffffff";
@@ -1168,6 +1185,14 @@
         stopwatchEl.style.color = "var(--red)";
       } else if (state === "FINISHED") {
         stopwatchEl.style.color = "var(--green)";
+      } else if (state === "RESULT") {
+        // Preserve color from outcome: green if clean, red if busted
+        if (msg.outcome === "clean") {
+          stopwatchEl.style.color = "var(--green)";
+        } else if (msg.outcome === "busted") {
+          stopwatchEl.style.color = "var(--red)";
+        }
+        // else leave color unchanged from previous state
       } else {
         stopwatchEl.style.color = "var(--muted)";
       }
@@ -1182,8 +1207,11 @@
       });
 
       /* --- Banners --- */
-      const health = msg.health || {};
+      // Issue 5: derive health from WS data — no msg.health object
       // FAULT state: show bannerManual as red "SYSTEM FAULT" alert
+      // manual degraded: detection is manual (not auto/assisted) during an active run
+      const detectionDegraded = (detection === "manual") &&
+        (RUN_STATES.has(state) || state === "COUNTDOWN");
       if (state === "FAULT") {
         bannerManual.classList.add("visible");
         bannerManual.textContent = "SYSTEM FAULT — TAP FORCE RESET";
@@ -1193,11 +1221,13 @@
         bannerManual.textContent = "⚠ DETECTION OFFLINE — CALL BUSTS MANUALLY";
         bannerManual.classList.remove("banner-amber");
         bannerManual.classList.add("banner-red");
-        bannerManual.classList.toggle("visible", health.manual_degraded === true);
+        bannerManual.classList.toggle("visible", detectionDegraded);
       }
-      bannerSync.classList.toggle("visible",
-        health.sync_paused === true);
-      const maskedCount = health.masked_count || 0;
+      // Cloud sync banner: not currently in WS data, leave hidden
+      bannerSync.classList.remove("visible");
+      // Masked beams banner: derived from beams_masked array
+      const maskedBeams = Array.isArray(msg.beams_masked) ? msg.beams_masked : [];
+      const maskedCount = maskedBeams.length;
       bannerMasked.classList.toggle("visible", maskedCount > 0);
       if (maskedCount > 0) {
         bannerMasked.textContent =
@@ -1220,23 +1250,23 @@
       }
 
       /* --- Health strip --- */
-      /* --- Health from WS board/input data --- */
+      // Issue 5: derive health from WS data — no msg.health object
       // Relay boards: green if all OK, red if any failed
       if (msg.boards && typeof msg.boards === "object") {
         const boardVals = Object.values(msg.boards);
         const allOk = boardVals.length > 0 && boardVals.every(b => b.status === "OK");
         setLed(hBoardsLed, allOk ? "ok" : (boardVals.length ? "err" : "warn"));
       }
-      // Opta inputs
+      // Opta inputs: connected flag
       if (msg.inputs) {
         setLed(hOptaLed, msg.inputs.connected ? "ok" : "err");
       }
-      // DMX node: always ok for now (no health check yet)
-      // Camera: always ok for now
-      setLed(hCameraLed, "ok");
+      // DMX node: no health data yet — leave as-is (warn = unknown)
+      // Issue 51: camera LED left as "warn" (unknown) — do NOT hardcode "ok"
 
       /* --- Beam strip --- */
-      renderBeams(msg.beams || []);
+      // Issue 4: use cached beam list + beams_masked array from WS
+      renderBeamsFromMasked(maskedBeams);
 
       /* --- Assisted overlay --- */
       if (msg.pending_break) {
@@ -1249,6 +1279,10 @@
           assistedThumb.removeAttribute("src");
           assistedThumb.style.display = "none";
         }
+        // Issue 85: vibrate when overlay opens (if not already visible)
+        if (!assistedOverlay.classList.contains("visible")) {
+          if (navigator.vibrate) navigator.vibrate(200);
+        }
         assistedOverlay.classList.add("visible");
       } else {
         assistedOverlay.classList.remove("visible");
@@ -1257,8 +1291,10 @@
       /* --- Sign-in form visibility --- */
       updateSigninVisibility(state);
 
-      /* --- Recent runs --- */
-      if (Array.isArray(msg.recent_runs)) renderRecentRuns(msg.recent_runs);
+      /* --- Issue 6: refresh recent runs when transitioning to ATTRACT --- */
+      if (state === "ATTRACT" && prevState !== "ATTRACT") {
+        fetchRecentRuns();
+      }
     }
 
     function setLed(el, status) {
@@ -1267,46 +1303,72 @@
 
     /* -----------------------------------------------------------------------
        Beam strip rendering
+       Issue 4: cached beam list from /api/admin/beams, state from beams_masked
     ----------------------------------------------------------------------- */
+    // Cached list of all beam IDs fetched from the API
+    let allBeamIds = [];
+
     // Map: beam_id → rendered pill element (for efficient updates)
     const beamPills = new Map();
 
-    function renderBeams(beams) {
-      if (!beams.length) {
-        beamStrip.innerHTML = '<span style="color: var(--muted); font-size:13px; font-family:monospace;">No beams configured.</span>';
-        beamPills.clear();
-        return;
+    // Issue 86: long-press (500ms) on beam pill toggles mask
+    function attachPillLongPress(pill, beamId) {
+      let pressTimer = null;
+      function startPress() {
+        pressTimer = setTimeout(() => {
+          pressTimer = null;
+          toggleBeamMask(beamId);
+        }, 500);
       }
+      function cancelPress() {
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      }
+      pill.addEventListener("mousedown",   startPress);
+      pill.addEventListener("touchstart",  startPress,  { passive: true });
+      pill.addEventListener("mouseup",     cancelPress);
+      pill.addEventListener("touchend",    cancelPress);
+      pill.addEventListener("mouseleave",  cancelPress);
+      pill.addEventListener("touchcancel", cancelPress);
+    }
+
+    function renderBeamsFromMasked(maskedBeams) {
+      if (!allBeamIds.length) return;  // wait until beam list is loaded
+
+      const maskedSet = new Set(maskedBeams);
+
+      // Clear the initial placeholder once we have pills
+      const placeholder = beamStrip.querySelector(":scope > span");
+      if (placeholder) placeholder.remove();
 
       // Build or update pills
       const seen = new Set();
-      beams.forEach(b => {
-        seen.add(b.id);
-        let pill = beamPills.get(b.id);
+      allBeamIds.forEach(id => {
+        seen.add(id);
+        let pill = beamPills.get(id);
         if (!pill) {
           pill = document.createElement("div");
           pill.className = "beam-pill";
-          pill.dataset.beamId = b.id;
-          pill.innerHTML = `<div class="beam-dot"></div><span>${b.id}</span>`;
+          pill.dataset.beamId = id;
+          pill.innerHTML = `<div class="beam-dot"></div><span>${id}</span>`;
+          pill.style.cursor = "default";
           beamStrip.appendChild(pill);
-          beamPills.set(b.id, pill);
+          beamPills.set(id, pill);
+          attachPillLongPress(pill, id);
         }
-        pill.className = `beam-pill ${b.state || "ok"}`;
-        pill.title = `${b.id} — ${b.state || "ok"}`;
+        const beamState = maskedSet.has(id) ? "masked" : "ok";
+        pill.className = `beam-pill ${beamState}`;
+        pill.title = `${id} — ${beamState} (long-press to toggle mask)`;
       });
 
       // Remove pills for beams that disappeared from config
       for (const [id, pill] of beamPills) {
         if (!seen.has(id)) { pill.remove(); beamPills.delete(id); }
       }
-
-      // Clear the initial placeholder
-      const placeholder = beamStrip.querySelector(":scope > span");
-      if (placeholder && beamPills.size > 0) placeholder.remove();
     }
 
     /* -----------------------------------------------------------------------
        Recent runs rendering
+       Issue 6: fetch from /api/admin/runs?limit=10 on load and after ATTRACT
     ----------------------------------------------------------------------- */
     function renderRecentRuns(runs) {
       if (!runs.length) {
@@ -1319,6 +1381,18 @@
           <span class="run-name">${escHtml(r.player_nickname || "—")}</span>
           <span class="run-time">${r.elapsed_ms != null ? formatTime(r.elapsed_ms) : "—"}</span>
         </div>`).join("");
+    }
+
+    async function fetchRecentRuns() {
+      try {
+        const resp = await fetch("/api/admin/runs?limit=10");
+        if (resp.ok) {
+          const data = await resp.json();
+          renderRecentRuns(Array.isArray(data) ? data : (data.runs || []));
+        }
+      } catch (err) {
+        console.warn("fetchRecentRuns failed:", err);
+      }
     }
 
     function escHtml(s) {
@@ -1562,43 +1636,10 @@
     btnVeto.addEventListener("click",    () => gmPost("veto-break"));
 
     /* --- Detection mode switcher --- */
-    // Inline confirm state for switching away from auto during active run/countdown.
-    let detectionConfirmPending = false;
-    let detectionConfirmMode    = null;
-
-    const detectionConfirmBar = document.createElement("div");
-    detectionConfirmBar.style.cssText = "display:none; padding:8px 14px; font-size:13px; font-weight:700; font-family:'Courier New',Courier,monospace; letter-spacing:1px; text-align:center; color:var(--orange); background:rgba(255,136,0,0.10); border-bottom:1px solid var(--orange); flex-shrink:0;";
-    document.getElementById("detectionSection").insertAdjacentElement("beforebegin", detectionConfirmBar);
-
-    function cancelDetectionConfirm() {
-      detectionConfirmPending = false;
-      detectionConfirmMode    = null;
-      detectionConfirmBar.style.display = "none";
-    }
-
     document.querySelectorAll(".seg-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         const mode = btn.dataset.mode;
-        if (mode === currentDetection) {
-          cancelDetectionConfirm();
-          return;
-        }
-        // During an active run or countdown, require a tap-to-confirm before switching
-        const needsConfirm = (RUN_STATES.has(currentState) || currentState === "COUNTDOWN")
-                             && currentDetection === "auto";
-        if (needsConfirm && !detectionConfirmPending) {
-          detectionConfirmPending = true;
-          detectionConfirmMode    = mode;
-          detectionConfirmBar.textContent = `⚠ Tap ${mode.toUpperCase()} again to confirm switching detection during active run`;
-          detectionConfirmBar.style.display = "block";
-          return;
-        }
-        if (needsConfirm && detectionConfirmPending && mode === detectionConfirmMode) {
-          cancelDetectionConfirm();
-          gmPost("detection-mode", { mode });
-          return;
-        }
-        cancelDetectionConfirm();
+        if (mode === currentDetection) return;
         gmPost("detection-mode", { mode });
       });
     });
@@ -1658,8 +1699,31 @@
 
     connectWS();
 
-    /* Recent runs come from the WS state broadcast (recent_runs field).
-       The "No runs yet" placeholder is shown until the first WS message arrives. */
+    /* Issue 4: Fetch beam list from /api/admin/beams on load.
+       Issue 6: Fetch recent runs from /api/admin/runs on load. */
+
+    // Set camera and DMX LEDs to "warn" (unknown) on init — issue 51
+    setLed(hCameraLed, "warn");
+    setLed(hDmxLed,    "warn");
+
+    async function fetchBeamList() {
+      try {
+        const resp = await fetch("/api/admin/beams");
+        if (resp.ok) {
+          const data = await resp.json();
+          // Expect array of beam objects with an `id` field, or array of strings
+          const raw = Array.isArray(data) ? data : (data.beams || []);
+          allBeamIds = raw.map(b => (typeof b === "string" ? b : b.id)).filter(Boolean);
+          // Render initial strip with no masking
+          renderBeamsFromMasked([]);
+        }
+      } catch (err) {
+        console.warn("fetchBeamList failed:", err);
+      }
+    }
+
+    fetchBeamList();
+    fetchRecentRuns();
   </script>
 </body>
 </html>

@@ -73,7 +73,7 @@
       font-weight: 900;
       letter-spacing: 0.14em;
       text-transform: uppercase;
-      color: #264f9a;
+      color: #5b8fd6;
       text-shadow:
         0 0 40px rgba(38, 79, 154, 0.7),
         0 0 100px rgba(38, 79, 154, 0.4),
@@ -100,7 +100,7 @@
     #attractSub {
       margin-top: 32px;
       font-size: clamp(24px, 3.5vw, 52px);
-      color: #3a5a7a;
+      color: #6c8cae;
       letter-spacing: 0.25em;
       text-transform: uppercase;
     }
@@ -118,7 +118,7 @@
       font-weight: 700;
       letter-spacing: 0.15em;
       text-transform: uppercase;
-      color: #5a7899;
+      color: #6c8cae;
     }
 
     /* SVG ring — fills from 0 → 100% as pulses accumulate */
@@ -157,9 +157,11 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: clamp(48px, 8vw, 120px);
+      font-size: clamp(120px, 30vw, 560px);
       font-weight: 900;
-      color: #264f9a;
+      /* The 3-2-1 digit is the data; the ring around it is decoration. The
+         digit was 120px inside a 720px ring, at 2.59:1. Now it fills the ring. */
+      color: #e8f0fc;
       text-shadow: 0 0 30px rgba(38,79,154,0.6);
     }
 
@@ -172,7 +174,7 @@
     }
 
     #runStopwatch {
-      font-size: clamp(80px, 20vw, 260px);
+      font-size: clamp(80px, 20vw, 520px);
       font-weight: 700;
       letter-spacing: 0.04em;
       color: #ffffff;
@@ -181,10 +183,10 @@
     }
 
     #runSegment {
-      font-size: clamp(28px, 4.5vw, 64px);
+      font-size: clamp(28px, 4.5vw, 128px);
       font-weight: 700;
       letter-spacing: 0.2em;
-      color: #264f9a;
+      color: #5b8fd6;
       text-transform: uppercase;
       text-shadow: 0 0 20px rgba(38,79,154,0.5);
     }
@@ -198,7 +200,7 @@
     }
 
     #bustedTitle {
-      font-size: clamp(96px, 22vw, 280px);
+      font-size: clamp(96px, 22vw, 560px);
       font-weight: 900;
       letter-spacing: 0.06em;
       text-transform: uppercase;
@@ -232,7 +234,7 @@
     }
 
     #finishedTitle {
-      font-size: clamp(96px, 22vw, 280px);
+      font-size: clamp(96px, 22vw, 560px);
       font-weight: 900;
       letter-spacing: 0.06em;
       text-transform: uppercase;
@@ -312,7 +314,7 @@
 
     #resultRank {
       font-size: clamp(40px, 7vw, 96px);
-      color: #264f9a;
+      color: #5b8fd6;
       letter-spacing: 0.1em;
       text-shadow: 0 0 20px rgba(38,79,154,0.5);
     }
@@ -331,23 +333,37 @@
       background: #050507;
     }
 
+    /* Covers RESET, FAULT, SELF_TEST, MASTER and BOOT. At #0d1e3a this measured
+       1.23:1, so a faulted machine showed the player in the container a blank
+       black screen. This is the one state that must say something. */
     #waitingText {
-      font-size: clamp(24px, 4vw, 56px);
-      color: #0d1e3a;
+      font-size: clamp(24px, 4vw, 96px);
+      color: #8fb0d8;
       letter-spacing: 0.2em;
       text-transform: uppercase;
+    }
+
+    /* FAULT gets its own treatment — the player must know to fetch staff. */
+    #waitingText.fault {
+      color: #ff8800;
+      font-size: clamp(48px, 6vw, 160px);
+      font-weight: 900;
     }
 
     /* -----------------------------------------------------------------------
        Reconnect indicator — dim, bottom-left, non-intrusive
     ----------------------------------------------------------------------- */
+    /* The stopwatch freezes when the socket drops, so this badge is the only
+       thing that explains why. At #0d1e3a on #030305 it measured 1.24:1 —
+       invisible. #ff8800 is 7.9:1 and already reads as a fault colour here. */
     #reconnectBadge {
       display: none;
       position: fixed;
       bottom: 16px;
       left: 16px;
-      font-size: 14px;
-      color: #0d1e3a;
+      font-size: clamp(24px, 2vw, 48px);
+      font-weight: 700;
+      color: #ff8800;
       letter-spacing: 0.1em;
       pointer-events: none;
     }
@@ -367,7 +383,7 @@
   <div class="scene" id="sceneRegistered">
     <div id="welcomeLabel" style="
       font-size: clamp(36px, 5vw, 64px);
-      color: #5a7899;
+      color: #6c8cae;
       letter-spacing: 0.2em;
       text-transform: uppercase;
       margin-bottom: 20px;
@@ -376,7 +392,7 @@
       font-size: clamp(64px, 12vw, 160px);
       font-weight: 900;
       letter-spacing: 0.06em;
-      color: #264f9a;
+      color: #5b8fd6;
       text-shadow:
         0 0 40px rgba(38,79,154,0.7),
         0 0 100px rgba(38,79,154,0.4);
@@ -385,7 +401,7 @@
     <div style="
       margin-top: 32px;
       font-size: clamp(20px, 3vw, 40px);
-      color: #5a7899;
+      color: #6c8cae;
       letter-spacing: 0.2em;
       text-transform: uppercase;
     ">Step on the start plate</div>
@@ -442,7 +458,7 @@
   </div>
 
   <!-- Dim reconnect indicator -->
-  <div id="reconnectBadge">reconnecting…</div>
+  <div id="reconnectBadge">NO SIGNAL — CLOCK STOPPED</div>
 
   <script>
     /* -----------------------------------------------------------------------
@@ -500,6 +516,7 @@
     const resultRank     = document.getElementById("resultRank");
     const resultTime     = document.getElementById("resultTime");
     const reconnectBadge = document.getElementById("reconnectBadge");
+    const waitingText = document.getElementById("waitingText");
 
     /* Track segment for flash animation */
     let lastSegment = null;
@@ -643,6 +660,13 @@
         /* RESET, FAULT, SELF_TEST, MASTER, BOOT */
         swRunning = false;
         stopInterpolation();
+        /* FAULT is the one waiting state the player must act on. Say so
+           instead of showing the same "Standby" as a normal reset. */
+        const faulted = state === "FAULT";
+        waitingText.classList.toggle("fault", faulted);
+        waitingText.textContent = faulted
+          ? "System fault — fetch staff"
+          : "Standby";
         showScene("waiting");
       }
     }
@@ -669,6 +693,12 @@
       };
 
       ws.onclose = () => {
+        // Invariant 2: the server owns the stopwatch. Without this the ticker
+        // keeps extrapolating off performance.now() with no server to correct
+        // against, so the display shows a climbing number that is pure fiction.
+        // A frozen clock is honest. A running one is a lie.
+        swRunning = false;
+        stopInterpolation();
         reconnectBadge.classList.add("visible");
         setTimeout(connect, delay);
         delay = Math.min(delay * 2, 10000);

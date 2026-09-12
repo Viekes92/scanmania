@@ -83,9 +83,12 @@
       top: 24px;
       right: 32px;
       font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(40px, 6vw, 88px);
+      font-size: clamp(40px, 6vw, 260px);
       font-weight: 700;
-      color: #264f9a;
+      /* The final time is the payoff the crowd is watching for. The .run class
+         used to be removed on FINISHED/BUSTED, dropping it back to the accent
+         at 2.67:1 nominal and ~1.2:1 in daylight. Keep the glyphs light. */
+      color: #e8f0fc;
       text-shadow:
         0 0 20px rgba(38, 79, 154, 0.8),
         0 0 60px rgba(38, 79, 154, 0.4),
@@ -122,7 +125,7 @@
       font-weight: 900;
       letter-spacing: 0.14em;
       text-transform: uppercase;
-      color: #264f9a;
+      color: #5b8fd6;
       text-shadow:
         0 0 20px rgba(38, 79, 154, 0.8),
         0 0 60px rgba(38, 79, 154, 0.4),
@@ -155,11 +158,11 @@
 
     #lbTitle {
       font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(20px, 3vw, 32px);
+      font-size: clamp(20px, 3vw, 56px);
       font-weight: 800;
       letter-spacing: 0.25em;
       text-transform: uppercase;
-      color: #264f9a;
+      color: #5b8fd6;
       text-shadow: 0 0 16px rgba(38,79,154,0.5);
       margin-bottom: 14px;
     }
@@ -174,7 +177,7 @@
       display: flex;
       align-items: baseline;
       gap: 16px;
-      font-size: clamp(22px, 3.2vw, 38px);
+      font-size: clamp(22px, 3.2vw, 64px);
     }
 
     .lb-rank {
@@ -183,7 +186,7 @@
       width: 2.2em;
       text-align: right;
       flex-shrink: 0;
-      color: #264f9a;
+      color: #5b8fd6;
       text-shadow: 0 0 10px rgba(38,79,154,0.5);
     }
 
@@ -279,7 +282,7 @@
       font-family: 'Courier New', Courier, monospace;
       font-size: clamp(36px, 6vw, 80px);
       font-weight: 900;
-      color: #264f9a;
+      color: #5b8fd6;
       letter-spacing: 0.12em;
       text-transform: uppercase;
       text-shadow:
@@ -338,7 +341,7 @@
       font-weight: 900;
       letter-spacing: 0.12em;
       text-transform: uppercase;
-      color: #264f9a;
+      color: #5b8fd6;
       text-shadow:
         0 0 40px rgba(38, 79, 154, 0.8),
         0 0 100px rgba(38, 79, 154, 0.4),
@@ -390,14 +393,19 @@
     /* -----------------------------------------------------------------------
        Reconnect indicator — very dim, non-intrusive
     ----------------------------------------------------------------------- */
+    /* Measured 1.26:1 on black and 1.05:1 over a live camera frame — the crowd
+       could not tell a stale screen from a live one. #ff8800 is 7.9:1, and the
+       text shadow keeps it readable over any frame the feed happens to show. */
     #reconnect {
       display: none;
       position: fixed;
       bottom: 10px;
       right: 14px;
       font-family: 'Courier New', Courier, monospace;
-      font-size: 12px;
-      color: #0d1e3a;
+      font-size: clamp(24px, 2vw, 48px);
+      font-weight: 700;
+      color: #ff8800;
+      text-shadow: 0 0 12px #000, 0 2px 4px #000;
       letter-spacing: 1px;
       z-index: 10;
     }
@@ -445,7 +453,7 @@
         font-weight: 700;
         letter-spacing: 0.25em;
         text-transform: uppercase;
-        color: #5a7899;
+        color: #6c8cae;
         text-shadow: 0 2px 16px rgba(0,0,0,0.8);
         margin-bottom: 12px;
       ">NEXT UP</div>
@@ -455,7 +463,7 @@
         font-weight: 900;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: #264f9a;
+        color: #5b8fd6;
         text-shadow:
           0 0 40px rgba(38,79,154,0.8),
           0 0 100px rgba(38,79,154,0.4),
@@ -495,7 +503,7 @@
   </div>
 
   <!-- Dim reconnect indicator -->
-  <div id="reconnect">reconnecting…</div>
+  <div id="reconnect">NO SIGNAL — CLOCK STOPPED</div>
 
   <script>
     /* -----------------------------------------------------------------------
@@ -590,7 +598,7 @@
     ----------------------------------------------------------------------- */
     function renderLeaderboard(entries) {
       if (!entries || !entries.length) {
-        lbRows.innerHTML = '<div class="lb-row" style="color:#0d1e3a;">No runs yet.</div>';
+        lbRows.innerHTML = '<div class="lb-row" style="color:#6c8cae;">No runs yet.</div>';
         return;
       }
       const top = entries.slice(0, 10);
@@ -757,6 +765,11 @@
       };
 
       ws.onclose = () => {
+        // Invariant 2: the server owns the stopwatch. This is the public-facing
+        // screen — without this the crowd watches a run that never ends, timed
+        // against a browser clock with no server behind it.
+        swRunning = false;
+        stopInterp();
         reconnectEl.classList.add("visible");
         setTimeout(connect, delay);
         delay = Math.min(delay * 2, 10000);

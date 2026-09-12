@@ -72,8 +72,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   a missing Origin still passes, so `curl` and `tools/` are unaffected.
 
 - **`python -m scanmania` without a fake flag crashed after migrating the database.**
-  `vision.camera` has no `VisionService`, so the documented "production" invocation died mid-boot
-  and never bound port 8000. It now fails immediately with a message naming the flag.
+  `vision.camera` had no `VisionService`, so the documented "production" invocation died mid-boot
+  and never bound port 8000. `vision/service.py` now provides that class — see **Added**. The
+  invocation works; the remaining prerequisite is calibrating `config/beams.json`, which is still
+  uncalibrated (45 entries, every ROI `0,0`, all on `cam_a`).
 
 - **`test_pause_stops_drain` could not fail.** It re-implemented the pause check inside the test
   body, so `_drain()` was never called and the final assertion compared a number to itself. The

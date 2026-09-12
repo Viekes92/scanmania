@@ -1,10 +1,11 @@
 """
-io/presets.py — resolves preset names to per-board coil arrays and applies them.
+iobackend/presets.py — resolves preset names to per-board coil arrays and applies them.
 
 Inputs:  preset name (str) or direct channel toggle, MazesConfig, HardwareConfig
 Outputs: calls backend.write_coils(board_id, coil_array) — one call per board per apply
 Invariant: this is the ONLY module that may call write_coils. All coil writes go through
-           apply_preset() or apply_direct(). No other module may touch relay state.
+           apply_preset(), apply_all_off(), apply_channels() or apply_direct().
+           No other module may touch relay state.
 """
 
 from __future__ import annotations
@@ -137,6 +138,33 @@ class PresetResolver:
                 log.error(
                     "apply_preset '%s': write_coils failed on board '%s' (status=%s)",
                     preset_name, board_id, board.status,
+                )
+        return all_ok
+
+    async def apply_all_off(self, backend: IOBackend) -> bool:
+        """
+        Drive every coil on every board off.
+
+        Updates desired state, so the reconciler agrees the maze must stay dark.
+        Does not read config. The 'blackout' preset is user-editable; the count-in
+        dark windows must not depend on it.
+
+        Returns True only if every board write succeeded. The game path ignores
+        the return value, the same as apply_preset().
+        """
+        state = self._empty_board_state()
+        self._desired = state
+        log.debug("Applying all-off")
+
+        all_ok = True
+        for board_id, coils in state.items():
+            board = backend.get_board(board_id)
+            ok = await board.write_coils(coils)
+            if not ok:
+                all_ok = False
+                log.error(
+                    "apply_all_off: write_coils failed on board '%s' (status=%s)",
+                    board_id, board.status,
                 )
         return all_ok
 

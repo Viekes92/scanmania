@@ -27,9 +27,9 @@ from core.events import (
     VisionStalled, DetectionModeChanged, ProcessRestart,
     ArmTimeout, ResultDisplayTimeout,
     # Side effects
-    ApplyPreset, PlayShow, StartStopwatch, StopStopwatch, ResetStopwatch,
+    ApplyPreset, PlayShow, StopShow, StartStopwatch, StopStopwatch, ResetStopwatch,
     ArmDetection, DisarmDetection, StartCountIn, BeamPreflightCheck,
-    ReadyBlink, SaveRun, QueueSync, BroadcastState, EmitMetric,
+    ReadyBlink, SaveRun, VoidRun, QueueSync, BroadcastState, EmitMetric,
     SaveBreakEvidence, DropDetectionMode,
 )
 from core.fsm import FSMContext, transition, make_context
@@ -646,27 +646,67 @@ class TestMasterMode:
 # GmVoid
 # ---------------------------------------------------------------------------
 
+class TestAttractShowIsStopped:
+    def test_registering_stops_the_attract_show(self):
+        """
+        The attract show writes coils every 300-500 ms. Left running it fought
+        the ready blink and the count-in ramp, and it masked the reconciler
+        re-lighting the maze.
+        """
+        fx = effect_types(ATTRACT, PlayerRegistered(player_id="p1", nickname="Kim"))
+        assert StopShow in fx
+
+
 class TestGmVoid:
     def test_gm_void_does_not_change_state(self):
         ctx = _run_ctx()
         s, _ = step(RESULT, GmVoid(reason="system error"), ctx)
         assert s == RESULT
 
-    def test_gm_void_saves_run_voided(self):
+    def test_gm_void_emits_void_run_not_save_run(self):
+        """
+        VoidRun updates the existing row. SaveRun would INSERT on a primary key
+        that already exists, raise IntegrityError, and lose the void silently.
+        """
         ctx = _run_ctx()
         fx = effects(RESULT, GmVoid(reason="system error"), ctx)
-        save = [e for e in fx if isinstance(e, SaveRun)]
-        assert len(save) == 1
-        assert save[0].outcome == RunOutcome.voided
+        void = [e for e in fx if isinstance(e, VoidRun)]
+        assert len(void) == 1
+        assert void[0].run_id == ctx.run_id
+        assert not [e for e in fx if isinstance(e, SaveRun)]
+
+    def test_gm_void_passes_reason_through(self):
+        """The GM's reason must reach runs.voided_reason."""
+        ctx = _run_ctx()
+        fx = effects(RESULT, GmVoid(reason="wrong player"), ctx)
+        void = [e for e in fx if isinstance(e, VoidRun)]
+        assert void[0].reason == "wrong player"
 
     def test_gm_void_queues_sync(self):
         ctx = _run_ctx()
         assert QueueSync in effect_types(RESULT, GmVoid(reason="test"), ctx)
 
+    @pytest.mark.parametrize("state", [FINISHED, BUSTED, ABORTED, RESULT])
+    def test_gm_void_works_in_every_post_run_state(self, state):
+        ctx = _run_ctx()
+        assert VoidRun in effect_types(state, GmVoid(reason="test"), ctx)
+
     def test_gm_void_from_run_state_does_not_change_state(self):
         ctx = _run_ctx()
         s, _ = step(RUN_SEG_1, GmVoid(reason="test"), ctx)
         assert s == RUN_SEG_1
+
+    @pytest.mark.parametrize("state", [ATTRACT, REGISTERED, ARM, COUNTDOWN, RUN_SEG_1])
+    def test_gm_void_is_inert_before_the_run_row_exists(self, state):
+        """
+        Voiding mid-run used to write the row early. The real end-of-run SaveRun
+        then collided with it and was swallowed, so the DB said 'voided' while
+        the displays said 'clean'.
+        """
+        ctx = _run_ctx()
+        fx = effects(state, GmVoid(reason="too early"), ctx)
+        assert not [e for e in fx if isinstance(e, VoidRun)]
+        assert not [e for e in fx if isinstance(e, SaveRun)]
 
 
 # ---------------------------------------------------------------------------

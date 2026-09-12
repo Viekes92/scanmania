@@ -491,6 +491,19 @@ class PlayShow:
 
 
 @dataclass(frozen=True)
+class StopShow:
+    """
+    Stop the currently playing show and leave the coils where they are.
+
+    Emitted by: fsm.py on ATTRACT -> REGISTERED.
+    Consumed by: runner.py::_handle_stop_show.
+
+    The attract show writes coils every 300-500 ms. It must not run during
+    REGISTERED, ARM or the count-in ramp, where it fights the flash sequence.
+    """
+
+
+@dataclass(frozen=True)
 class StartStopwatch:
     """Tell core/stopwatch.py to start (or restart) the stopwatch."""
 
@@ -557,6 +570,26 @@ class SaveRun:
     outcome: str
     run_id: str
     busting_beam_id: str | None = None
+
+
+@dataclass(frozen=True)
+class VoidRun:
+    """
+    Mark an already-saved run as voided.
+
+    Emitted by: fsm.py on GmVoid.
+    Consumed by: runner.py::_handle_void_run, which calls db.void_run().
+
+    Separate from SaveRun because the row already exists. SaveRun inserts, and
+    a second insert on the same primary key raises IntegrityError. void_run()
+    updates in place and preserves pre_void_outcome so unvoid can restore it.
+
+    Fields:
+        run_id: UUIDv7 of the run to void
+        reason: GM-entered note, stored in runs.voided_reason
+    """
+    run_id: str
+    reason: str = ""
 
 
 @dataclass(frozen=True)

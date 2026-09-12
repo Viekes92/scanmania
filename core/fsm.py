@@ -33,14 +33,18 @@ from core.events import (
     VisionStalled, DetectionModeChanged, ProcessRestart,
     ArmTimeout, ResultDisplayTimeout,
     # Side effects
-    ApplyPreset, PlayShow, StartStopwatch, StopStopwatch, ResetStopwatch,
+    ApplyPreset, PlayShow, StopShow, StartStopwatch, StopStopwatch, ResetStopwatch,
     ArmDetection, DisarmDetection, StartCountIn, BeamPreflightCheck,
-    ReadyBlink, SaveRun, QueueSync, BroadcastState, EmitMetric,
+    ReadyBlink, SaveRun, VoidRun, QueueSync, BroadcastState, EmitMetric,
     SaveBreakEvidence, DropDetectionMode,
 )
+
 import core.metrics as metrics
 
 log = logging.getLogger(__name__)
+
+# States where the run row already exists, so GmVoid can update it.
+_VOIDABLE_STATES: frozenset[str] = POST_RUN_STATES | {RESULT}
 
 # ---------------------------------------------------------------------------
 # FSMContext
@@ -176,7 +180,9 @@ def _attract_handlers() -> dict:
         ctx.segment = 1
         ctx.pending_break = None
         ctx.assisted_halt_elapsed_ms = None
-        return REGISTERED, [BroadcastState()]
+        # Stop the attract show. It would otherwise keep writing coils through
+        # REGISTERED, ARM and the whole count-in ramp.
+        return REGISTERED, [StopShow(), BroadcastState()]
 
     return {PlayerRegistered: on_registered}
 
@@ -464,11 +470,13 @@ def _handle_global(state: str, event: Any, ctx: FSMContext) -> tuple[str, list] 
         return RESET, _reset_effects()
 
     # GmVoid — mark run voided; stay in current state.
+    # Only after the run row exists. Voiding mid-run wrote a row first, and the
+    # real end-of-run SaveRun then collided with it and was swallowed.
     if etype is GmVoid:
         effects: list = []
-        if ctx.run_id:
+        if ctx.run_id and state in _VOIDABLE_STATES:
             effects += [
-                SaveRun(outcome=RunOutcome.voided, run_id=ctx.run_id),
+                VoidRun(run_id=ctx.run_id, reason=event.reason),
                 QueueSync(run_id=ctx.run_id),
             ]
         effects.append(BroadcastState())
@@ -592,29 +600,38 @@ def transition(
     handler = state_handlers.get(etype)
     if handler is not None:
         new_state, effects = handler(state, event, context)
-        _emit_transition_metric(state, new_state, etype.__name__)
-        return new_state, effects
+        return new_state, effects + _transition_metric(state, new_state, etype.__name__)
 
     # 2. Try global handler.
     result = _handle_global(state, event, context)
     if result is not None:
         new_state, effects = result
-        _emit_transition_metric(state, new_state, etype.__name__)
-        return new_state, effects
+        return new_state, effects + _transition_metric(state, new_state, etype.__name__)
 
     # 3. Truly ignored — log and return unchanged.
     log.debug("FSM: no handler for event %s in state %s", etype.__name__, state)
     return state, []
 
 
-def _emit_transition_metric(old_state: str, new_state: str, event_name: str) -> None:
-    """Emit a state.transition metric when the state actually changes."""
-    if old_state != new_state:
-        metrics.emit(
-            metrics.STATE_TRANSITION,
+def _transition_metric(old_state: str, new_state: str, event_name: str) -> list:
+    """
+    Return the state.transition metric as a side effect, or nothing.
+
+    Invariant 1: this module performs no I/O. The earlier version called
+    metrics.emit() directly from inside pure_transition(). That was harmless
+    only because no sink is configured — the moment anyone wires one up, the
+    pure FSM would start writing to it on every transition and test_fsm.py
+    would need mocks. Emitting as data keeps it pure either way.
+    """
+    if old_state == new_state:
+        return []
+    return [
+        EmitMetric(
+            name=metrics.STATE_TRANSITION,
             value=1.0,
             tags={"from": old_state, "to": new_state, "event": event_name},
         )
+    ]
 
 
 def make_context(**kwargs: Any) -> FSMContext:

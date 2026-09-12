@@ -30,8 +30,16 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from core.events import ARM, COUNTDOWN, RUN_STATES
 from persist.db import Database
 from persist.sync import export_snapshot
+
+# States where a config reload must not run. reload_config() builds a fresh
+# PresetResolver whose desired state is all-off, and the reconciler then drives
+# every laser dark within 500 ms. Import the real names — the earlier literal
+# tuple used "RUN" and "HALTED", which are not states, so the guard failed open
+# through the whole run.
+_RELOAD_BLOCKED: frozenset[str] = frozenset({COUNTDOWN, ARM}) | RUN_STATES
 
 log = logging.getLogger(__name__)
 
@@ -308,8 +316,8 @@ def register_routes(
         runner = _runner()
         if runner is None:
             return "runner not available"
-        if runner.state in ("COUNTDOWN", "RUN", "HALTED"):
-            return f"deferred — FSM is in {runner.state}; restart or wait for the run to end"
+        if runner.state in _RELOAD_BLOCKED:
+            return f"deferred — FSM is in {runner.state}; wait for the run to end"
         try:
             import config.loader as loader_module
             loader_module.CONFIG_DIR = cfg_dir

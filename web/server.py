@@ -109,11 +109,51 @@ class ScanManiaApp:
 
     def build(self) -> FastAPI:
         """Wire all routes and return the FastAPI app."""
+        self._add_origin_guard()
         self._mount_static()
         self._add_page_routes()
         self._add_ws_route()
         self._register_api_routes()
         return self.app
+
+    # ------------------------------------------------------------------
+    # Cross-origin guard
+    # ------------------------------------------------------------------
+
+    def _add_origin_guard(self) -> None:
+        """
+        Reject state-changing requests that carry a foreign Origin.
+
+        The GM console has no password on purpose — operators need speed. But
+        the seven bodyless /api/gm/* routes accepted cross-origin form POSTs, so
+        any page loaded in a browser that can route to the NUC could bust a run.
+        The GM iPad is on Wi-Fi, and docs/security.md already names the threat:
+        "a guest who finds the venue Wi-Fi and starts poking at the NUC".
+
+        A missing Origin still passes. Browsers always send it on cross-origin
+        POSTs, while curl and tools/ do not send one at all, so the dev and
+        operator workflows are unaffected.
+        """
+
+        @self.app.middleware("http")
+        async def _origin_guard(request, call_next):
+            if request.method in ("GET", "HEAD", "OPTIONS"):
+                return await call_next(request)
+
+            origin = request.headers.get("origin")
+            if origin:
+                host = request.headers.get("host", "")
+                allowed = {f"http://{host}", f"https://{host}"}
+                if origin not in allowed:
+                    log.warning(
+                        "Blocked cross-origin %s %s from Origin=%r",
+                        request.method, request.url.path, origin,
+                    )
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "cross-origin request rejected"},
+                    )
+            return await call_next(request)
 
     # ------------------------------------------------------------------
     # Static files

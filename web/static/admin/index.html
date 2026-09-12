@@ -264,7 +264,10 @@
       font-family: var(--font);
       letter-spacing: 3px;
       text-transform: uppercase;
-      color: var(--accent-dim);
+      /* was --accent-dim (#1a3366) = 1.58:1 — every card heading on the page
+         was functionally unreadable. --accent-text is 5.87:1. The "// " prefix
+         is decoration and stays dim. */
+      color: var(--accent-text);
       margin-bottom: 12px;
     }
 
@@ -360,9 +363,12 @@
     .btn:active { filter: brightness(0.8); }
 
     .btn-primary {
-      background: var(--accent);
+      /* The token comment forbids --accent as a text colour but not as a text
+         background, so this slipped through: #000 on --accent is 2.67:1, on the
+         primary action of every card and modal. --accent-text gives 6.34:1. */
+      background: var(--accent-text);
       color: #000;
-      border: 2px solid var(--accent);
+      border: 2px solid var(--accent-text);
       box-shadow: 0 0 10px var(--accent-glow);
     }
     .btn-primary:hover {
@@ -410,7 +416,8 @@
       font-family: var(--font);
       letter-spacing: 2px;
       text-transform: uppercase;
-      color: var(--accent-dim);
+      /* was --accent-dim = 1.58:1 at 10px — every column header on the page. */
+      color: var(--accent-text);
       border-bottom: 1px solid var(--border);
     }
     .data-table td {
@@ -758,7 +765,7 @@
           <thead>
             <tr>
               <th>ID</th><th>IP</th><th>Status</th><th>RTT</th>
-              <th>Mismatches</th><th>Coils (ch 1–16)</th>
+              <th>Errors</th><th>Mismatches</th><th>Coils (ch 1–16)</th>
             </tr>
           </thead>
           <tbody id="boardsBody">
@@ -1897,6 +1904,10 @@
           <td style="font-family:monospace">${esc(b.ip)}</td>
           <td><span class="led ${b.status === "OK" ? "ok" : "err"}"></span>${esc(b.status)}</td>
           <td style="font-family:monospace">${b.rtt_ms != null ? b.rtt_ms+"ms" : "—"}</td>
+          <!-- error_count was already in the API and never rendered. A board
+               failing every transaction showed 0 mismatches and status OK, so
+               this column was the only evidence anything was wrong. -->
+          <td${(b.error_count ?? 0) > 0 ? ' style="color:#ff8800;font-weight:700"' : ""}>${b.error_count ?? "—"}</td>
           <td>${b.mismatch_count ?? "—"}</td>
           <td>${coilsHtml}</td>
         </tr>`;

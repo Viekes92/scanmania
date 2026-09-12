@@ -87,6 +87,10 @@ class ModbusBoard:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            # Without keepalive, a board that dies without sending RST (switch
+            # port down, firewall drops the flow) leaves writes vanishing into
+            # the kernel buffer until tcp_retries2 expires — about 15 minutes.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
             sock.settimeout(self._timeout_s)
             # Run blocking connect in a thread to not block the event loop
             loop = asyncio.get_running_loop()
@@ -95,8 +99,17 @@ class ModbusBoard:
                 timeout=self._timeout_s * 2,
             )
             self._sock = sock
-            self._status = "OK"
-            self._consecutive_failures = 0
+            # Deliberately do NOT clear _consecutive_failures here. Only a real
+            # transaction proves the board works — see _record_success(). A board
+            # that drops the connection every request reconnects constantly, and
+            # clearing the counter on connect meant it never reached DEGRADED:
+            # 40 of 40 writes failed while status stayed "OK" and faults() said
+            # healthy. The game path ignores apply_preset()'s return value, so
+            # the maze silently stopped changing with nothing on the admin page.
+            # Same reasoning for status: a TCP handshake is not a working board.
+            # Only _record_success() — a completed transaction — clears DEGRADED.
+            if self._consecutive_failures < _FAILURE_THRESHOLD:
+                self._status = "OK"
             log.info("ModbusBoard '%s' connected to %s:%d", self.board_id, self._ip, self._port)
             return True
         except Exception as exc:
@@ -139,6 +152,12 @@ class ModbusBoard:
         if not self._sock:
             return None
         self._flush_recv()  # drain stale responses
+        # _flush_recv() closes the socket when the peer has sent FIN. Without
+        # this guard the sendall() below hit None and raised AttributeError,
+        # which is not in the except clause — recovery worked only because that
+        # error escaped into a broad handler two frames up.
+        if not self._sock:
+            return None
         frame = body + _crc16(body)
         try:
             self._sock.sendall(frame)
@@ -152,8 +171,16 @@ class ModbusBoard:
                 log.warning("ModbusBoard '%s': CRC mismatch in response", self.board_id)
                 return None
             return resp
-        except (socket.timeout, OSError) as exc:
+        except socket.timeout as exc:
+            # Keep the socket. The peer is silent but TCP is alive, so letting
+            # it retransmit heals a brief outage without a reconnect storm.
+            log.debug("ModbusBoard '%s' timeout: %s", self.board_id, exc)
+            return None
+        except OSError as exc:
+            # Reset, broken pipe, and friends: the socket is unusable. Close it
+            # so _ensure_connected() reconnects on the next call.
             log.debug("ModbusBoard '%s' send/recv error: %s", self.board_id, exc)
+            self._close_socket()
             return None
 
     # ------------------------------------------------------------------

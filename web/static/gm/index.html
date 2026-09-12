@@ -760,6 +760,11 @@
       width:100%; max-width:480px;
       display:flex; flex-direction:column; gap:12px;
     ">
+      <div id="sfError" role="alert" style="
+        display:none; padding:10px 12px; border-radius:4px;
+        background:rgba(255,51,0,0.12); border:1px solid #ff3300;
+        color:#ff8800; font-weight:700; letter-spacing:0.05em;
+      "></div>
       <div style="
         font-size:28px; font-weight:900;
         font-family:'Courier New',Courier,monospace;
@@ -770,9 +775,9 @@
 
       <input id="sfName" type="text" placeholder="First name *" maxlength="30" required
         class="signin-input">
-      <input id="sfSurname" type="text" placeholder="Surname *" maxlength="50" required
+      <input id="sfSurname" type="text" placeholder="Surname (optional)" maxlength="50"
         class="signin-input">
-      <input id="sfEmail" type="email" placeholder="Email *" maxlength="120" required
+      <input id="sfEmail" type="email" placeholder="Email (optional — prize draw)" maxlength="120"
         class="signin-input">
       <input id="sfDob" type="date" placeholder="Date of birth"
         class="signin-input" style="color-scheme:dark;">
@@ -1460,6 +1465,7 @@
 
     function openSigninPanel() {
       signinPanel.style.display = "flex";
+      showSigninError("");   // don't carry a stale failure into a new sign-in
       sfName.value = "";
       sfSurname.value = "";
       sfEmail.value = "";
@@ -1481,7 +1487,8 @@
       const first_name = sfName.value.trim();
       const surname = sfSurname.value.trim();
       const email = sfEmail.value.trim();
-      if (!first_name || !surname || !email) return;
+      // Server requires first_name only — see routes_signin.py::SignInBody.
+      if (!first_name) return;
       try {
         const resp = await fetch("/api/signin", {
           method: "POST",
@@ -1495,14 +1502,24 @@
           }),
         });
         if (resp.ok) {
+          showSigninError("");
           closeSigninPanel();
         } else {
-          showGmFeedback("SIGN-IN FAILED — try again");
+          showSigninError(resp.status === 422
+            ? "First name is required"
+            : `Sign-in failed (${resp.status}) — try again`);
         }
       } catch (err) {
         console.error("Sign-in error:", err);
+        showSigninError("No connection to the server — check the link");
       }
     });
+
+    function showSigninError(msg) {
+      const el = document.getElementById("sfError");
+      el.textContent = msg || "";
+      el.style.display = msg ? "block" : "none";
+    }
 
     function updateSigninVisibility(state) {
       // Show NEW PLAYER button only in ATTRACT

@@ -183,16 +183,12 @@ def create_backends(args: argparse.Namespace, cfg):
         backends["vision"] = FakeVision(cfg.beams)
         log.info("Vision backend: FakeVision (no-op / replay mode)")
     else:
-        # The real vision pipeline is not built yet. vision/camera.py defines
-        # CameraStream, and nothing constructs or connects it to DotDetector,
-        # BaselineTracker or MjpegServer. Importing VisionService used to raise
-        # ImportError here — after the DB had already been migrated and before
-        # uvicorn bound its port, so every frontend went dark with a traceback
-        # that named a class rather than the missing flag.
-        raise SystemExit(
-            "Real vision is not implemented yet: vision/camera.py has no "
-            "VisionService. Start with --fake-vision (or --fake-all) until the "
-            "camera pipeline is wired. See docs/architecture.md."
+        from vision.service import VisionService
+        import core.metrics as _m
+        backends["vision"] = VisionService(cfg, metrics_emit=_m.emit)
+        log.info(
+            "Vision backend: VisionService (%d RTSP camera(s), MJPEG on :8081)",
+            len(cfg.hardware.cameras),
         )
 
     # ---- Inputs backend (Arduino Opta over Modbus TCP) ----
@@ -492,16 +488,6 @@ def main() -> None:
         args.fake_inputs  = True
         log.info("Running in --fake-all mode (no hardware required)")
 
-    # Fail before we touch the database or bind a port. The real vision pipeline
-    # is unbuilt, so this combination cannot start — say so up front instead of
-    # dying halfway through boot.
-    if not args.fake_vision:
-        log.error(
-            "Real vision is not implemented yet. Start with --fake-vision "
-            "(or --fake-all). vision/camera.py has no VisionService; the RTSP "
-            "pipeline is still to be wired."
-        )
-        sys.exit(2)
 
     exit_code = asyncio.run(async_main(args))
     sys.exit(exit_code)

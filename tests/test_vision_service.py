@@ -1,0 +1,134 @@
+"""
+tests/test_vision_service.py — invariant 5: vision suppresses events when unsure.
+
+Inputs:  a VisionService built from the real config, driven by hand
+Outputs: assertions that a stall suppresses the detector, reaches the runner,
+         and drops detection to manual
+Invariant: a missed break is recoverable. A phantom bust in front of a queue is
+           not. Every path here must fail safe toward silence.
+
+No cameras are opened. run() is never called; the callbacks and the watchdog are
+driven directly, which is what makes this runnable on a laptop.
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from core.events import VisionStalled, DetectionMode
+from vision.service import VisionService
+
+
+@pytest.fixture
+def service(fake_config):
+    return VisionService(fake_config, metrics_emit=lambda *a, **k: None)
+
+
+def test_starts_unstalled(service):
+    assert service.is_stalled() is False
+    assert service._detector._stalled is False
+
+
+def test_camera_stall_suppresses_the_detector(service):
+    service._on_camera_stall("cam_a")
+
+    assert service.is_stalled() is True
+    # The detector is what actually refuses to emit breaks.
+    assert service._detector._stalled is True
+
+
+def test_stall_is_published_as_an_event(service):
+    service._on_camera_stall("cam_a")
+
+    kind, stalled, cameras = service._queue.get_nowait()
+    assert (kind, stalled) == ("stall", True)
+    assert cameras == ["cam_a"]
+
+
+def test_stall_event_is_edge_triggered(service):
+    """A stalled camera must not flood the queue every watchdog tick."""
+    service._on_camera_stall("cam_a")
+    service._queue.get_nowait()
+
+    service._on_camera_stall("cam_a")
+    assert service._queue.empty()
+
+
+def test_recovery_clears_suppression_and_publishes(service):
+    service._on_camera_stall("cam_a")
+    service._queue.get_nowait()
+
+    service._clear_stall("cam_a")
+
+    assert service.is_stalled() is False
+    assert service._detector._stalled is False
+    kind, stalled, cameras = service._queue.get_nowait()
+    assert (kind, stalled, cameras) == ("stall", False, [])
+
+
+def test_any_stalled_camera_suppresses_everything(service):
+    """
+    With several cameras, one bad feed must suppress the whole detector.
+
+    The detector cannot attribute a beam to a camera, so a partial view is not
+    safe to act on.
+    """
+    service._stalled_cameras.add("cam_b")
+    service._sync_detector_stall()
+    assert service._detector._stalled is True
+
+    service._stalled_cameras.discard("cam_b")
+    service._sync_detector_stall()
+    assert service._detector._stalled is False
+
+
+@pytest.mark.asyncio
+async def test_watchdog_catches_a_camera_that_stops_delivering(service, monkeypatch):
+    """
+    The failure CameraStream cannot see.
+
+    Its own gap check runs on frame arrival, so a camera that freezes with the
+    TCP connection open never triggers it. The watchdog runs outside the frame
+    path for exactly this case.
+    """
+    import time
+
+    stream = service._streams["cam_a"]
+    stale_ns = time.monotonic_ns() - (service._stall_threshold_ms + 500) * 1_000_000
+    monkeypatch.setattr(type(stream), "last_frame_ns", property(lambda self: stale_ns))
+
+    task = asyncio.create_task(service._watchdog())
+    await asyncio.sleep(0.25)
+    task.cancel()
+
+    assert service.is_stalled() is True, "watchdog missed a frozen camera"
+
+
+@pytest.mark.asyncio
+async def test_watchdog_ignores_a_camera_that_never_started(service):
+    """Before the first frame there is no gap to measure — that is startup."""
+    assert service._streams["cam_a"].last_frame_ns is None
+
+    task = asyncio.create_task(service._watchdog())
+    await asyncio.sleep(0.25)
+    task.cancel()
+
+    assert service.is_stalled() is False
+
+
+@pytest.mark.asyncio
+async def test_stall_reaches_the_fsm_and_drops_to_manual(runner):
+    """
+    The other half of invariant 5.
+
+    runner._vision_listener understood "break" only, so a stall tuple was
+    silently discarded even once something emitted one. Both halves have to work
+    for the invariant to hold.
+    """
+    assert runner.context.detection_mode != DetectionMode.manual
+
+    await runner.dispatch(VisionStalled())
+
+    assert runner.context.detection_mode == DetectionMode.manual

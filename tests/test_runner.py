@@ -38,24 +38,7 @@ from core.runner import GameRunner, MasterModeRequired
 # Runner fixture
 # ---------------------------------------------------------------------------
 
-@pytest_asyncio.fixture
-async def runner(fake_config, fake_io, fake_inputs, fake_vision, db):
-    """
-    Fresh GameRunner wired to all fake backends and an in-memory DB.
-    No hub is attached (WebSocket broadcast is a no-op).
-    """
-    r = GameRunner(
-        config=fake_config,
-        io_backend=fake_io,
-        inputs_backend=fake_inputs,
-        vision_backend=fake_vision,
-        db=db,
-    )
-    yield r
-    # Cancel any lingering timer tasks so the event loop is clean afterward.
-    for attr in ("_arm_timeout_task", "_result_timeout_task",
-                 "_max_run_task", "_count_in_task"):
-        r._cancel_task(attr)
+# The runner fixture now lives in conftest.py so vision tests can use it too.
 
 
 # ---------------------------------------------------------------------------

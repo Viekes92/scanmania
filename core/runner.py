@@ -973,14 +973,28 @@ class GameRunner:
                 await asyncio.sleep(3600)
             return
         async for event_tuple in self.vision.events():
-            if event_tuple[0] == "break":
+            kind = event_tuple[0]
+            if kind == "break":
                 _, beam_id, ratio, ts_ns = event_tuple
                 await self.put_event(BreakConfirmed(
                     beam_id=beam_id,
                     ratio=ratio,
                     run_id=self.context.run_id or "",
                 ))
-            # "clear" events are informational — no FSM event needed
+            elif kind == "clear":
+                # Informational — the detector handles hysteresis itself.
+                pass
+            elif kind == "stall":
+                # Invariant 5. The FSM drops to manual detection so a camera
+                # outage cannot end someone's run. This branch is why the
+                # invariant is reachable at all: the listener used to
+                # understand "break" only, so a stall tuple was discarded.
+                _, stalled, camera_ids = event_tuple
+                if stalled:
+                    log.warning("vision stalled on %s — dropping to manual", camera_ids)
+                    await self.put_event(VisionStalled())
+            else:
+                log.warning("vision_listener: unknown event kind %r", kind)
 
     async def _clock_broadcaster(self) -> None:
         """

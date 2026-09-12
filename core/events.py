@@ -381,7 +381,11 @@ class MasterModeExit:
 @dataclass(frozen=True)
 class VisionStalled:
     """
-    Emitted by: vision/camera.py when frame gap exceeds stall_threshold_ms (300 ms).
+    Emitted by: vision/service.py, via runner._vision_listener, when a camera's
+    frame gap exceeds detection.stall_threshold_ms (300 ms). The gap is measured
+    by VisionService's watchdog task, not inside the frame-read loop — a camera
+    that freezes with its TCP connection open never delivers another frame, so
+    nothing in the read path can notice.
     Consumed by: FSM in any state.
     Side effects: DropDetectionMode("manual", "vision stalled"), BroadcastState.
     Never busts a player — silence is always safer than a phantom break.

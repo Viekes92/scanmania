@@ -83,6 +83,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **`vision/service.py` — the object that was missing.** `CameraStream`,
+  `DotDetector`, `BaselineManager`, `EvidenceCapture` and `MjpegServer` all existed
+  and were individually plausible, but nothing constructed or connected them.
+  `__main__.py` imported a `VisionService` that was never written, and
+  `core/runner.py`'s docstring called it `CameraManager` — the two call sites did
+  not even agree on the name. `VisionService` mirrors `vision/fake.py`'s interface
+  exactly, so the runner cannot tell which one it holds.
+- **Invariant 5 is now reachable.** It had two independent breaks. `VisionStalled`
+  was emitted only by `test_fsm.py`, and `runner._vision_listener` understood
+  `"break"` tuples only, so a stall would have been discarded even if something
+  had emitted one. Stall detection also moved out of the frame-read loop into a
+  watchdog task: `CameraStream` only ever checks the gap when a frame *arrives*,
+  so the two genuine no-frame cases — a blocking read that never returns, and a
+  failed read that goes down the reconnect path — both bypassed it, and the
+  reconnect path cleared the flag on the way through.
 - `PresetResolver.apply_all_off()` — config-independent all-off that keeps `_desired` in sync.
 - `StopShow` and `VoidRun` side effects.
 - `deploy/scanmania.service` — the unit existed only on the NUC, so `Restart=always` was documented

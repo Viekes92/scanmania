@@ -19,10 +19,12 @@ from typing import Any
 from core.events import (
     # States
     RESET, ATTRACT, SELF_TEST, RUN_STATES,
+    # Run outcomes
+    RunOutcome,
     # Side effects
-    ApplyPreset, PlayShow, StartStopwatch, StopStopwatch, ResetStopwatch,
+    ApplyPreset, PlayShow, StopShow, StartStopwatch, StopStopwatch, ResetStopwatch,
     ArmDetection, DisarmDetection, StartCountIn, BeamPreflightCheck,
-    ReadyBlink, SaveRun, QueueSync, BroadcastState, EmitMetric,
+    ReadyBlink, SaveRun, VoidRun, QueueSync, BroadcastState, EmitMetric,
     SaveBreakEvidence, AutoMaskBeam, DropDetectionMode,
     # Input events for internal production
     BootComplete, SelfTestPass, ProcessRestart, RampComplete,
@@ -172,12 +174,34 @@ class GameRunner:
             )
             tasks.append(asyncio.create_task(self.reconciler.run(), name="reconcile"))
 
+        # Wait for the FIRST task to finish. A plain gather() re-raises on the
+        # first failure and skips the cancel loop below, which orphans the
+        # siblings: the clock kept broadcasting, the displays looked healthy,
+        # and the start plate was dead. The process stayed alive, so systemd
+        # Restart=always never fired.
         try:
-            await asyncio.gather(*tasks)
+            done, pending = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_EXCEPTION
+            )
         except asyncio.CancelledError:
             log.info("GameRunner cancelled")
             for t in tasks:
                 t.cancel()
+            raise
+
+        failed = [t for t in done if not t.cancelled() and t.exception() is not None]
+        for t in failed:
+            log.critical(
+                "Subsystem %s died: %r", t.get_name(), t.exception(), exc_info=t.exception()
+            )
+        for t in pending:
+            t.cancel()
+
+        # Re-raise so __main__ ends the process and systemd restarts it clean.
+        # Invariant 7 makes that safe: the runner never resumes a run.
+        if failed:
+            raise failed[0].exception()  # type: ignore[misc]
+        log.warning("GameRunner: all subsystem tasks exited without error")
 
     # ------------------------------------------------------------------
     # Event dispatch
@@ -346,6 +370,17 @@ class GameRunner:
             self._run_show(show, effect.show_name), name=f"show_{effect.show_name}"
         )
 
+    async def _handle_stop_show(self, effect: StopShow) -> None:
+        """
+        Stop the playing show. Leave the coils where the show left them.
+
+        ReadyBlink or the count-in ramp sets the next coil state. Writing here
+        would race them.
+        """
+        log.info("[SideEffect] StopShow")
+        self._cancel_task("_show_task")
+        self._show_name = None
+
     async def _run_show(self, show: Any, name: str) -> None:
         """Execute a show's step sequence. Loops if show.loop is True."""
         try:
@@ -483,9 +518,10 @@ class GameRunner:
             sleep_s = (next_edge_ns - time.monotonic_ns()) / 1e9
             if sleep_s > 0:
                 await asyncio.sleep(sleep_s)
-            if self.io and hasattr(self.io, "all_boards"):
-                for board in self.io.all_boards():
-                    await board.write_coils([False] * 16)
+            # Invariant 4: go through the resolver. A direct write_coils leaves
+            # _desired lit, and the reconciler re-lights the maze mid-gap.
+            if self._resolver and self.io:
+                await self._resolver.apply_all_off(self.io)
 
         # solid_at_end: keep the preset on at GO
         if self.config.game.count_in.solid_at_end and self._resolver and self.io:
@@ -514,9 +550,10 @@ class GameRunner:
         try:
             await self._resolver.apply_preset(preset, self.io)
             await asyncio.sleep(blink_ms / 1000.0)
-            for board in self.io.all_boards():
-                await board.write_coils([False] * 16)
-        except (KeyError, Exception) as exc:
+            # Invariant 4: ARM has no ApplyPreset, so nothing repairs _desired.
+            # A direct write here leaves the maze lit for the whole ARM state.
+            await self._resolver.apply_all_off(self.io)
+        except Exception as exc:
             log.warning("ReadyBlink failed: %s", exc)
 
     async def _handle_save_run(self, effect: SaveRun) -> None:
@@ -560,6 +597,31 @@ class GameRunner:
                 pass
         except Exception:
             log.exception("SaveRun: DB insert failed")
+
+    async def _handle_void_run(self, effect: VoidRun) -> None:
+        """
+        Void an already-saved run.
+
+        Uses db.void_run(), an idempotent UPDATE. insert_run() would raise
+        IntegrityError here, because the row was written when the run ended.
+        """
+        log.info("[SideEffect] VoidRun(run_id=%r, reason=%r)", effect.run_id, effect.reason)
+        if not self.db or not hasattr(self.db, "void_run"):
+            log.warning("VoidRun: no valid DB — skipping")
+            return
+        try:
+            await self.db.void_run(effect.run_id, effect.reason)
+            self._last_outcome = RunOutcome.voided
+            log.info("VoidRun: voided run %s (reason=%r)", effect.run_id, effect.reason)
+        except Exception:
+            log.exception("VoidRun: DB update failed")
+            return
+        # Drop the voided run from the cached leaderboard.
+        try:
+            self._cached_leaderboard = await self.db.get_leaderboard(scope="daily", limit=20)
+            self._last_rank = None
+        except Exception:
+            log.exception("VoidRun: leaderboard refresh failed")
 
     async def _handle_queue_sync(self, effect: QueueSync) -> None:
         """Insert the run into the cloud-sync outbox."""
@@ -1011,6 +1073,7 @@ class GameRunner:
 _EFFECT_HANDLERS: dict = {
     ApplyPreset:      GameRunner._handle_apply_preset,
     PlayShow:         GameRunner._handle_play_show,
+    StopShow:         GameRunner._handle_stop_show,
     StartStopwatch:   GameRunner._handle_start_stopwatch,
     StopStopwatch:    GameRunner._handle_stop_stopwatch,
     ResetStopwatch:   GameRunner._handle_reset_stopwatch,
@@ -1020,6 +1083,7 @@ _EFFECT_HANDLERS: dict = {
     BeamPreflightCheck: GameRunner._handle_beam_preflight_check,
     ReadyBlink:       GameRunner._handle_ready_blink,
     SaveRun:          GameRunner._handle_save_run,
+    VoidRun:          GameRunner._handle_void_run,
     QueueSync:        GameRunner._handle_queue_sync,
     BroadcastState:   GameRunner._handle_broadcast_state,
     EmitMetric:       GameRunner._handle_emit_metric,

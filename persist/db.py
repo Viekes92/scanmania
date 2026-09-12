@@ -218,7 +218,14 @@ class Database:
     # ------------------------------------------------------------------
 
     async def insert_run(self, run: dict) -> None:
-        """Insert a new run row. run must contain all non-nullable fields."""
+        """
+        Insert a run row, or update it if the id already exists.
+
+        Upsert rather than plain INSERT so a second save for the same run can
+        never vanish. A plain INSERT raised IntegrityError, the runner logged it
+        and carried on, and the run kept its stale outcome while the UI showed
+        the new one. A void already has its own path — see void_run().
+        """
         await self._db.execute(
             """
             INSERT INTO runs
@@ -229,6 +236,16 @@ class Database:
                 (:id, :player_id, :started_at, :ended_at, :elapsed_ms, :outcome,
                  :detection_mode, :busting_beam_id, :segment_reached, :voided_reason,
                  :created_at)
+            ON CONFLICT(id) DO UPDATE SET
+                ended_at        = excluded.ended_at,
+                elapsed_ms      = excluded.elapsed_ms,
+                -- A void is a deliberate operator decision. A late save must
+                -- not undo it. voided_reason is left alone for the same reason.
+                outcome         = CASE WHEN runs.outcome = 'voided'
+                                       THEN 'voided' ELSE excluded.outcome END,
+                detection_mode  = excluded.detection_mode,
+                busting_beam_id = excluded.busting_beam_id,
+                segment_reached = excluded.segment_reached
             """,
             {
                 "id": run["id"],

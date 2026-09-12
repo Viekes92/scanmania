@@ -212,17 +212,21 @@ async def test_pause_stops_drain(db, worker):
     await worker.pause()
     assert worker.is_paused is True
 
-    # The drain loop itself would skip; we verify by calling _drain directly
-    # with force=False (mimicking the loop behaviour) and confirming nothing moves.
     rows_before = await db.outbox_depth()
+    assert rows_before > 0, "fixture must leave a row to drain, or this proves nothing"
+    attempts_before = (await db.get_pending_outbox(limit=50))[0]["attempts"]
 
-    # Simulate what the run loop does when paused:
-    if worker.is_paused:
-        pass  # loop continues without draining
-    else:
-        await worker._drain()
+    # Call the loop's own path. The previous version branched on is_paused in
+    # the test body, so _drain was never reached at all.
+    pushed = await worker._drain()
 
+    assert pushed == 0
     assert await db.outbox_depth() == rows_before
+    # Depth alone cannot fail this test: with no endpoint the push fails and the
+    # row stays either way. attempts is the discriminator — a paused worker must
+    # not even try, so the counter must not move.
+    attempts_after = (await db.get_pending_outbox(limit=50))[0]["attempts"]
+    assert attempts_after == attempts_before, "paused worker attempted a push"
 
 
 @pytest.mark.asyncio

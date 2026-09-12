@@ -175,9 +175,18 @@ class OutboxWorker:
         """
         Process pending outbox rows.
 
-        force=True skips backoff gating (used by force_push).
+        force=True skips backoff gating AND the pause check (used by force_push,
+        which is an explicit operator action).
+
+        The pause check lives here rather than only in run(), so pausing is
+        enforced at the point the work happens. With the guard only in the loop,
+        the test for it had to re-implement the check in the test body and could
+        never fail.
+
         Returns number of rows successfully pushed this pass.
         """
+        if self._paused and not force:
+            return 0
         pushed = 0
         rows = await self._db.get_pending_outbox(limit=50)
         for row in rows:

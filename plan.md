@@ -849,3 +849,62 @@ Three protocols on site. One computer. One state machine that's a pure function.
 9. **Internet on site** — wired, 4G, or neither at first?
 10. **Which switch model?** Confirm per-port PoE control via API or SNMP; §12 relies on it for camera recovery.
 11. **Metric definitions** from the client, when available (§9).
+
+---
+
+## 17. Task: remove cloud sync
+
+Decided 2026-09-12. Cloud sync is being dropped. It is inert today — the
+OutboxWorker only starts when `SCANMANIA_SYNC_URL` is set — but it still costs
+a dependency, six admin routes, a DB table and a large share of the persistence
+surface. Open questions 8 and 9 above are void once this is done.
+
+Do it in one pass. Half-removed is worse than either end state.
+
+### What it touches
+
+**Delete**
+- `persist/outbox.py`, `tests/test_outbox.py`
+- `persist/sync.py` — **keep `export_snapshot()`, `export_leaderboard_csv()`,
+  `_prune_snapshots()` and `rolling_snapshot_loop()`.** Those are local backup,
+  not cloud sync, and the snapshot loop is now wired into `__main__.py`.
+- The `outbox` table (`persist/db.py:72`) plus `insert_outbox`,
+  `get_pending_outbox`, `mark_outbox_success`, `mark_outbox_attempt`,
+  `outbox_depth`, `reset_outbox_backoff`. Needs a migration, not a schema edit —
+  existing NUC databases have the table and rows.
+- `httpx` from `pyproject.toml` and `requirements.txt`. It is the only consumer.
+
+**Side effect**
+- `QueueSync` in `core/events.py`, its handler `_handle_queue_sync` and dispatch
+  entry in `core/runner.py`, and **8 emission sites in `core/fsm.py`** (lines
+  ~114, 129, 283, 376, 463, 480, 499, 521). Also the `isinstance` tuple in
+  `tools/fake_run.py`. Removing the effect touches every terminal-outcome path,
+  so lean on `test_fsm.py` — it asserts effect lists.
+
+**Admin API** — six routes in `web/routes_admin.py`:
+`/api/admin/outbox`, `/outbox/pause`, `/outbox/resume`, `/outbox/push`,
+`/outbox/reset-backoff`, `/outbox/test`. Plus `web_app.set_outbox()` and the
+OutboxWorker block in `__main__.py:376-385`.
+
+**Frontend** — 18 references in `web/static/admin/index.html`. The sync card,
+its poll, and the outbox depth readout.
+
+**Config and env** — `SCANMANIA_SYNC_URL` and `SCANMANIA_SYNC_TOKEN` in
+`__main__.py` and `/etc/default/scanmania` on the NUC.
+
+**Docs** — invariant 6 in `CLAUDE.md` is about cloud sync; rewrite it around the
+local-first guarantee or drop it. `docs/adr/0006-local-first-cloud-backup.md`
+must be marked `Superseded by 00NN`, with a new ADR recording this decision.
+`docs/architecture.md` shows `scanmania-sync.service` in its diagram.
+
+### Watch out for
+
+- **Invariant 6 loses its subject.** "Gameplay never awaits the network" still
+  matters for Art-Net and Modbus. Rewrite rather than delete.
+- **`QueueSync` currently sits next to `SaveRun` in every terminal path.** Do
+  not remove the surrounding effects by accident.
+- **The DB migration is the risky part.** Back up the NUC database first, per
+  `deployment.md`. Dropping a table is not reversible by a `git revert`.
+- The outbox is also the only thing that would have carried run data off the
+  NUC. After this, `export_snapshot` and the CSV export are the whole backup
+  story — confirm someone actually collects them.

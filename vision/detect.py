@@ -58,10 +58,13 @@ class DotDetector:
         on_break: Callable,
         on_clear: Callable,
         metrics_emit: Callable,
+        on_fault: Callable | None = None,
     ) -> None:
         self._cfg = beams_config
         self._on_break = on_break       # (beam_id: str, ratio: float, ts_ns: int) → None
         self._on_clear = on_clear       # (beam_id: str, ts_ns: int) → None
+        self._on_fault = on_fault       # (beam_id: str, ts_ns: int) → None
+        self._faulted: set[str] = set()  # channels already reported dark
         self._metrics_emit = metrics_emit
 
         n = beams_config.detection.consecutive_frames
@@ -72,12 +75,23 @@ class DotDetector:
         self._armed: bool = False
         self._run_id: str | None = None
         self._arm_time_ns: int | None = None
+        self._arm_grace_ms: int | None = None
 
         # Global rate limit: timestamps of recent break events
         self._recent_break_times: collections.deque[int] = collections.deque()
 
         # Stall suppression
         self._stalled: bool = False
+
+        # Watch-list: the channel ids lit by the current maze shape. None
+        # means 'watch everything' (single-shape setups and the fakes).
+        # A dot that goes dark because its relay opened is not in this set,
+        # so nothing looks at it — that is how a shape change stops looking
+        # like a mass beam break.
+        self._watching: set[str] | None = None
+        # Channels that just lit up; they are still coming on, so ignore
+        # them until this monotonic_ns deadline passes.
+        self._settling: dict[str, int] = {}
 
         # External baseline values (injected from BaselineManager)
         self._baselines: dict[str, float] = {
@@ -93,6 +107,10 @@ class DotDetector:
         self._armed = True
         self._run_id = run_id
         self._arm_time_ns = time.monotonic_ns()
+        # The caller's grace wins. This used to be logged and then dropped,
+        # with _can_emit_break silently reading the config value instead, so
+        # passing a grace_ms had no effect whatsoever.
+        self._arm_grace_ms = grace_ms
         log.info("DotDetector armed for run='%s' grace_ms=%d", run_id, grace_ms)
         # Reset all hysteresis counters at arm time
         for st in self._states.values():
@@ -123,12 +141,78 @@ class DotDetector:
         self._baselines[beam_id] = value
 
     # ------------------------------------------------------------------
+    # Watch-list — swapped whenever the maze shape changes
+    # ------------------------------------------------------------------
+
+    def set_watchlist(self, channel_ids, settle_ms: int = 250) -> None:
+        """
+        Replace the set of channels detection looks at.
+
+        Call this on every preset change. Channels that leave the list are
+        dropped immediately: their dots go dark because the relay opened, and a
+        question nobody asks cannot produce a wrong answer.
+
+        Channels that were already lit keep their hysteresis state untouched, so
+        a player breaking one of them during the switch is still caught. At ~80%
+        shape overlap that is most of the maze.
+
+        Channels that are newly lit get settle_ms before they can report
+        anything — they are physically still coming on.
+
+        Pass None to watch everything.
+        """
+        if channel_ids is None:
+            self._watching = None
+            self._settling.clear()
+            return
+
+        new = set(channel_ids)
+        previous = self._watching if self._watching is not None else set(self._states)
+        now_ns = time.monotonic_ns()
+        deadline = now_ns + settle_ms * 1_000_000
+
+        for cid in new - previous:
+            self._settling[cid] = deadline
+            st = self._states.get(cid)
+            if st is not None:
+                st.break_consecutive = 0
+                st.clear_consecutive = 0
+                st.is_broken = False
+
+        for cid in previous - new:
+            self._settling.pop(cid, None)
+
+        self._watching = new
+        log.info(
+            "DotDetector watch-list: %d channels (%d continuing, %d settling)",
+            len(new), len(new & previous), len(new - previous),
+        )
+
+    def _is_watched(self, beam_id: str, timestamp_ns: int) -> bool:
+        if self._watching is not None and beam_id not in self._watching:
+            return False
+        deadline = self._settling.get(beam_id)
+        if deadline is not None:
+            if timestamp_ns < deadline:
+                return False
+            del self._settling[beam_id]
+        return True
+
+    # ------------------------------------------------------------------
     # Per-frame processing
     # ------------------------------------------------------------------
 
-    def process_frame(self, frame: np.ndarray, timestamp_ns: int) -> None:
+    def process_frame(
+        self, frame: np.ndarray, timestamp_ns: int, camera_id: str | None = None
+    ) -> None:
         """
         Process one decoded frame. Applies detection logic to every non-masked beam.
+
+        camera_id routes the frame to the beams that this camera actually sees.
+        ROIs are frame pixels belonging to one camera's view, so sampling a beam
+        against a different camera's frame reads meaningless coordinates. With
+        several cameras and no routing, every beam was sampled against every
+        frame. Pass None only when there is a single camera (or a fake).
 
         Suppresses all events when stalled. Suppresses break events during grace period
         and when the global rate limit is exceeded.
@@ -138,15 +222,81 @@ class DotDetector:
 
         for beam_id, st in self._states.items():
             beam = st.beam
+            # Only beams this camera can see.
+            if camera_id is not None and beam.camera != camera_id:
+                continue
+            # Only channels the current maze shape has lit, and not still settling.
+            if not self._is_watched(beam_id, timestamp_ns):
+                continue
             # Skip masked beams (both config-level and auto-masked by flap detector)
             if beam.masked or st.auto_masked:
                 continue
 
-            ratio = self._compute_ratio(frame, beam)
-            if ratio is None:
+            signal = self._channel_signal(frame, beam)
+            if signal is None:
+                # No dot on this channel has a baseline yet — nothing to compare.
+                continue
+            dark, total, worst = signal
+
+            # Every dot on a channel that is commanded ON went dark at once. A
+            # body blocks part of a colinear array, never all of it. This is the
+            # relay not firing, the PSU dropping, or the view being occluded.
+            # Reporting it as a break would end a run for a hardware fault.
+            if total >= 2 and dark == total:
+                self._report_channel_fault(beam, timestamp_ns)
                 continue
 
-            self._update_hysteresis(st, beam, ratio, timestamp_ns)
+            # Any dark dot means the beam is broken. Do not average: one dark dot
+            # out of five averages to 0.8 and would never cross break_ratio.
+            broken = dark > 0
+            self._update_group_hysteresis(st, beam, broken, worst, timestamp_ns)
+
+    def _report_channel_fault(self, beam: BeamConfig, timestamp_ns: int) -> None:
+        """All dots dark on a lit channel — a fault for the GM, never a bust."""
+        if getattr(self, "_faulted", None) is None:
+            self._faulted = set()
+        if beam.id in self._faulted:
+            return
+        self._faulted.add(beam.id)
+        log.error(
+            "DotDetector: channel '%s' is commanded ON but all %d dots are dark "
+            "— relay, PSU or occlusion. Not reporting a break.",
+            beam.id, len(beam.dots),
+        )
+        self._metrics_emit("vision.channel_dark", value=1, tags={"beam_id": beam.id})
+        if self._on_fault is not None:
+            self._on_fault(beam.id, timestamp_ns)
+
+    def _update_group_hysteresis(
+        self, st: _BeamState, beam: BeamConfig, broken: bool,
+        worst_ratio: float, timestamp_ns: int
+    ) -> None:
+        """Hysteresis over the channel's dot group rather than a single ratio."""
+        self._faulted = getattr(self, "_faulted", set())
+        self._faulted.discard(beam.id)
+
+        if not st.is_broken:
+            if broken:
+                st.break_consecutive += 1
+                st.clear_consecutive = 0
+                if st.break_consecutive >= st.n and self._can_emit_break(timestamp_ns):
+                    st.is_broken = True
+                    st.break_consecutive = 0
+                    self._confirm_break(st, beam, worst_ratio, timestamp_ns)
+            else:
+                st.break_consecutive = 0
+        else:
+            if not broken and worst_ratio > beam.clear_ratio:
+                st.clear_consecutive += 1
+                st.break_consecutive = 0
+                if st.clear_consecutive >= st.n:
+                    st.is_broken = False
+                    st.clear_consecutive = 0
+                    log.info("DotDetector: beam '%s' CLEARED ratio=%.3f", beam.id, worst_ratio)
+                    self._on_clear(beam.id, timestamp_ns)
+                    self._metrics_emit("break.cleared", value=1, tags={"beam_id": beam.id})
+            else:
+                st.clear_consecutive = 0
 
     def _compute_ratio(self, frame: np.ndarray, beam: BeamConfig) -> float | None:
         """Sample the ROI and return brightness ratio against baseline. None if baseline=0."""
@@ -155,6 +305,37 @@ class DotDetector:
             return None
         sample = self._sample_roi(frame, beam)
         return sample / baseline
+
+    def _channel_signal(self, frame, beam: BeamConfig) -> tuple[int, int, float] | None:
+        """
+        Sample every dot on this relay channel.
+
+        Returns (dark_count, total_dots, worst_ratio), or None when no dot has a
+        usable baseline yet.
+
+        One relay drives 5 colinear dots. A body blocks one or two of them; it
+        cannot plausibly extinguish all five at once. So the count discriminates
+        a player from a hardware fault, which a single averaged ratio cannot —
+        average one dark dot across five and the mean is 0.8, nowhere near
+        break_ratio, and the break is missed entirely.
+        """
+        dark = 0
+        total = 0
+        worst = 1.0
+        for dot in beam.dots:
+            if dot.masked:
+                continue
+            baseline = dot.baseline or self._baselines.get(beam.id, beam.baseline)
+            if baseline <= 0:
+                continue
+            total += 1
+            ratio = self._sample_dot(frame, dot) / baseline
+            worst = min(worst, ratio)
+            if ratio < beam.break_ratio:
+                dark += 1
+        if total == 0:
+            return None
+        return dark, total, worst
 
     def _update_hysteresis(
         self, st: _BeamState, beam: BeamConfig, ratio: float, timestamp_ns: int
@@ -190,7 +371,9 @@ class DotDetector:
         """Check grace period and global rate limit. Returns False if suppressed."""
         # Grace period: ignore breaks immediately after arming
         if self._armed and self._arm_time_ns is not None:
-            grace_ms = self._cfg.detection.arm_grace_ms
+            grace_ms = getattr(self, "_arm_grace_ms", None)
+            if grace_ms is None:
+                grace_ms = self._cfg.detection.arm_grace_ms
             elapsed_ms = (timestamp_ns - self._arm_time_ns) / 1_000_000
             if elapsed_ms < grace_ms:
                 log.debug("DotDetector: break suppressed — grace period (%.0f ms)", elapsed_ms)
@@ -253,14 +436,20 @@ class DotDetector:
     # ROI sampling
     # ------------------------------------------------------------------
 
+    def _sample_dot(self, frame: np.ndarray, dot) -> float:
+        """Sample one dot's ROI. Same maths as _sample_roi, per dot."""
+        return self._sample_circle(frame, dot.cx, dot.cy, dot.r)
+
     def _sample_roi(self, frame: np.ndarray, beam: BeamConfig) -> float:
+        """Legacy single-ROI sample, kept for the admin overlay and baselines."""
+        return self._sample_circle(frame, beam.roi.cx, beam.roi.cy, beam.roi.r)
+
+    def _sample_circle(self, frame: np.ndarray, cx: int, cy: int, r: int) -> float:
         """
         Sample mean of the top 20% brightest pixels in the circular ROI on the
         red-isolated image: R - (G+B)/2, clipped to [0, 255].
         """
-        roi = beam.roi
         h, w = frame.shape[:2]
-        cx, cy, r = roi.cx, roi.cy, roi.r
 
         # Bounding box of the circle, clamped to frame
         x0 = max(0, cx - r)

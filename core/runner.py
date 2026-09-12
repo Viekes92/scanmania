@@ -346,6 +346,30 @@ class GameRunner:
                 await self._resolver.apply_preset(effect.preset_name, self.io)
             except KeyError:
                 log.warning("ApplyPreset: unknown preset '%s' — skipping", effect.preset_name)
+        self._apply_watchlist(effect.preset_name)
+
+    def _apply_watchlist(self, preset_name: str) -> None:
+        """
+        Point vision at the channels this preset lights.
+
+        This is the whole answer to "is that a broken beam or a maze change".
+        The watch-list moves with the maze, so a dot going dark because its
+        relay opened is simply not being looked at. Channels lit in both the old
+        and new shape keep their state, so a real break during the switch is
+        still caught — at ~80% shape overlap that is most of the maze.
+        """
+        if self.vision is None or not hasattr(self.vision, "set_watchlist"):
+            return
+        watchlists = getattr(self.config, "watchlists", None) or {}
+        ids = watchlists.get(preset_name)
+        if ids is None:
+            # Unknown preset (or a show step): watch everything rather than
+            # silently going blind. Detection stays conservative either way.
+            log.debug("No watch-list for preset '%s' — watching all channels", preset_name)
+            self.vision.set_watchlist(None)
+            return
+        settle_ms = getattr(self.config.game, "preset_settle_ms", 250)
+        self.vision.set_watchlist(ids, settle_ms)
 
     async def _handle_play_show(self, effect: PlayShow) -> None:
         """Start an animated show (sequence of presets with timing)."""

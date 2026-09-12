@@ -110,7 +110,10 @@ class VisionService:
             self._clear_stall(camera_id)
 
         self._evidence.push_frame(frame, timestamp_ns)
-        self._detector.process_frame(frame, timestamp_ns)
+        # Route by camera: a beam's ROI is only meaningful in its own
+        # camera's frame. Without this, four cameras sample every beam four
+        # times, three of them against coordinates that mean nothing.
+        self._detector.process_frame(frame, timestamp_ns, camera_id)
         if self._mjpeg is not None:
             self._mjpeg.push_frame(frame, camera_id)
 
@@ -252,6 +255,15 @@ class VisionService:
 
     def is_armed(self) -> bool:
         return self._detector.is_armed
+
+    def set_watchlist(self, channel_ids, settle_ms: int = 250) -> None:
+        """
+        Point detection at the channels the current maze shape has lit.
+
+        Called on every preset change. See DotDetector.set_watchlist — this is
+        what stops a shape change from reading as a mass beam break.
+        """
+        self._detector.set_watchlist(channel_ids, settle_ms)
 
     # ------------------------------------------------------------------
     # Telemetry — read by the admin hardware page

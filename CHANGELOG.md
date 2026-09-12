@@ -77,6 +77,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   invocation works; the remaining prerequisite is calibrating `config/beams.json`, which is still
   uncalibrated (45 entries, every ROI `0,0`, all on `cam_a`).
 
+- **`DotDetector.arm(run_id, grace_ms)` ignored its own argument.** The value was
+  logged and then dropped; `_can_emit_break` read `detection.arm_grace_ms` from
+  config instead, so passing a grace had no effect at all. The caller's value now
+  wins, falling back to config when omitted.
+
+- **`process_frame` sampled every beam against every camera's frame.** ROIs are
+  pixels in one camera's view, so with several cameras each beam was measured
+  three times against coordinates that mean nothing. It now takes `camera_id` and
+  skips beams belonging to other cameras. Latent until now because all 45 channels
+  are assigned to `cam_a`.
+
 - **`test_pause_stops_drain` could not fail.** It re-implemented the pause check inside the test
   body, so `_drain()` was never called and the final assertion compared a number to itself. The
   pause guard moved into `_drain()` where the work happens, and the test asserts the row's
@@ -84,6 +95,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   without an endpoint. Verified by deleting the guard and watching the test go red.
 
 ### Added
+
+- **A maze shape change no longer reads as a mass beam break.** `vision/detect.py`
+  never referenced `camera` or `segment` — it evaluated every beam on every frame.
+  At `Cp1Pressed` the relays switch, a whole shape's dots vanish at once, and the
+  first `BreakConfirmed` busted the player. `global_break_rate_limit` did not help:
+  it suppresses the 7th break onward, and the 1st already ended the run.
+
+  Detection now follows a **watch-list** that moves with the maze. `load_all()`
+  joins `mazes.yaml` (which channels a preset lights) with `beams.json` (which
+  channel each entry is) into `AppConfig.watchlists`, and `_handle_apply_preset`
+  swaps it on every preset change. A dot that goes dark because its relay opened
+  is not in the list, so nothing looks at it. No new config to author — both
+  halves already existed.
+
+  Channels lit in **both** the old and new shape keep their hysteresis state, so a
+  real break during the switch is still caught. At the stated ~80% shape overlap
+  that is roughly 77% of the maze watched without interruption. Only newly-lit
+  channels are paused, for `preset_settle_ms` (default 250), because those lasers
+  are physically still coming on.
+
+- **`beams.json` can describe all five dots of a relay channel.** One channel drives
+  5 colinear lasers; the schema had a single `roi` and could only record one of
+  them, so calibration would have covered 45 dots and ignored 180. New `dots: [...]`
+  array with per-dot baseline and mask. The old single-`roi` form still loads as a
+  one-dot list, so the file can be migrated channel by channel.
+
+- **A dead relay channel is a fault, not a bust.** If every dot on a channel that is
+  commanded ON goes dark at once, that is the relay failing, the PSU dropping or the
+  view being occluded — a body blocks one or two dots in a colinear array, never all
+  five. Reported via a new `on_fault` callback and the `vision.channel_dark` metric.
+  Averaging would have missed the opposite case too: one dark dot in five averages
+  to 0.8 and never crosses `break_ratio`, so a single blocked laser went undetected.
 
 - **`vision/service.py` — the object that was missing.** `CameraStream`,
   `DotDetector`, `BaselineManager`, `EvidenceCapture` and `MjpegServer` all existed

@@ -75,3 +75,9 @@ snapshot_interval_min: 60
 
 # How many rolling snapshots to keep on disk. Sane range 4-200.
 snapshot_keep: 48
+
+# Grace after a maze shape change before newly-lit channels can report a break.
+# Those lasers are physically still coming on, so a dark reading means nothing
+# yet. Channels lit in both the old and new shape are NOT paused — they keep
+# being watched straight through the transition. Sane range 100-500 ms.
+preset_settle_ms: 250

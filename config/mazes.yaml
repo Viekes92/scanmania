@@ -12,47 +12,47 @@ presets:
     - 3
     - 4
     - 5
-    - 17
-    - 18
-    - 19
-    - 20
-    - 21
-    - 33
-    - 34
-    - 35
-    - 36
-    - 37
-    description: test
-  maze_2:
-    channels:
     - 6
     - 7
     - 8
     - 9
     - 10
-    - 22
-    - 23
-    - 24
-    - 25
-    - 26
-    - 38
-    - 39
-    - 40
-    - 41
-    - 42
-    description: "second maze \u2014 CP1 to CP2"
-  maze_3:
-    channels:
     - 11
     - 12
     - 13
     - 14
     - 15
+    description: test
+  maze_2:
+    channels:
+    - 17
+    - 18
+    - 19
+    - 20
+    - 21
+    - 22
+    - 23
+    - 24
+    - 25
+    - 26
     - 27
     - 28
     - 29
     - 30
     - 31
+    description: "second maze \u2014 CP1 to CP2"
+  maze_3:
+    channels:
+    - 33
+    - 34
+    - 35
+    - 36
+    - 37
+    - 38
+    - 39
+    - 40
+    - 41
+    - 42
     - 43
     - 44
     - 45
@@ -64,7 +64,9 @@ shows:
     description: "idle sparkle \u2014 plays during ATTRACT state"
     steps:
     - preset: all_on
-      hold_ms: 10000
+      hold_ms: 500
+    - preset: blackout
+      hold_ms: 300
     loop: true
   bust:
     loop: true

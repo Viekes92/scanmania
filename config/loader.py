@@ -77,16 +77,42 @@ class BeamROI:
 
 
 @dataclass
+class DotROI:
+    """
+    One laser dot on the ceiling.
+
+    A relay channel drives 5 colinear dots, so a channel entry carries 5 of
+    these. The older schema had a single `roi` per channel, which could only
+    describe one of the five.
+
+    ROIs are frame pixels in one camera's view. capture_w/h on the parent
+    channel record the resolution they were measured at — a substream
+    resolution change silently invalidates them otherwise.
+    """
+    cx: int
+    cy: int
+    r: int
+    baseline: float = 0.0
+    masked: bool = False        # one dead laser should not retire the other four
+    note: str = ""
+
+
+@dataclass
 class BeamConfig:
     id: str
     relay_channel: int
     board_id: str
     camera: str
-    roi: BeamROI
+    roi: BeamROI                       # legacy single ROI; kept for the admin overlay
     baseline: float
     break_ratio: float
     clear_ratio: float
     masked: bool
+    # The 5 dots this relay channel drives. Defaulted so older constructors
+    # keep working while beams.json is migrated channel by channel.
+    dots: list[DotROI] = field(default_factory=list)
+    capture_w: int = 0                 # frame size the ROIs were measured at
+    capture_h: int = 0
     row: int = 0                       # grid row (1-9)
     strip: int = 0                     # strip within row (1-5)
     segment: int = 1                   # which game segment (1-3)
@@ -150,6 +176,9 @@ class GameConfig:
     snapshot_interval_min: int = 60
     # How many rolling snapshots to keep. Sane range 4-200.
     snapshot_keep: int = 48
+    # Grace after a maze shape change before newly-lit channels can report a
+    # break. They are physically still coming on. Sane range 100-500 ms.
+    preset_settle_ms: int = 250
 
 
 @dataclass
@@ -185,6 +214,10 @@ class AppConfig:
     beams: BeamsConfig
     game: GameConfig
     mazes: MazesConfig
+    # preset name -> the channel ids lit by that preset. Detection watches
+    # exactly these and ignores the rest, so a maze shape change is not a
+    # beam break: the dots that vanish are simply no longer being asked about.
+    watchlists: dict[str, frozenset[str]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +273,40 @@ def load_hardware() -> HardwareConfig:
     )
 
 
+def _parse_dots(b: dict) -> list[DotROI]:
+    """
+    Read a channel's dot list.
+
+    Accepts the old single-`roi` form so a half-migrated beams.json still loads:
+    it becomes a one-dot list. Once the sweep tool has run, every channel should
+    carry 5 dots — validate_config() reports the ones that do not.
+    """
+    if "dots" in b:
+        return [
+            DotROI(
+                cx=d["cx"], cy=d["cy"], r=d.get("r", 9),
+                baseline=d.get("baseline", 0.0),
+                masked=d.get("masked", False),
+                note=d.get("note", ""),
+            )
+            for d in b["dots"]
+        ]
+    roi = b.get("roi")
+    if not roi:
+        return []
+    return [DotROI(cx=roi["cx"], cy=roi["cy"], r=roi.get("r", 9),
+                   baseline=b.get("baseline", 0.0))]
+
+
+def _first_dot_as_roi(b: dict) -> BeamROI:
+    """Legacy `roi` field for callers that still want one circle per channel."""
+    dots = b.get("dots") or []
+    if not dots:
+        return BeamROI(cx=0, cy=0, r=9)
+    d = dots[0]
+    return BeamROI(cx=d["cx"], cy=d["cy"], r=d.get("r", 9))
+
+
 def load_beams() -> BeamsConfig:
     d = _load_json("beams.json")
     beams = [
@@ -248,7 +315,10 @@ def load_beams() -> BeamsConfig:
             relay_channel=b["relay_channel"],
             board_id=b["board_id"],
             camera=b["camera"],
-            roi=BeamROI(**b["roi"]),
+            roi=BeamROI(**b["roi"]) if "roi" in b else _first_dot_as_roi(b),
+            dots=_parse_dots(b),
+            capture_w=b.get("capture_w", 0),
+            capture_h=b.get("capture_h", 0),
             baseline=b.get("baseline", 0.0),
             break_ratio=b["break_ratio"],
             clear_ratio=b["clear_ratio"],
@@ -300,6 +370,7 @@ def load_game() -> GameConfig:
         arm_grace_ms=d.get("arm_grace_ms", 150),
         snapshot_interval_min=max(0, int(d.get("snapshot_interval_min", 60))),
         snapshot_keep=max(1, int(d.get("snapshot_keep", 48))),
+        preset_settle_ms=max(0, int(d.get("preset_settle_ms", 250))),
         leaderboard=LeaderboardConfig(
             scope=lb.get("scope", "daily"),
             show_busted=lb.get("show_busted", False),
@@ -343,6 +414,51 @@ def load_mazes() -> MazesConfig:
                 description=s.get("description", ""),
             )
     return MazesConfig(presets=presets, shows=shows)
+
+
+def _global_channel(beam: BeamConfig, board_order: list[str], per_board: int = 16) -> int | None:
+    """
+    beams.json stores relay_channel LOCAL to a board (1-15).
+    mazes.yaml presets list GLOBAL channels (1-48). Convert.
+
+    global = board_index * per_board + local_channel
+    """
+    try:
+        idx = board_order.index(beam.board_id)
+    except ValueError:
+        return None
+    return idx * per_board + beam.relay_channel
+
+
+def build_watchlists(beams: BeamsConfig, mazes: MazesConfig,
+                     hardware: HardwareConfig) -> dict[str, frozenset[str]]:
+    """
+    Join mazes.yaml (which channels a preset lights) with beams.json (which
+    channel each entry is) to get the set of channel ids to watch per preset.
+
+    This is the whole answer to "how do we tell a shape change from a break":
+    when the maze switches, the watch-list switches with it. A dot that goes
+    dark because its relay opened is not in the new list, so nothing looks at
+    it and nothing reports it.
+
+    No extra config to author — both halves already exist.
+    """
+    board_order = [b.id for b in hardware.relay_boards]
+    by_global: dict[int, str] = {}
+    for beam in beams.beams:
+        g = _global_channel(beam, board_order)
+        if g is not None:
+            by_global[g] = beam.id
+
+    out: dict[str, frozenset[str]] = {}
+    for name, preset in mazes.presets.items():
+        if preset.channels == "*":
+            out[name] = frozenset(by_global.values())
+            continue
+        out[name] = frozenset(
+            by_global[c] for c in (preset.channels or []) if c in by_global
+        )
+    return out
 
 
 def load_all() -> AppConfig:
@@ -392,4 +508,7 @@ def load_all() -> AppConfig:
             f"game.yaml count_in.preset '{game.count_in.preset}' is not defined in mazes.yaml"
         )
 
-    return AppConfig(hardware=hardware, beams=beams, game=game, mazes=mazes)
+    return AppConfig(
+        hardware=hardware, beams=beams, game=game, mazes=mazes,
+        watchlists=build_watchlists(beams, mazes, hardware),
+    )

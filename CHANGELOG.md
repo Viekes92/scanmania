@@ -9,6 +9,110 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **The reconciler re-lit the maze during count-in and throughout ARM.** `_run_count_in_ramp()`
+  and `_handle_ready_blink()` called `board.write_coils([False] * 16)` directly, bypassing
+  `iobackend/presets.py` and leaving the resolver's `_desired` state lit. `ReconcileLoop` saw the
+  drift and re-asserted within 500 ms. Measured: lasers re-lit 354 ms into a 420 ms dark gap, about
+  2.6 times per count-in, and — because the ARM handler emits no `ApplyPreset` — the full maze
+  stayed lit for the entire ARM state, up to `arm_timeout_ms` (3 minutes), while the player stood
+  on the start plate. Latent since the initial commit; activated by `8a8ea83` turning the
+  reconciler on. Both sites now use a new `PresetResolver.apply_all_off()`, which updates
+  `_desired` and does not depend on the user-editable `blackout` preset.
+
+- **The attract show ran straight through REGISTERED, ARM and the count-in ramp.** Nothing
+  cancelled `_show_task` until `ApplyPreset("maze_1")` at `RampComplete`, so the show kept writing
+  coils every 300–500 ms while the ready blink and flash ramp were trying to drive them. It also
+  partially masked the bug above. New `StopShow` side effect, emitted on ATTRACT → REGISTERED.
+
+- **A subsystem crash left the game dead but the process alive.** `GameRunner.run()` used
+  `asyncio.gather()` with no `return_exceptions`, so the first failure re-raised and skipped the
+  sibling-cancellation loop, orphaning the other tasks. The clock kept broadcasting and both
+  displays looked healthy while the start plate did nothing, with no log line until shutdown —
+  and because the process never exited, `Restart=always` never fired. Now uses
+  `asyncio.wait(FIRST_EXCEPTION)`, logs the dead task at CRITICAL, cancels the rest and re-raises;
+  `__main__` waits on the service tasks alongside the shutdown signal and exits non-zero.
+
+- **The GM console's VOID button was silently inert.** `GmVoid` emitted `SaveRun(outcome="voided")`,
+  which ran a plain `INSERT` against a primary key that already existed. The resulting
+  `IntegrityError` was logged to syslog and swallowed, the HTTP response was still 200, and the
+  broadcast state flipped to "voided" while SQLite still said "clean" — so the run kept its
+  leaderboard slot and the GM's reason was discarded. New `VoidRun` side effect routes to the
+  existing, idempotent `db.void_run()`, which preserves `pre_void_outcome` for unvoid. `GmVoid` is
+  now restricted to post-run states, closing the reverse failure where voiding mid-run wrote the
+  row first and made the real end-of-run save collide. `insert_run()` is an upsert as defence in
+  depth, and will not revert a void.
+
+- **Saving config mid-run blacked out the maze.** The reload guard in `web/routes_admin.py`
+  compared against `"RUN"` and `"HALTED"`, neither of which is a state, so it failed open through
+  ARM and all three `RUN_SEG_*` states. `reload_config()` then built a fresh `PresetResolver` whose
+  desired state is all-off and the reconciler drove every laser dark within 500 ms, while the admin
+  UI reported success. Now uses `core.events.RUN_STATES`, which already existed.
+
+- **A relay board that failed every transaction reported healthy.** `connect()` cleared
+  `_consecutive_failures`, so a board that drops the connection each request reconnected
+  constantly and never reached `DEGRADED`. Measured: 40 of 40 writes failed with `status="OK"` and
+  an empty fault list. Since the game path ignores `apply_preset()`'s return value, the maze
+  silently stopped changing with nothing on the admin page. Only a completed transaction clears the
+  counter now, `error_count` is rendered in the admin board table (the API already returned it),
+  non-timeout `OSError` closes the socket deliberately rather than relying on an `AttributeError`
+  escaping a narrow `except`, and sockets set `SO_KEEPALIVE`.
+
+- **Both displays kept a stopwatch running after the WebSocket dropped.** `swRunning` was never
+  cleared on close, so the ticker extrapolated off `performance.now()` indefinitely — the outdoor
+  display showed the crowd a run that never ended, past `max_run_ms`, with nobody on stage. The
+  only indicator was a badge measured at 1.24:1, and 1.05:1 over a live camera frame. Both now
+  freeze the clock on close and show `NO SIGNAL — CLOCK STOPPED` at 7.9:1.
+
+- **The FAULT screen was blank.** `#waitingText` was 1.23:1 on the in-container display, so a
+  faulted machine showed the player nothing at all. FAULT now has its own message and treatment.
+
+- **GM endpoints accepted cross-origin POSTs.** The app had no middleware, so any page in a browser
+  that could route to the NUC — including the GM's own Wi-Fi iPad — could bust or force-reset a run
+  via a simple form POST. An Origin guard now rejects foreign origins on state-changing methods;
+  a missing Origin still passes, so `curl` and `tools/` are unaffected.
+
+- **`python -m scanmania` without a fake flag crashed after migrating the database.**
+  `vision.camera` has no `VisionService`, so the documented "production" invocation died mid-boot
+  and never bound port 8000. It now fails immediately with a message naming the flag.
+
+- **`test_pause_stops_drain` could not fail.** It re-implemented the pause check inside the test
+  body, so `_drain()` was never called and the final assertion compared a number to itself. The
+  pause guard moved into `_drain()` where the work happens, and the test asserts the row's
+  `attempts` counter — queue depth alone is not a discriminator, because the push fails either way
+  without an endpoint. Verified by deleting the guard and watching the test go red.
+
+### Added
+
+- `PresetResolver.apply_all_off()` — config-independent all-off that keeps `_desired` in sync.
+- `StopShow` and `VoidRun` side effects.
+- `deploy/scanmania.service` — the unit existed only on the NUC, so `Restart=always` was documented
+  in prose that nothing enforced. `deploy/README.md` records that `scanmania-kiosk.service` and
+  `tools/kiosk.sh` are still NUC-only.
+- Rolling DB snapshots now actually run. `rolling_snapshot_loop()` had no callers, so an unclean
+  shutdown lost every run back to the last manual snapshot. New `snapshot_interval_min` and
+  `snapshot_keep` keys in `config/game.yaml`.
+- `docs/testing.md` — what the suite does and does not cover, and how to write a test that can fail.
+- Regression tests for the reconciler/all-off interaction, the attract-show stop, and the void path.
+
+### Changed
+
+- Display type scale: every `clamp()` on both HDMI screens saturated below 1500 px while the panels
+  are 2560 px, so both rendered at roughly half their intended size. Caps raised — the in-container
+  stopwatch from 260 px to 520 px, the countdown digit from 120 px to 560 px inside its 720 px ring.
+- Text colours on `/gm` and both displays now use the palette `admin/index.html` already
+  established and documented (`#5b8fd6` at 6.15:1, `#6c8cae` at 5.82:1), replacing `#264f9a` at
+  2.59:1. Chrome — ring strokes, glows, gradients — is unchanged.
+- `core/fsm.py` returns the state-transition metric as an `EmitMetric` effect instead of calling
+  `metrics.emit()` inline. That call was harmless only because no sink is configured; wiring one up
+  would have made the pure FSM perform I/O on every transition. **Move any sink wiring in after
+  this change, not before.**
+- `web/static/shared/test.py` moved to `tools/click_relays.py`. It was served unauthenticated from
+  the web root, disclosing board IPs, port 4196 and a working relay driver.
+- CLAUDE.md corrected: `io/` is `iobackend/`, `tools/replay.py` does not exist, `docs/metrics.md`
+  does not exist, the FSM signature takes a context argument, `pick_rois.py` prints rather than
+  writes, invariant 7's record-keeping half is documented as unimplemented, and the test-coverage
+  claim now matches reality.
+
 - **Editing the show that is currently playing did nothing until a restart.** `_run_show()` holds a
   reference to the step list it was handed, so `GameRunner.reload_config()` swapping `self.config`
   left the old sequence looping. Saving `attract` from the admin panel reported a successful reload

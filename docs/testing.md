@@ -1,0 +1,79 @@
+# Testing
+
+```bash
+pytest tests/ -v
+```
+
+## What green actually means
+
+The pure-logic core is well covered. Every I/O boundary is not.
+
+| Area | Covered | Test file |
+|---|---|---|
+| `core/fsm.py` | yes — every transition, no mocks | `test_fsm.py` |
+| `core/scoring.py` | yes | `test_scoring.py` |
+| `core/stopwatch.py` | yes | `test_stopwatch.py` |
+| `core/runner.py` | side-effect dispatch | `test_runner.py` |
+| `persist/outbox.py` | idempotency, pause/resume, backoff | `test_outbox.py` |
+| `iobackend/presets.py` + `reconcile.py` | desired-state drift | `test_reconcile.py` |
+| `vision/` | **no tests** | — |
+| `web/` | **no tests** | — |
+| `inputs/` | **no tests** | — |
+| `iobackend/modbus.py` | **no tests** | — |
+| `config/loader.py` | **no tests** | — |
+| `persist/db.py` | indirectly, via outbox | — |
+| `__main__.py` | **no tests** | — |
+
+That is roughly 4,800 untested lines, and it is every place the system talks to
+hardware or the network.
+
+## The fakes are stubs, not drivers
+
+`tests/conftest.py` builds `FakeInputs` and `FakeVision` and hands them to
+`GameRunner`. No test calls `trigger_input()`, `trigger_break()` or
+`trigger_clear()`, and no test runs a fake's `.run()` or `.events()` loop.
+Every test pushes events straight into the runner instead.
+
+So the fakes' own queue plumbing, arm/disarm gating and ratio thresholds are
+constructed but never exercised. The `--fake-all` laptop workflow has no
+automated coverage; `tools/fake_run.py` drives it manually.
+
+Two consequences worth remembering:
+
+- A bug in a fake backend will not be caught here.
+- A fake that is **more forgiving than production** hides real bugs. This
+  happened: `tools/fake_run.py` uses a `MemoryDB.upsert_run`, while production
+  used `insert_run`. The GM void bug — a swallowed `IntegrityError` that made
+  the VOID button silently inert — passed `--scenario voided` for exactly that
+  reason, with 293 tests green.
+
+When you add a fake, give it production's failure modes, not the happy path.
+
+## Writing a test that can actually fail
+
+Assert on the state the production code owns, not on a value the test body just
+computed. `test_pause_stops_drain` used to re-implement the pause check inside
+the test and then assert that a number equalled itself; deleting the production
+guard left it green.
+
+Two habits that prevent it:
+
+1. **Call the real path.** Invoke the function under test, not a copy of its
+   logic.
+2. **Pick an assertion that discriminates.** Ask what the test would report if
+   the guard were deleted. For the outbox, queue depth was not enough — with no
+   endpoint the push fails and the row stays either way. The `attempts` counter
+   was the discriminator, because a paused worker must not even try.
+
+Mutation-check anything security- or safety-relevant: delete the guard, confirm
+the test goes red, restore it.
+
+## Regression tests worth keeping
+
+- `test_reconcile.py::test_all_off_is_not_undone_by_the_reconciler` — the runner
+  turns coils off for the count-in dark windows; the reconciler must not re-light
+  them. A direct `write_coils()` leaves `_desired` lit and fails this.
+- `test_fsm.py::TestGmVoid::test_gm_void_emits_void_run_not_save_run` — a void
+  must update the existing row, never re-insert it.
+- `test_fsm.py::TestAttractShowIsStopped` — the attract show must stop on
+  registration, or it fights the ready blink and the count-in ramp.

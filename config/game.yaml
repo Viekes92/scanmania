@@ -66,3 +66,12 @@ leaderboard:
 
   max_entries: 20
   # Maximum entries shown on the outdoor display leaderboard.
+
+# Minutes between automatic DB snapshots. 0 disables the rolling loop.
+# Sane range 5-240. Manual snapshots (/admin) and the on-stop snapshot are
+# unaffected. Before this was wired, an unclean shutdown lost everything back
+# to the last time someone pressed the button.
+snapshot_interval_min: 60
+
+# How many rolling snapshots to keep on disk. Sane range 4-200.
+snapshot_keep: 48

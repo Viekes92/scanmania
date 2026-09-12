@@ -32,37 +32,43 @@ Frontends:
 pytest tests/ -v
 ```
 
-Green means: every FSM transition covered (including false starts, out-of-order checkpoints, all detection modes, restart mid-run), outbox idempotency proven, fake backends exercised end-to-end.
+Green means the pure-logic core is covered: every FSM transition (including false starts,
+out-of-order checkpoints, all detection modes), outbox idempotency, scoring, stopwatch and
+the reconciler. It does **not** mean the I/O layers are covered — `vision/`, `web/`,
+`inputs/`, `iobackend/modbus.py`, `config/loader.py` and `persist/db.py` have no tests, and
+the fakes are handed to the runner as inert stubs rather than driven through their own
+event pipelines. See `docs/testing.md`.
 
 ## Invariants — do not break these
 
-1. **`core/fsm.py` is a pure function.** No I/O, no `await`, no clock reads, no side effects. Takes `(state, event)`, returns `(new_state, [SideEffect, ...])`. Tests run 10 000 transitions with no mocks.
+1. **`core/fsm.py` is a pure function.** No I/O, no `await`, no clock reads, no side effects. `transition(state, event, ctx)` returns `(new_state, [SideEffect, ...])`. Metrics are returned as `EmitMetric` effects, never emitted inline. Tests run 10 000 transitions with no mocks.
 2. **The server owns the stopwatch.** `time.monotonic_ns()` in `core/stopwatch.py` only. Never `datetime.now()`, never `Date.now()` in a browser. Browsers interpolate from server broadcasts and hard-correct on each message.
-3. **`config/beams.json` is the only source of truth for ROIs and thresholds.** The admin portal and `tools/pick_rois.py` write to it. Nothing else creates or modifies beam geometry.
-4. **Never write coils outside `io/presets.py`.** Every coil write goes through `apply_preset()` or the master-mode direct toggle, both in that module. No exceptions.
+3. **`config/beams.json` is the only source of truth for ROIs and thresholds.** The admin portal writes to it. `tools/pick_rois.py` only *prints* stanzas to stdout for you to paste in — it never writes the file. Nothing else creates or modifies beam geometry. ROIs are frame pixels, so record the capture resolution alongside them: a camera substream resolution change silently invalidates every saved ROI.
+4. **Never write coils outside `iobackend/presets.py`.** Every coil write goes through `apply_preset()`, `apply_all_off()`, `apply_channels()` or `apply_direct()`. The one sanctioned exception is `iobackend/reconcile.py`, which re-asserts desired state and documents itself as such. A direct `write_coils()` leaves `_desired` stale and the reconciler undoes the write within 500 ms.
 5. **Vision suppresses events when unsure.** Frame gap > 300 ms → no break events emitted, auto-drop to `manual` detection mode. A false positive ends someone's run in front of a queue; silence is always safer.
-6. **Gameplay never awaits the network.** Cloud sync runs in `scanmania-sync.service`. The game path returns immediately after writing to SQLite + outbox. Never `await` anything in `persist/sync.py` from the game path.
-7. **Never resume a run after a restart.** Service restart → emit `ABORTED` → `RESET`. There is no checkpoint file. `runner.py` starts clean every time.
+6. **Gameplay never awaits the network.** Cloud sync runs in its own asyncio task (`OutboxWorker`), inside `scanmania.service` — `docs/architecture.md` describes a separate `scanmania-sync.service`, but on the NUC it is collapsed into the one unit. The game path returns immediately after writing to SQLite + outbox. Never `await` anything in `persist/sync.py` from the game path.
+7. **Never resume a run after a restart.** There is no checkpoint file and nothing is persisted mid-run, so `runner.py` starts clean every time — the safety half of this invariant holds by construction. The record-keeping half does **not**: `ProcessRestart` is never emitted, and wiring it up would not help, because after a restart the state is `BOOT` with no `run_id` to write. A crash mid-run currently leaves no DB row at all. Fixing it means writing the row pessimistically at GO, not adding a recovery query.
 
 ## Where things live
 
 ```
 core/       Pure logic: FSM, stopwatch, scoring, events dataclasses, metrics façade. Zero I/O.
-io/         Modbus master, preset resolution, reconciliation loop. fake.py is mandatory.
+iobackend/  Modbus master, preset resolution, reconciliation loop. fake.py is mandatory.
 inputs/     Pico USB serial link + MicroPython firmware. fake.py is mandatory.
 vision/     RTSP decode, dot detection, baseline, evidence thumbnails, MJPEG out. fake.py is mandatory.
 persist/    SQLite schema + migrations, outbox drain, cloud sync, snapshots, exports.
 web/        FastAPI + WebSocket broadcast, route handlers, static frontends (no build step).
 config/     YAML/JSON files — the only place to change hardware topology or game settings.
-tools/      Dev utilities: fake_run.py, pick_rois.py, ramp.py, replay.py.
-tests/      One file per module. FSM tests are the most important — run them first.
+tools/      Dev utilities: fake_run.py, pick_rois.py, ramp.py, cam_probe.py, dot_calib.py.
+tests/      Pure-logic modules are covered; every I/O boundary is not (see docs/testing.md).
+            FSM tests are the most important — run them first.
 docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is not done.
 ```
 
 ## Conventions
 
 - **Event types:** `SCREAMING_SNAKE_CASE`, defined exclusively in `core/events.py`. Every field documented, every emitter and consumer noted.
-- **Metric names:** `<domain>.<thing>.<verb|state>` snake_case — `relay.mismatch`, `run.completed`, `vision.stall`. See `docs/metrics.md`.
+- **Metric names:** `<domain>.<thing>.<verb|state>` snake_case — `relay.mismatch`, `run.completed`, `vision.stall`. Constants live in `core/metrics.py`; add new names there, not inline.
 - **Config keys:** add to the YAML/JSON file + a one-line comment with purpose and sane range + validation in `config/loader.py`.
 - **Commit format:** `<scope>: <what changed>` e.g. `fsm: handle false-start during COUNTDOWN`.
 - **Adding a beam:** edit `config/beams.json`, use `tools/pick_rois.py` to get the ROI stanza, verify on `/admin/beams` overlay.

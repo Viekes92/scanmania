@@ -88,10 +88,31 @@ class MemoryDB:
     async def insert_player(self, player_id: str, nickname: str) -> None:
         self.players[player_id] = {"id": player_id, "nickname": nickname}
 
-    async def upsert_run(self, run_id: str, **kwargs) -> None:
-        if run_id not in self.runs:
-            self.runs[run_id] = {"id": run_id}
-        self.runs[run_id].update(kwargs)
+    async def insert_run(self, run_id: str, **kwargs) -> None:
+        """
+        Mirror persist/db.py: a second insert on the same id is a conflict.
+
+        This used to be a forgiving upsert, which is how the GM void bug hid in
+        plain sight — `--scenario voided` passed while production swallowed an
+        IntegrityError and left the run marked 'clean'. A fake that is kinder
+        than production tests nothing. Keep this strict.
+        """
+        if run_id in self.runs:
+            raise RuntimeError(
+                f"duplicate run id {run_id!r} — production raises IntegrityError here"
+            )
+        self.runs[run_id] = {"id": run_id, "voided_reason": None,
+                             "pre_void_outcome": None, **kwargs}
+
+    async def void_run(self, run_id: str, reason: str) -> None:
+        """Mirror persist/db.py::void_run — idempotent update, preserves prior outcome."""
+        row = self.runs.get(run_id)
+        if row is None:
+            raise RuntimeError(f"void_run on unknown run id {run_id!r}")
+        if row.get("outcome") != "voided":
+            row["pre_void_outcome"] = row.get("outcome")
+        row["outcome"] = "voided"
+        row["voided_reason"] = reason
 
     async def get_run(self, run_id: str) -> dict | None:
         return self.runs.get(run_id)
@@ -136,14 +157,14 @@ class StandaloneRunner:
     async def _apply(self, fx) -> None:
         """Execute a side effect. Only the effects relevant to the CLI script."""
         from core.events import (
-            SaveRun, QueueSync, BroadcastState, StartStopwatch, StopStopwatch,
-            ResetStopwatch, ApplyPreset, ArmDetection, DisarmDetection,
+            SaveRun, VoidRun, QueueSync, BroadcastState, StartStopwatch, StopStopwatch,
+            ResetStopwatch, ApplyPreset, PlayShow, StopShow, ArmDetection, DisarmDetection,
             StartCountIn, BeamPreflightCheck, ReadyBlink, EmitMetric,
             SaveBreakEvidence, AutoMaskBeam, DropDetectionMode,
         )
 
         if isinstance(fx, SaveRun):
-            await self.db.upsert_run(
+            await self.db.insert_run(
                 fx.run_id,
                 outcome=fx.outcome,
                 detection_mode=self.ctx.detection_mode,
@@ -154,13 +175,22 @@ class StandaloneRunner:
             if self.run_id is None and fx.run_id:
                 self.run_id = fx.run_id
 
+        elif isinstance(fx, VoidRun):
+            await self.db.void_run(fx.run_id, fx.reason)
+
         elif isinstance(fx, (QueueSync, BroadcastState, StartStopwatch,
                               StopStopwatch, ResetStopwatch, ApplyPreset,
+                              PlayShow, StopShow,
                               ArmDetection, DisarmDetection, StartCountIn,
                               BeamPreflightCheck, ReadyBlink, EmitMetric,
                               SaveBreakEvidence, AutoMaskBeam, DropDetectionMode)):
             # Log but otherwise no-op for the CLI script
             log.debug("Side effect: %s", type(fx).__name__)
+
+        else:
+            # An unhandled effect used to vanish silently. That is how the
+            # voided scenario kept reporting 'clean' after VoidRun was added.
+            log.warning("Side effect %s not handled by fake_run", type(fx).__name__)
 
     async def simulate_countdown(self) -> None:
         """Fast-forward through the count-in ramp (emit RampComplete immediately)."""

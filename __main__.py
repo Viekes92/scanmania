@@ -183,9 +183,17 @@ def create_backends(args: argparse.Namespace, cfg):
         backends["vision"] = FakeVision(cfg.beams)
         log.info("Vision backend: FakeVision (no-op / replay mode)")
     else:
-        from vision.camera import VisionService
-        backends["vision"] = VisionService(cfg)
-        log.info("Vision backend: VisionService (real RTSP cameras)")
+        # The real vision pipeline is not built yet. vision/camera.py defines
+        # CameraStream, and nothing constructs or connects it to DotDetector,
+        # BaselineTracker or MjpegServer. Importing VisionService used to raise
+        # ImportError here — after the DB had already been migrated and before
+        # uvicorn bound its port, so every frontend went dark with a traceback
+        # that named a class rather than the missing flag.
+        raise SystemExit(
+            "Real vision is not implemented yet: vision/camera.py has no "
+            "VisionService. Start with --fake-vision (or --fake-all) until the "
+            "camera pipeline is wired. See docs/architecture.md."
+        )
 
     # ---- Inputs backend (Arduino Opta over Modbus TCP) ----
     if use_fake_inputs:
@@ -382,16 +390,58 @@ async def async_main(args: argparse.Namespace) -> int:
     except (ImportError, Exception) as e:
         log.warning("OutboxWorker unavailable — no cloud sync: %s", e)
 
+    # ---- Rolling DB snapshots ----
+    # persist/sync.py documented this as an invariant but nothing ever started
+    # the loop. Manual and on-stop snapshots worked, so an unclean shutdown
+    # (power cut, OOM kill) lost every run back to the last button press.
+    snap_min = getattr(cfg.game, "snapshot_interval_min", 60)
+    if snap_min > 0:
+        import tempfile, sys as _sys
+        from persist.sync import rolling_snapshot_loop
+        snap_dir = (
+            os.path.join(tempfile.gettempdir(), "scanmania-backups")
+            if _sys.platform == "darwin"
+            else "/var/backups/scanmania"
+        )
+        tasks.append(asyncio.create_task(
+            rolling_snapshot_loop(
+                db, snap_dir,
+                interval_min=snap_min,
+                keep=getattr(cfg.game, "snapshot_keep", 48),
+            ),
+            name="rolling_snapshot",
+        ))
+        log.info("Rolling snapshots: every %d min → %s", snap_min, snap_dir)
+    else:
+        log.info("Rolling snapshots disabled (snapshot_interval_min = 0)")
+
     if not tasks:
         log.error("No services started. Check that core/runner.py and web/server.py exist.")
         return 1
 
     log.info("All services started (%d tasks). Press Ctrl-C to stop.", len(tasks))
 
-    # Wait until a signal arrives or all tasks finish
-    await shutdown_event.wait()
+    # Wait for a signal OR for any service task to exit. Waiting on the signal
+    # alone let a dead service sit unnoticed: the process stayed up, so systemd
+    # Restart=always never fired and the fault only surfaced at shutdown.
+    _signal_task = asyncio.create_task(shutdown_event.wait(), name="shutdown_signal")
+    await asyncio.wait([_signal_task, *tasks], return_when=asyncio.FIRST_COMPLETED)
 
-    log.info("Shutdown signal received — cancelling tasks…")
+    exit_code = 0
+    if not _signal_task.done():
+        _signal_task.cancel()
+        for task in tasks:
+            if task.done() and not task.cancelled() and task.exception() is not None:
+                log.critical(
+                    "Service %s died — exiting so systemd can restart us: %r",
+                    task.get_name(), task.exception(),
+                )
+                exit_code = 1
+        if exit_code == 0:
+            log.error("A service task exited unexpectedly without an error — shutting down")
+            exit_code = 1
+    else:
+        log.info("Shutdown signal received — cancelling tasks…")
 
     # Cancel all tasks gracefully
     for task in tasks:
@@ -417,8 +467,11 @@ async def async_main(args: argparse.Namespace) -> int:
         log.warning("Snapshot export failed: %s", e)
 
     await db.close()
-    log.info("Clean shutdown complete.")
-    return 0
+    if exit_code == 0:
+        log.info("Clean shutdown complete.")
+    else:
+        log.error("Shutdown complete after a service failure — exiting %d", exit_code)
+    return exit_code
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +491,17 @@ def main() -> None:
         args.fake_vision  = True
         args.fake_inputs  = True
         log.info("Running in --fake-all mode (no hardware required)")
+
+    # Fail before we touch the database or bind a port. The real vision pipeline
+    # is unbuilt, so this combination cannot start — say so up front instead of
+    # dying halfway through boot.
+    if not args.fake_vision:
+        log.error(
+            "Real vision is not implemented yet. Start with --fake-vision "
+            "(or --fake-all). vision/camera.py has no VisionService; the RTSP "
+            "pipeline is still to be wired."
+        )
+        sys.exit(2)
 
     exit_code = asyncio.run(async_main(args))
     sys.exit(exit_code)

@@ -1,0 +1,38 @@
+[Unit]
+# The game service: FSM, relay I/O, inputs, web server, outbox, snapshots.
+# Kept in git so a rebuild from a clean clone reproduces the running system.
+# Before this file existed the units lived only on the NUC, and Restart=always
+# was documented in prose that nothing enforced.
+Description=ScanMania game service
+Documentation=file:///opt/scanmania/docs/architecture.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/scanmania
+EnvironmentFile=/etc/default/scanmania
+
+# --fake-vision is REQUIRED until the RTSP pipeline is wired. vision/camera.py
+# has no VisionService, so the process refuses to start without it.
+ExecStart=/opt/scanmania/.venv/bin/python -m scanmania --fake-vision
+
+# runner.py now re-raises when a subsystem task dies, so the process exits and
+# systemd restarts it. It used to stay alive with a dead game loop, which meant
+# this policy never fired. Invariant 7 makes the restart safe: the runner never
+# resumes a run, it always comes back clean.
+Restart=always
+RestartSec=2
+
+# Do not give up after repeated restarts — an attraction must keep trying.
+StartLimitIntervalSec=0
+
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=scanmania
+
+[Install]
+WantedBy=multi-user.target

@@ -146,6 +146,10 @@ class GameConfig:
     count_in: CountInConfig
     arm_grace_ms: int
     leaderboard: LeaderboardConfig
+    # Minutes between automatic DB snapshots. 0 disables. Sane range 5-240.
+    snapshot_interval_min: int = 60
+    # How many rolling snapshots to keep. Sane range 4-200.
+    snapshot_keep: int = 48
 
 
 @dataclass
@@ -294,6 +298,8 @@ def load_game() -> GameConfig:
             solid_at_end=ci.get("solid_at_end", True),
         ),
         arm_grace_ms=d.get("arm_grace_ms", 150),
+        snapshot_interval_min=max(0, int(d.get("snapshot_interval_min", 60))),
+        snapshot_keep=max(1, int(d.get("snapshot_keep", 48))),
         leaderboard=LeaderboardConfig(
             scope=lb.get("scope", "daily"),
             show_busted=lb.get("show_busted", False),

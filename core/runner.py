@@ -375,7 +375,7 @@ class GameRunner:
             self.vision.set_watchlist(None)
             return
         settle_ms = getattr(self.config.game, "preset_settle_ms", 250)
-        self.vision.set_watchlist(ids, settle_ms)
+        self.vision.set_watchlist(ids, settle_ms, preset_name)
 
     async def _handle_play_show(self, effect: PlayShow) -> None:
         """Start an animated show (sequence of presets with timing)."""

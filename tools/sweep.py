@@ -45,6 +45,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 import cv2
 import numpy as np
 
@@ -75,6 +78,213 @@ _MEDIAN_FRAMES = 7          # frames to median per capture; kills sensor noise
 _CHANGE_TIMEOUT_S = 4.0     # give up waiting for a switch to appear on camera
 _SETTLE_AFTER_CHANGE_S = 0.15
 _DOT_RADIUS_FALLBACK = 9
+
+
+
+# ---------------------------------------------------------------------------
+# Live UI — a page of its own on :8090
+#
+# The sweep needs the game service stopped (ReconcileLoop would re-light
+# channels mid-step), so /admin is down while this runs. Hence a self-contained
+# server with no dependency on the game: open it in a tab beside the admin
+# panel. Serves its own state as JSON and the last capture per camera as JPEG
+# with the detected dots drawn on, so you can see what it is actually seeing.
+# ---------------------------------------------------------------------------
+
+class _UI:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._state: dict = {
+            "phase": "starting", "maze": None, "channel": None,
+            "done": 0, "total": 0, "ambient": {}, "channels": {},
+            "maze_counts": {}, "warnings": [], "errors": [], "finished": False,
+        }
+        self._frames: dict[str, bytes] = {}
+        self._httpd = None
+
+    def set(self, **kw) -> None:
+        with self._lock:
+            self._state.update(kw)
+
+    def channel_done(self, cid: str, dots: list, maze: str | None = None) -> None:
+        with self._lock:
+            entry = self._state["channels"].setdefault(cid, {})
+            entry["dots"] = len(dots)
+            entry["cameras"] = sorted({d["camera"] for d in dots})
+            if maze:
+                lit = [d["baselines"].get(maze, 0) for d in dots]
+                floors = [d["dark_floors"].get(maze, 0) for d in dots]
+                entry.setdefault("mazes", {})[maze] = {
+                    "min_baseline": round(min(lit), 1) if lit else 0,
+                    "max_floor": round(max(floors), 1) if floors else 0,
+                }
+            # Deliberately does NOT touch "done": run_sweep owns the counter
+            # and sets it per channel. Incrementing here as well double-counted.
+
+    def publish_frames(self, frames: dict, annotate: bool = True) -> None:
+        """Store a JPEG per camera, dots circled, for the preview panes."""
+        out = {}
+        for cid, f in frames.items():
+            img = f.copy()
+            if annotate:
+                for (cx, cy, r) in find_dots(f):
+                    cv2.circle(img, (cx, cy), max(r + 4, 8), (0, 255, 0), 2)
+            small = cv2.resize(img, (640, int(640 * img.shape[0] / img.shape[1])))
+            ok, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            if ok:
+                out[cid] = buf.tobytes()
+        with self._lock:
+            self._frames = out
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            return json.loads(json.dumps(self._state))
+
+    def frame(self, cid: str) -> bytes | None:
+        with self._lock:
+            return self._frames.get(cid)
+
+    def serve(self, port: int) -> None:
+        ui = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *a):      # keep the sweep's own log readable
+                pass
+
+            def do_GET(self):
+                if self.path.startswith("/status"):
+                    body = json.dumps(ui.snapshot()).encode()
+                    self._send(200, "application/json", body)
+                elif self.path.startswith("/frame/"):
+                    cid = self.path.split("/frame/")[1].split("?")[0].removesuffix(".jpg")
+                    buf = ui.frame(cid)
+                    if buf is None:
+                        self._send(404, "text/plain", b"no frame yet")
+                    else:
+                        self._send(200, "image/jpeg", buf)
+                else:
+                    self._send(200, "text/html; charset=utf-8", _PAGE.encode())
+
+            def _send(self, code, ctype, body):
+                self.send_response(code)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+
+        self._httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+        threading.Thread(target=self._httpd.serve_forever, daemon=True).start()
+        log.info("calibration UI on http://localhost:%d", port)
+
+    def stop(self) -> None:
+        if self._httpd:
+            self._httpd.shutdown()
+
+
+UI = _UI()
+
+_PAGE = """<!doctype html><meta charset=utf-8><title>ScanMania calibration</title>
+<style>
+ :root{--bg:#050507;--surface:#080d18;--border:#0d1e3a;--text:#e8f0fc;
+       --accent:#5b8fd6;--muted:#6c8cae;--ok:#00ff88;--warn:#ff8800;--err:#ff0033}
+ *{box-sizing:border-box;margin:0;padding:0}
+ body{background:var(--bg);color:var(--text);font:14px 'Courier New',monospace;padding:18px}
+ h1{font-size:18px;letter-spacing:3px;color:var(--accent);margin-bottom:14px}
+ .row{display:flex;gap:16px;flex-wrap:wrap}
+ .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+       padding:14px;flex:1 1 300px;min-width:280px}
+ .t{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);
+    margin-bottom:10px}
+ .big{font-size:26px;font-weight:700}
+ .bar{height:8px;background:#0d1525;border-radius:4px;overflow:hidden;margin-top:8px}
+ .bar>div{height:100%;background:var(--accent);transition:width .3s}
+ table{width:100%;border-collapse:collapse;font-size:12px}
+ td,th{padding:3px 6px;text-align:left;border-bottom:1px solid var(--border)}
+ th{color:var(--accent);font-size:10px;letter-spacing:1px}
+ .ok{color:var(--ok)}.warn{color:var(--warn)}.err{color:var(--err)}.muted{color:var(--muted)}
+ img{width:100%;border:1px solid var(--border);border-radius:4px;display:block}
+ .cams{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+ li{margin:3px 0 3px 16px}
+</style>
+<h1>SCANMANIA // CALIBRATION</h1>
+<div class=row>
+  <div class=card>
+    <div class=t>Progress</div>
+    <div class=big id=phase>—</div>
+    <div class=muted id=chan></div>
+    <div class=bar><div id=bar style=width:0%></div></div>
+    <div class=muted id=count style=margin-top:6px></div>
+  </div>
+  <div class=card>
+    <div class=t>Ambient (lasers off)</div>
+    <div id=amb class=muted>—</div>
+    <div class=muted style=margin-top:8px>More than a handful means the house
+      lights are on and the cameras cannot see dots.</div>
+  </div>
+  <div class=card>
+    <div class=t>Dots per maze</div>
+    <table id=mz><tr><td class=muted>not measured yet</td></tr></table>
+  </div>
+</div>
+<div class=row style=margin-top:16px>
+  <div class=card style=flex:2>
+    <div class=t>Cameras — green circles are detected dots</div>
+    <div class=cams id=cams></div>
+  </div>
+  <div class=card>
+    <div class=t>Channels</div>
+    <div style=max-height:360px;overflow:auto>
+      <table id=ch><tr><td class=muted>waiting</td></tr></table>
+    </div>
+  </div>
+</div>
+<div class=card id=issuesCard style=margin-top:16px;display:none>
+  <div class=t>Issues</div><ul id=issues></ul>
+</div>
+<script>
+const cams=['cam_1','cam_2','cam_3','cam_4'];
+document.getElementById('cams').innerHTML=cams.map(c=>
+  `<div><div class=muted>${c}</div><img id=img_${c} src="/frame/${c}.jpg"></div>`).join('');
+setInterval(()=>cams.forEach(c=>{
+  const i=document.getElementById('img_'+c); if(i) i.src='/frame/'+c+'.jpg?t='+Date.now();
+}),1200);
+async function tick(){
+  let s; try{ s=await (await fetch('/status')).json(); }catch(e){ return; }
+  phase.textContent=s.finished?'DONE':s.phase;
+  chan.textContent=s.channel?('channel '+s.channel):'';
+  const pct=s.total?Math.round(100*s.done/s.total):0;
+  bar.style.width=pct+'%';
+  count.textContent=s.total?`${s.done} / ${s.total}`:'';
+  amb.innerHTML=Object.keys(s.ambient||{}).length
+    ? Object.entries(s.ambient).map(([c,n])=>
+        `${c}: <span class="${n>15?'err':'ok'}">${n}</span>`).join(' &nbsp; ')
+    : '—';
+  const mc=s.maze_counts||{};
+  mz.innerHTML=Object.keys(mc).length
+    ? '<tr><th>maze</th><th>expected</th><th>found</th></tr>'+
+      Object.entries(mc).map(([m,v])=>{
+        const tot=Object.values(v.found).reduce((a,b)=>a+b,0);
+        const cls=tot>=v.expected*0.85?'ok':'warn';
+        return `<tr><td>${m}</td><td>${v.expected}</td>
+                <td class=${cls}>${tot}</td></tr>`;}).join('')
+    : '<tr><td class=muted>not measured yet</td></tr>';
+  const ch=s.channels||{};
+  const keys=Object.keys(ch).sort();
+  ch_.innerHTML=keys.length
+    ? '<tr><th>ch</th><th>dots</th><th>cameras</th></tr>'+keys.map(k=>{
+        const e=ch[k];const cls=e.dots>=5?'ok':(e.dots>=4?'':'warn');
+        return `<tr><td>${k}</td><td class=${cls}>${e.dots}</td>
+                <td class=muted>${(e.cameras||[]).join(' ')}</td></tr>`;}).join('')
+    : '<tr><td class=muted>waiting</td></tr>';
+  const all=[...(s.errors||[]).map(t=>['err',t]),...(s.warnings||[]).map(t=>['warn',t])];
+  issuesCard.style.display=all.length?'block':'none';
+  issues.innerHTML=all.map(([c,t])=>`<li class=${c}>${t}</li>`).join('');
+}
+const ch_=document.getElementById('ch');
+setInterval(tick,600); tick();
+</script>
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +401,9 @@ class Cameras:
         # camera; doing it inline blocked the loop for ~700 ms and starved the
         # RTSP readers, which then reported themselves stalled.
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._median, stacks)
+        frames = await loop.run_in_executor(None, self._median, stacks)
+        UI.publish_frames(frames)
+        return frames
 
     @staticmethod
     def _median(stacks: dict[str, list[np.ndarray]]) -> dict[str, np.ndarray]:
@@ -267,12 +479,13 @@ async def check_ambient(cams: Cameras, resolver, io) -> dict[str, int]:
 
 async def run_sweep(cfg, cams: Cameras, resolver, io, channels: list, args) -> dict:
     board_order = [b.id for b in cfg.hardware.relay_boards]
-    all_globals = [g for g in (global_channel(b, board_order) for b in channels)
-                   if g is not None]
+    gmap = {b.id: global_channel(b, board_order) for b in channels}
+    mazes = [m for m in args.mazes.split(",") if m in cfg.watchlists]
     results: dict[str, dict] = {}
 
     # ---- ambient check ----------------------------------------------------
     ambient = await check_ambient(cams, resolver, io)
+    UI.set(ambient=ambient)
     log.info("ambient blobs with all lasers off: %s", ambient)
     hot = {cid: n for cid, n in ambient.items() if n > _MAX_AMBIENT_BLOBS}
     if hot and not args.ignore_ambient:
@@ -285,15 +498,20 @@ async def run_sweep(cfg, cams: Cameras, resolver, io, channels: list, args) -> d
         )
 
     # ---- LABEL pass -------------------------------------------------------
+    # Maze-independent: a channel's dots are wherever they are, whichever shape
+    # happens to be lit around them. So this runs once, per channel.
     log.info("LABEL pass: %d channels, one at a time", len(channels))
+    UI.set(phase="label", total=len(channels), done=0)
     dark = await cams.median_capture()
+    dark_dots = {cid: find_dots(f) for cid, f in dark.items()}
 
     for i, beam in enumerate(channels, 1):
-        g = global_channel(beam, board_order)
+        g = gmap[beam.id]
         if g is None:
             log.error("channel %s: board '%s' not in hardware.yaml — skipped",
                       beam.id, beam.board_id)
             continue
+        UI.set(channel=beam.id, done=i - 1)
         before = await cams.median_capture(3)
         await light_only(resolver, io, [g])
         if not await cams.wait_for_change(before):
@@ -302,56 +520,68 @@ async def run_sweep(cfg, cams: Cameras, resolver, io, channels: list, args) -> d
 
         found: list[dict] = []
         for cid, frame in lit.items():
-            base = dark.get(cid)
             for (cx, cy, r) in find_dots(frame):
-                # Must be new relative to the dark frame, or it is ambient.
-                if base is not None and match_dot((cx, cy, r), find_dots(base)):
-                    continue
-                found.append({"cx": cx, "cy": cy, "r": r, "camera": cid})
-
+                if match_dot((cx, cy, r), dark_dots.get(cid, [])):
+                    continue          # present with the lasers off — ambient
+                found.append({"cx": cx, "cy": cy, "r": r, "camera": cid,
+                              "baselines": {}, "dark_floors": {}})
         results[beam.id] = {"dots": found}
+        UI.channel_done(beam.id, found)
         log.info("  [%2d/%d] %s -> %d dot(s) %s", i, len(channels), beam.id,
                  len(found), sorted({d["camera"] for d in found}))
         await light_only(resolver, io, [])
 
-    # ---- MEASURE pass -----------------------------------------------------
-    log.info("MEASURE pass: all lit, blinking each channel off")
-    await light_only(resolver, io, all_globals)
-    await asyncio.sleep(1.0)
-    all_on = await cams.median_capture()
+    # ---- MEASURE pass, once per maze --------------------------------------
+    # Maze-DEPENDENT. A dot's reading depends on which neighbours are lit, and
+    # the shapes light 46-53% of the floor each, so the same dot reads
+    # differently in each. One baseline cannot serve all three.
+    for maze in mazes:
+        lit_ids = cfg.watchlists[maze]
+        lit_globals = [gmap[b] for b in lit_ids if gmap.get(b) is not None]
+        log.info("MEASURE pass '%s': %d channels lit (%d dots expected)",
+                 maze, len(lit_ids), len(lit_ids) * 5)
+        UI.set(phase=f"measure {maze}", maze=maze,
+               total=len(lit_ids), done=0)
 
-    for i, beam in enumerate(channels, 1):
-        rec = results.get(beam.id)
-        if not rec or not rec["dots"]:
-            continue
-        g = global_channel(beam, board_order)
-        for d in rec["dots"]:
-            frame = all_on.get(d["camera"])
-            d["baseline"] = round(sample_circle(frame, d["cx"], d["cy"], d["r"]), 2) \
-                if frame is not None else 0.0
+        await light_only(resolver, io, lit_globals)
+        await asyncio.sleep(1.0)
+        frames = await cams.median_capture()
+        results.setdefault("_maze_counts", {})[maze] = {
+            "expected": len(lit_ids) * 5,
+            "found": {cid: len(find_dots(f)) for cid, f in frames.items()},
+        }
+        UI.set(maze_counts=results["_maze_counts"])
 
-        rest = [c for c in all_globals if c != g]
-        before = await cams.median_capture(3)
-        await light_only(resolver, io, rest)
-        await cams.wait_for_change(before)
-        off = await cams.median_capture()
+        for j, bid in enumerate(sorted(lit_ids), 1):
+            rec = results.get(bid)
+            if not rec or not rec["dots"]:
+                continue
+            UI.set(channel=bid, done=j - 1)
+            for d in rec["dots"]:
+                f = frames.get(d["camera"])
+                d["baselines"][maze] = round(
+                    sample_circle(f, d["cx"], d["cy"], d["r"]), 2) if f is not None else 0.0
 
-        for d in rec["dots"]:
-            frame = off.get(d["camera"])
-            d["dark_floor"] = round(sample_circle(frame, d["cx"], d["cy"], d["r"]), 2) \
-                if frame is not None else 0.0
-        await light_only(resolver, io, all_globals)
-        log.info("  [%2d/%d] %s measured", i, len(channels), beam.id)
+            rest = [c for c in lit_globals if c != gmap[bid]]
+            before = await cams.median_capture(3)
+            await light_only(resolver, io, rest)
+            await cams.wait_for_change(before)
+            off = await cams.median_capture()
+            for d in rec["dots"]:
+                f = off.get(d["camera"])
+                d["dark_floors"][maze] = round(
+                    sample_circle(f, d["cx"], d["cy"], d["r"]), 2) if f is not None else 0.0
+            await light_only(resolver, io, lit_globals)
+            UI.channel_done(bid, rec["dots"], maze=maze)
 
-    # ---- reference frames -------------------------------------------------
-    if args.write_refs:
-        ref_dir = Path(__file__).resolve().parent.parent / "ref"
-        ref_dir.mkdir(exist_ok=True)
-        for cid, frame in all_on.items():
-            cv2.imwrite(str(ref_dir / f"{cid}.png"), frame)
-        log.info("wrote %d reference frames to %s", len(all_on), ref_dir)
+        if args.write_refs:
+            ref_dir = Path(__file__).resolve().parent.parent / "ref"
+            ref_dir.mkdir(exist_ok=True)
+            for cid, f in frames.items():
+                cv2.imwrite(str(ref_dir / f"{cid}_{maze}.png"), f)
 
-    results["_all_on_counts"] = {cid: len(find_dots(f)) for cid, f in all_on.items()}
+    await light_only(resolver, io, [])
+    results["_mazes"] = mazes
     return results
 
 
@@ -364,15 +594,22 @@ def validate(cfg, results: dict, channels: list) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
     break_ratio = channels[0].break_ratio if channels else 0.4
+    mazes = results.get("_mazes", [])
 
-    counts = results.get("_all_on_counts", {})
-    total_found = sum(counts.values())
-    log.info("all_on dot counts per camera: %s (total %d, expect ~%d)",
-             counts, total_found, len(channels) * 5)
-
-    if all(v == 0 for v in counts.values()):
-        errors.append("no dots detected at all_on — cameras dark, lasers off, or "
-                      "the threshold is wrong")
+    # Per maze, not all_on. "~225 at all_on" catches only gross failure and is
+    # fooled by dots double-counted across two cameras. A maze has a known
+    # expected count and is the condition the game actually runs in.
+    for maze, v in (results.get("_maze_counts") or {}).items():
+        found = sum(v["found"].values())
+        pct = 100 * found / v["expected"] if v["expected"] else 0
+        log.info("%s: %d dots found, %d expected (%.0f%%) %s",
+                 maze, found, v["expected"], pct, v["found"])
+        if found == 0:
+            errors.append(f"{maze}: no dots detected at all — lasers off, "
+                          f"cameras blind, or the threshold is wrong")
+        elif pct < 70:
+            warnings.append(f"{maze}: only {found} of {v['expected']} dots found "
+                            f"({pct:.0f}%) — coverage gap or threshold too high")
 
     short, empty = [], []
     for beam in channels:
@@ -382,9 +619,6 @@ def validate(cfg, results: dict, channels: list) -> tuple[list[str], list[str]]:
             empty.append(beam.id)
             continue
         if len(dots) < 4:
-            # Below 4, detect.py cannot tell a real break from a dead channel:
-            # a body can plausibly cover 2-3 dots, so all-dark stops meaning
-            # hardware. See _MIN_DOTS_FOR_FAULT.
             short.append(f"{beam.id}({len(dots)})")
 
         res = colinearity_residual([(d["cx"], d["cy"], d["r"]) for d in dots])
@@ -393,33 +627,36 @@ def validate(cfg, results: dict, channels: list) -> tuple[list[str], list[str]]:
                             f"possible ghost or mis-assignment (lens distortion "
                             f"alone should not do this)")
 
-        # Aggregate per channel. One warning per dot floods the report and
-        # buries the channel-level picture, which is what the operator acts on.
-        no_base = [d for d in dots if d.get("baseline", 0.0) <= 0]
-        blind = [d for d in dots
-                 if d.get("baseline", 0.0) > 0
-                 and d.get("dark_floor", 0.0) / d["baseline"] >= break_ratio]
-        if no_base:
-            warnings.append(
-                f"{beam.id}: {len(no_base)}/{len(dots)} dot(s) read 0 at all_on — "
-                f"found in the label pass but not lit in the measure pass. Either "
-                f"the channel did not come back on, or the dot moved between "
-                f"passes (camera nudged?)")
-        if blind:
-            worst = max(blind, key=lambda d: d["dark_floor"] / d["baseline"])
-            warnings.append(
-                f"{beam.id}: {len(blind)}/{len(dots)} dot(s) can never fire — worst "
-                f"at ({worst['cx']},{worst['cy']}) floor {worst['dark_floor']:.0f} / "
-                f"baseline {worst['baseline']:.0f} = "
-                f"{worst['dark_floor'] / worst['baseline']:.2f}, at or above "
-                f"break_ratio {break_ratio}. A neighbour is blooming into the ROI")
+        # Per maze: a dot can be perfectly detectable in one shape and blind in
+        # another, because its neighbours differ.
+        for maze in mazes:
+            lit = [d for d in dots if maze in d.get("baselines", {})]
+            if not lit:
+                continue
+            no_base = [d for d in lit if d["baselines"][maze] <= 0]
+            blind = [d for d in lit
+                     if d["baselines"][maze] > 0
+                     and d.get("dark_floors", {}).get(maze, 0) / d["baselines"][maze]
+                     >= break_ratio]
+            if no_base:
+                warnings.append(
+                    f"{beam.id}/{maze}: {len(no_base)}/{len(lit)} dot(s) read 0 "
+                    f"while that maze was lit — found in the label pass but not "
+                    f"lit in the measure pass")
+            if blind:
+                w = max(blind, key=lambda d: d["dark_floors"][maze] / d["baselines"][maze])
+                warnings.append(
+                    f"{beam.id}/{maze}: {len(blind)}/{len(lit)} dot(s) can never "
+                    f"fire — worst floor {w['dark_floors'][maze]:.0f} / baseline "
+                    f"{w['baselines'][maze]:.0f} = "
+                    f"{w['dark_floors'][maze] / w['baselines'][maze]:.2f}, at or "
+                    f"above break_ratio {break_ratio}. A neighbour blooms into it")
 
     if empty:
         errors.append(f"{len(empty)} channel(s) produced no dots: {', '.join(empty)}")
     if short:
         warnings.append(f"{len(short)} channel(s) under 4 dots (break/fault "
                         f"discrimination degraded): {', '.join(short)}")
-
     if len(empty) >= len(channels):
         errors.append("every channel came back empty — check relays and wiring")
     return errors, warnings
@@ -448,6 +685,14 @@ def write_beams(path: Path, results: dict, channels: list, cams: Cameras,
         entry["dots"] = dots
         entry.pop("roi", None)
         if dots:
+            # Flat fallback = the brightest maze this dot is lit in, so a config
+            # read without a preset still has something sane.
+            for dd in dots:
+                bl = [v for v in dd.get("baselines", {}).values() if v > 0]
+                dd["baseline"] = round(max(bl), 2) if bl else 0.0
+                fl = [dd.get("dark_floors", {}).get(m, 0.0)
+                      for m in dd.get("baselines", {})]
+                dd["dark_floor"] = round(max(fl), 2) if fl else 0.0
             # Channel-level camera = wherever most of its dots landed; per-dot
             # camera is what detection actually routes on.
             owner = max({dd["camera"] for dd in dots},
@@ -476,8 +721,24 @@ def write_beams(path: Path, results: dict, channels: list, cams: Cameras,
 
 async def amain(args) -> int:
     cfg = loader.load_all()
+    if args.ui_port:
+        UI.serve(args.ui_port)
+
+    # Only channels some maze actually lights. The rest are wired but unused,
+    # so they have no lighting condition to measure and nothing to calibrate.
+    used: set[str] = set()
+    for m in args.mazes.split(","):
+        used |= set(cfg.watchlists.get(m, ()))
+
     channels = [b for b in cfg.beams.beams
                 if not args.channels or b.id in set(args.channels.split(","))]
+    if not args.channels and not args.all_channels:
+        skipped = [b.id for b in channels if b.id not in used]
+        channels = [b for b in channels if b.id in used]
+        if skipped:
+            log.info("skipping %d channel(s) no maze lights: %s "
+                     "(--all-channels to include them)",
+                     len(skipped), ", ".join(sorted(skipped)))
     if not channels:
         log.error("no channels selected")
         return 1
@@ -519,6 +780,7 @@ async def amain(args) -> int:
         await cams.stop()
 
     errors, warnings = validate(cfg, results, channels)
+    UI.set(errors=errors, warnings=warnings, finished=True, phase="done")
     for w in warnings:
         log.warning("  %s", w)
     for e in errors:
@@ -559,6 +821,15 @@ def main() -> int:
                          "lasers off (house lights on). Produces ghost dots")
     ap.add_argument("--force", action="store_true",
                     help="write even if validation reported errors")
+    ap.add_argument("--mazes", default="maze_1,maze_2,maze_3",
+                    help="which presets to measure baselines for. Labelling is "
+                         "maze-independent and always covers every selected "
+                         "channel; baselines are per maze because a dot's "
+                         "neighbours differ between shapes")
+    ap.add_argument("--ui-port", type=int, default=8090,
+                    help="live calibration page (0 disables)")
+    ap.add_argument("--all-channels", action="store_true",
+                    help="sweep all 45 channels, not just those a maze lights")
     ap.add_argument("--write-refs", action="store_true",
                     help="save an all_on reference frame per camera to ref/")
     ap.add_argument("--log-level", default="INFO",

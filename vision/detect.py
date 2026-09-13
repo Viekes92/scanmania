@@ -139,6 +139,8 @@ class DotDetector:
         # Channels that just lit up; they are still coming on, so ignore
         # them until this monotonic_ns deadline passes.
         self._settling: dict[str, int] = {}
+        # Name of the preset currently lit, for per-maze baselines.
+        self._preset: str | None = None
 
         # External baseline values (injected from BaselineManager)
         self._baselines: dict[str, float] = {
@@ -191,7 +193,8 @@ class DotDetector:
     # Watch-list — swapped whenever the maze shape changes
     # ------------------------------------------------------------------
 
-    def set_watchlist(self, channel_ids, settle_ms: int = 250) -> None:
+    def set_watchlist(self, channel_ids, settle_ms: int = 250,
+                      preset: str | None = None) -> None:
         """
         Replace the set of channels detection looks at.
 
@@ -208,6 +211,8 @@ class DotDetector:
 
         Pass None to watch everything.
         """
+        # Which maze is lit decides which baseline each dot is compared against.
+        self._preset = preset
         if channel_ids is None:
             self._watching = None
             self._settling.clear()
@@ -376,7 +381,10 @@ class DotDetector:
             # coordinates that mean nothing there.
             if camera_id is not None and (dot.camera or beam.camera) != camera_id:
                 continue
-            baseline = dot.baseline or self._baselines.get(beam.id, beam.baseline)
+            # Per-maze: the same dot has different neighbours lit in each
+            # shape, so it reads differently in each.
+            baseline = dot.baseline_for(self._preset) \
+                or self._baselines.get(beam.id, beam.baseline)
             if baseline <= 0:
                 continue
             total += 1

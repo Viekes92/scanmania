@@ -263,14 +263,15 @@ class VisionService:
     def is_armed(self) -> bool:
         return self._detector.is_armed
 
-    def set_watchlist(self, channel_ids, settle_ms: int = 250) -> None:
+    def set_watchlist(self, channel_ids, settle_ms: int = 250,
+                      preset: str | None = None) -> None:
         """
         Point detection at the channels the current maze shape has lit.
 
         Called on every preset change. See DotDetector.set_watchlist — this is
         what stops a shape change from reading as a mass beam break.
         """
-        self._detector.set_watchlist(channel_ids, settle_ms)
+        self._detector.set_watchlist(channel_ids, settle_ms, preset)
 
     # ------------------------------------------------------------------
     # Telemetry — read by the admin hardware page

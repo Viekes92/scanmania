@@ -975,14 +975,22 @@ does gracefully.
 
 `tools/sweep.py`. Two passes, because they answer different questions.
 
+Calibration is scoped to the mazes, not to all 45 channels. Only 36 channels
+appear in any shape; the other 9 are wired but unused, so they have no lighting
+condition to measure. `--all-channels` includes them.
+
 **LABEL** — one channel lit at a time from dark. Five bright spots on a
 near-black frame: unambiguous, no diffing, no bloom. This is where a dot gets
 its channel and its camera.
 
-**MEASURE** — everything lit, each channel blinked off. The game never sees "a
+**MEASURE** — runs **once per maze**, that maze lit, each of its channels
+blinked off in turn. The game never sees "a
 dot appears in darkness", it sees "a dot vanishes while ~180 others stay lit".
 This measures the lit baseline and the `dark_floor` — the residual when a dot's
-own channel is off but the rest of the maze is on. A dot whose disappearance is
+own channel is off but the rest of that maze is on. **Both are stored per maze**,
+because the shapes light 46-53% of the floor each and a dot with two lit
+neighbours in one shape and none in another reads meaningfully differently. One
+number cannot serve all three. A dot whose disappearance is
 masked by a neighbour's bloom passes LABEL and is a dead sensor in the maze;
 only the dark floor catches it.
 
@@ -1007,8 +1015,10 @@ only the dark floor catches it.
 
 ### Notes from the field
 
-- The relay boards **do not answer ICMP**. `ping` says down while Modbus on port
-  4196 works fine. Test reachability with a Modbus read, never a ping.
+- Verify a relay board with a **Modbus read**, not a ping. One sweep from the
+  Mac got no ICMP reply from .100-.106 while Modbus on 4196 answered fine —
+  whatever the cause, `connect_all()` returning True is the signal that matters.
+  (Ping works from the operator's own machine.)
 - Measured on one camera with 2 rows (50 lasers) lit: 46-48 dots found. So
   expect ~4-8% of dots to go unfound, and channels with fewer than 5 recorded
   dots are normal rather than an error.
@@ -1024,3 +1034,12 @@ only the dark floor catches it.
 `--no-write` still drives the relays. There is no flag that runs the sweep
 without switching lasers on. Treat every invocation as "the maze is about to
 light up".
+
+### Watching it run
+
+`tools/sweep.py` serves a live page on **:8090** — progress, ambient reading,
+dots found per channel, dot counts per maze against expected, and a preview per
+camera with the detected dots circled. Open it beside the admin panel.
+
+It is a separate server on purpose: the sweep needs the game service stopped, so
+`/admin` is down while it runs.

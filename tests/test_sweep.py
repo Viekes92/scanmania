@@ -92,11 +92,18 @@ def channels():
     return loader.load_all().beams.beams[:3]
 
 
+MAZE = "maze_1"
+
+
 def _result(beam_ids, n_dots=5, baseline=200.0, floor=10.0, cam="cam_1"):
+    """A sweep result in the per-maze shape the tool now produces."""
     res = {bid: {"dots": [{"cx": 10 + i * 20, "cy": 40, "r": 5, "camera": cam,
-                           "baseline": baseline, "dark_floor": floor}
+                           "baselines": {MAZE: baseline},
+                           "dark_floors": {MAZE: floor}}
                           for i in range(n_dots)]} for bid in beam_ids}
-    res["_all_on_counts"] = {cam: n_dots * len(beam_ids)}
+    res["_mazes"] = [MAZE]
+    res["_maze_counts"] = {MAZE: {"expected": n_dots * len(beam_ids),
+                                  "found": {cam: n_dots * len(beam_ids)}}}
     return res
 
 
@@ -137,9 +144,33 @@ def test_a_dot_that_can_never_fire_is_flagged(channels):
 
 def test_no_dots_anywhere_is_an_error(channels):
     res = _result([c.id for c in channels], n_dots=0)
-    res["_all_on_counts"] = {"cam_1": 0}
+    res["_maze_counts"] = {MAZE: {"expected": 15, "found": {"cam_1": 0}}}
     errors, _ = sweep.validate(None, res, channels)
-    assert any("no dots detected at all_on" in e for e in errors)
+    assert any("no dots detected at all" in e for e in errors)
+
+
+def test_a_maze_short_of_its_expected_count_warns(channels):
+    """Per maze, not all_on: a maze has a known expected dot count."""
+    res = _result([c.id for c in channels])
+    res["_maze_counts"] = {MAZE: {"expected": 100, "found": {"cam_1": 40}}}
+    _, warnings = sweep.validate(None, res, channels)
+    assert any("of 100 dots found" in w for w in warnings)
+
+
+def test_a_dot_can_be_blind_in_one_maze_and_fine_in_another(channels):
+    """
+    The reason baselines are per maze: neighbours differ between shapes, so the
+    same dot can be perfectly detectable in one and swamped in another.
+    """
+    res = _result([c.id for c in channels])
+    for bid in [c.id for c in channels]:
+        for d in res[bid]["dots"]:
+            d["baselines"]["maze_2"] = 200.0
+            d["dark_floors"]["maze_2"] = 190.0      # blind here only
+    res["_mazes"] = [MAZE, "maze_2"]
+    _, warnings = sweep.validate(None, res, channels)
+    assert any("maze_2" in w and "can never fire" in w for w in warnings)
+    assert not any(f"{MAZE}" in w and "can never fire" in w for w in warnings)
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +223,10 @@ def test_the_written_file_still_loads(tmp_path, channels, monkeypatch):
     beam = next(b for b in cfg.beams.beams if b.id == channels[0].id)
     assert len(beam.dots) == 5
     assert beam.dots[0].camera == "cam_1"
-    assert beam.dots[0].dark_floor == 10.0
+    assert beam.dots[0].baseline_for(MAZE) == 200.0
+    assert beam.dots[0].dark_floor_for(MAZE) == 10.0
+    # Flat fallback filled in from the brightest maze, for a preset-less read.
+    assert beam.dots[0].baseline == 200.0
 
 
 def test_zero_baseline_does_not_divide_by_zero(channels):
@@ -204,14 +238,14 @@ def test_zero_baseline_does_not_divide_by_zero(channels):
     res = _result([c.id for c in channels], baseline=0.0, floor=0.0)
     _, warnings = sweep.validate(None, res, channels)
     assert not any("1.00" in w for w in warnings), "reported a ratio for 0/0"
-    assert any("read 0 at all_on" in w for w in warnings)
+    assert any("read 0" in w for w in warnings)
 
 
 def test_warnings_are_one_per_channel_not_one_per_dot(channels):
     """Five bad dots on a channel is one operator-actionable fact, not five."""
     res = _result([c.id for c in channels], baseline=0.0, floor=0.0)
     per_channel = [w for w in sweep.validate(None, res, channels)[1]
-                   if "read 0 at all_on" in w]
+                   if "read 0" in w]
     assert len(per_channel) == len(channels), \
         f"expected 1 warning per channel, got {len(per_channel)}"
 

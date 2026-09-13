@@ -98,11 +98,35 @@ class DotROI:
     # express that, and the dots on the other camera would be sampled against
     # coordinates that mean nothing.
     camera: str = ""
-    baseline: float = 0.0
+
+    # Baselines are PER MAZE, because a dot's reading depends on which
+    # neighbours are lit and the mazes differ a lot: measured at 46-53% of the
+    # floor each, a dot with two lit neighbours in maze_1 and none in maze_3
+    # reads meaningfully brighter in maze_1. One number cannot serve both.
+    # Key is the preset name; a missing key means the dot is not lit in that
+    # maze, and the watch-list means it is never evaluated there either.
+    baselines: dict[str, float] = field(default_factory=dict)
+
     # Residual brightness in this ROI when its own channel is off but the rest
-    # of the maze is lit. Must sit well below break_ratio or the dot can never
+    # of that maze is lit. Must sit well below break_ratio or the dot can never
     # fire — neighbouring dots bloom into the ROI and hold it above threshold.
+    dark_floors: dict[str, float] = field(default_factory=dict)
+
+    # Single-value fallback for a config written before per-maze baselines, and
+    # for setups with only one shape.
+    baseline: float = 0.0
     dark_floor: float = 0.0
+
+    def baseline_for(self, preset: str | None) -> float:
+        """Baseline in the named maze, falling back to the flat value."""
+        if preset and preset in self.baselines:
+            return self.baselines[preset]
+        return self.baseline
+
+    def dark_floor_for(self, preset: str | None) -> float:
+        if preset and preset in self.dark_floors:
+            return self.dark_floors[preset]
+        return self.dark_floor
     masked: bool = False        # one dead laser should not retire the other four
     note: str = ""
 
@@ -296,6 +320,8 @@ def _parse_dots(b: dict) -> list[DotROI]:
             DotROI(
                 cx=d["cx"], cy=d["cy"], r=d.get("r", 9),
                 camera=d.get("camera", b.get("camera", "")),
+                baselines=d.get("baselines", {}) or {},
+                dark_floors=d.get("dark_floors", {}) or {},
                 baseline=d.get("baseline", 0.0),
                 dark_floor=d.get("dark_floor", 0.0),
                 masked=d.get("masked", False),

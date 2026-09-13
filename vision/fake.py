@@ -138,7 +138,8 @@ class FakeVision:
     # Properties — mirror DotDetector / CameraStream interface
     # ------------------------------------------------------------------
 
-    def set_watchlist(self, channel_ids, settle_ms: int = 250) -> None:
+    def set_watchlist(self, channel_ids, settle_ms: int = 250,
+                      preset: str | None = None) -> None:
         """Accepted and recorded so the runner can call it unconditionally."""
         self._watching = set(channel_ids) if channel_ids is not None else None
 

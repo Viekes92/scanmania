@@ -267,7 +267,7 @@ class StopPressed:
     Emitted by: inputs/pico_link.py when the stop button is pressed.
     Consumed by: FSM in RUN_SEG_3 only. Ignored in other states.
     Drives RUN_SEG_3 → FINISHED. Side effects: StopStopwatch, SaveRun("clean"),
-    QueueSync, BroadcastState.
+    BroadcastState.
     """
     type: str = field(default="StopPressed", init=False)
 
@@ -288,7 +288,7 @@ class GmBust:
     Emitted by: web/routes_gm.py when the gamemaster taps BUST.
     Consumed by: FSM in any RUN state (and RESULT for post-hoc, though unusual).
     Drives RUN_* → BUSTED. Side effects: StopStopwatch, ApplyPreset("bust"),
-    SaveRun("busted"), QueueSync.
+    SaveRun("busted").
     """
     type: str = field(default="GmBust", init=False)
 
@@ -299,7 +299,7 @@ class GmAbort:
     Emitted by: web/routes_gm.py when the gamemaster taps ABORT.
     Consumed by: FSM in any state.
     Drives current state → ABORTED. Side effects: StopStopwatch, DisarmDetection,
-    SaveRun("aborted"), QueueSync.
+    SaveRun("aborted").
     """
     type: str = field(default="GmAbort", init=False)
 
@@ -596,17 +596,6 @@ class VoidRun:
     reason: str = ""
 
 
-@dataclass(frozen=True)
-class QueueSync:
-    """
-    Insert the run into the outbox for cloud sync.
-    Executed by runner._queue_sync() which calls persist/outbox.py.
-    The game never awaits the sync worker — this returns immediately.
-    Fields:
-        run_id: identifies the outbox row to create/update
-    """
-    run_id: str
-
 
 @dataclass(frozen=True)
 class BroadcastState:
@@ -694,6 +683,6 @@ Event = (
 SideEffect = (
     ApplyPreset | PlayShow | StartStopwatch | StopStopwatch | ResetStopwatch |
     ArmDetection | DisarmDetection | StartCountIn | BeamPreflightCheck |
-    ReadyBlink | SaveRun | QueueSync | BroadcastState | EmitMetric |
+    ReadyBlink | SaveRun | BroadcastState | EmitMetric |
     SaveBreakEvidence | AutoMaskBeam | DropDetectionMode
 )

@@ -2,7 +2,7 @@
 web/routes_admin.py — admin portal API endpoints.
 
 Inputs:  Authenticated requests (X-Admin-Password header) from the /admin frontend.
-Outputs: system state, config changes, outbox control, run management, snapshots, logs.
+Outputs: system state, config changes, run management, snapshots, logs.
 Invariant: every config change is logged to config_audit. Auth is required for every
            write endpoint and for any read that discloses credentials or personal data
            (config files, CSV exports, DB snapshots, logs). Config mutations are
@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 
 from core.events import ARM, COUNTDOWN, RUN_STATES
 from persist.db import Database
-from persist.sync import export_snapshot
+from persist.backup import export_snapshot
 
 # States where a config reload must not run. reload_config() builds a fresh
 # PresetResolver whose desired state is all-off, and the reconciler then drives
@@ -53,7 +53,7 @@ _CONFIG_FILES = {
 }
 
 _LOG_UNITS = frozenset({
-    "scanmania-core", "scanmania-web", "scanmania-sync",
+    "scanmania-core", "scanmania-web",
     "scanmania-io", "scanmania-vision", "scanmania-kiosk",
 })
 
@@ -243,7 +243,7 @@ class DevTriggerBody(BaseModel):
 def register_routes(
     router: APIRouter,
     db: Database,
-    app_ref: Any,  # ScanManiaApp instance — call app_ref.get_outbox() for the worker
+    app_ref: Any,  # ScanManiaApp instance
     on_action: Callable[[str, dict], None],
     config_path: str,
     get_runner: Callable | None = None,
@@ -252,10 +252,6 @@ def register_routes(
     """Register all admin API routes."""
 
     cfg_dir = Path(config_path)
-
-    def _get_outbox():
-        """Get the outbox worker (may be None if not configured)."""
-        return getattr(app_ref, "get_outbox", lambda: None)()
 
     def _runner():
         return get_runner() if get_runner else None
@@ -359,8 +355,7 @@ def register_routes(
         dependencies=[Depends(_require_admin)],
     )
     async def admin_status():
-        """Return state, uptime, run counts, outbox depth, and faults."""
-        depth = await db.outbox_depth()
+        """Return state, uptime, run counts, and faults."""
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         by_outcome = await db.count_runs_by_outcome(since_date=today)
 
@@ -368,17 +363,6 @@ def register_routes(
         runner_state = runner.state if runner else "unknown"
         uptime_s = int(time.monotonic() - runner.started_at_mono) if runner else None
         faults = runner.faults() if runner else []
-
-        outbox = _get_outbox()
-        last_push_mono = outbox.last_push_ok_at if outbox else None
-        # last_push_ok_at is monotonic (correct for durations, meaningless as a
-        # timestamp), so derive a wall-clock ISO value for display.
-        last_push_iso = None
-        if last_push_mono is not None:
-            age_s = time.monotonic() - last_push_mono
-            last_push_iso = datetime.fromtimestamp(
-                time.time() - age_s, tz=timezone.utc
-            ).isoformat()
 
         return {
             "ok": True,
@@ -390,11 +374,6 @@ def register_routes(
             "busted": by_outcome.get("busted", 0),
             "aborted": by_outcome.get("aborted", 0),
             "voided": by_outcome.get("voided", 0),
-            "outbox_depth": depth,
-            "outbox_paused": outbox.is_paused if outbox else False,
-            "last_push": last_push_mono,
-            "last_push_iso": last_push_iso,
-            "last_error": outbox.last_error if outbox else None,
             "faults": faults,
         }
 
@@ -555,69 +534,6 @@ def register_routes(
         )
 
     # ------------------------------------------------------------------
-    # Outbox
-    # ------------------------------------------------------------------
-
-    @router.get(
-        "/api/admin/outbox",
-        dependencies=[Depends(_require_admin)],
-    )
-    async def admin_outbox_status():
-        depth = await db.outbox_depth()
-        rows = await db.get_pending_outbox(limit=5)
-        paused = _get_outbox().is_paused if _get_outbox() else False
-        last_push = _get_outbox().last_push_ok_at if _get_outbox() else None
-        last_error = _get_outbox().last_error if _get_outbox() else None
-        return {
-            "ok": True,
-            "depth": depth,
-            "paused": paused,
-            "last_push_ok_at": last_push,
-            "last_error": last_error,
-            "pending_sample": rows,
-        }
-
-    @router.post("/api/admin/outbox/push", dependencies=[Depends(_require_admin)])
-    async def admin_outbox_push():
-        outbox = _get_outbox()
-        if not outbox:
-            raise HTTPException(status_code=503, detail="Outbox worker not available")
-        pushed = await outbox.force_push()
-        return {"ok": True, "pushed": pushed}
-
-    @router.post("/api/admin/outbox/pause", dependencies=[Depends(_require_admin)])
-    async def admin_outbox_pause():
-        outbox = _get_outbox()
-        if not outbox:
-            raise HTTPException(status_code=503, detail="Outbox worker not available")
-        await outbox.pause()
-        return {"ok": True, "paused": True}
-
-    @router.post("/api/admin/outbox/resume", dependencies=[Depends(_require_admin)])
-    async def admin_outbox_resume():
-        outbox = _get_outbox()
-        if not outbox:
-            raise HTTPException(status_code=503, detail="Outbox worker not available")
-        await outbox.resume()
-        return {"ok": True, "paused": False}
-
-    @router.post("/api/admin/outbox/reset-backoff", dependencies=[Depends(_require_admin)])
-    async def admin_outbox_reset_backoff():
-        outbox = _get_outbox()
-        if not outbox:
-            raise HTTPException(status_code=503, detail="Outbox worker not available")
-        await outbox.reset_backoff()
-        return {"ok": True}
-
-    @router.post("/api/admin/outbox/test", dependencies=[Depends(_require_admin)])
-    async def admin_outbox_test():
-        outbox = _get_outbox()
-        if not outbox:
-            raise HTTPException(status_code=503, detail="Outbox worker not available")
-        result = await outbox.test_endpoint()
-        return {"ok": True, "result": result}
-
-    # ------------------------------------------------------------------
     # Snapshots
     # ------------------------------------------------------------------
 
@@ -641,7 +557,7 @@ def register_routes(
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         try:
-            from persist.sync import _prune_snapshots
+            from persist.backup import _prune_snapshots
             await asyncio.to_thread(_prune_snapshots, backup_dir, 14)
         except Exception as exc:
             log.debug("Snapshot prune skipped: %s", exc)

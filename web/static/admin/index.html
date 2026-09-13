@@ -4,7 +4,7 @@
 
   Desktop/iPad surface for monitoring, configuration, and manual control.
   Navigation tabs: Dashboard | Hardware | Beams | Presets | Config | Runs |
-                   Leaderboard | Cloud Sync | Logs | Master Mode.
+                   Leaderboard | Logs | Master Mode.
   All data loaded via fetch() from /api/admin/* endpoints.
   WebSocket /ws for live state updates.
 
@@ -527,19 +527,6 @@
       box-shadow: 0 0 8px rgba(38,79,154,0.2);
     }
 
-    /* Cloud sync info rows */
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
-      font-size: 13px;
-      font-family: var(--font);
-    }
-    .info-row:last-child { border-bottom: none; }
-    .info-key  { color: var(--muted); font-weight: 600; letter-spacing: 1px; }
-    .info-val  { color: var(--text); font-family: var(--font); }
 
     /* Leaderboard rank */
     .rank-1 { color: #ffd700; font-weight: 900; }
@@ -614,14 +601,6 @@
       text-decoration: underline;
     }
 
-    /* Outbox depth — large red if > 0, green if 0 */
-    .outbox-depth-val {
-      font-size: 32px;
-      font-weight: 900;
-      font-family: var(--font);
-    }
-    .outbox-depth-val.nonzero { color: var(--red); text-shadow: 0 0 12px rgba(255,0,51,0.4); }
-    .outbox-depth-val.zero    { color: var(--green); }
 
     /* Spacing helpers */
     .mt-8  { margin-top: 8px; }
@@ -711,7 +690,6 @@
     <button class="tab-btn"        data-tab="config"      role="tab" id="tabbtn-config"      aria-controls="tab-config"      aria-selected="false" tabindex="-1">Config</button>
     <button class="tab-btn"        data-tab="runs"        role="tab" id="tabbtn-runs"        aria-controls="tab-runs"        aria-selected="false" tabindex="-1">Runs</button>
     <button class="tab-btn"        data-tab="leaderboard" role="tab" id="tabbtn-leaderboard" aria-controls="tab-leaderboard" aria-selected="false" tabindex="-1">Leaderboard</button>
-    <button class="tab-btn"        data-tab="cloudsync"   role="tab" id="tabbtn-cloudsync"   aria-controls="tab-cloudsync"   aria-selected="false" tabindex="-1">Cloud Sync</button>
     <button class="tab-btn"        data-tab="logs"        role="tab" id="tabbtn-logs"        aria-controls="tab-logs"        aria-selected="false" tabindex="-1">Logs</button>
     <button class="tab-btn"        data-tab="mastermode"  role="tab" id="tabbtn-mastermode"  aria-controls="tab-mastermode"  aria-selected="false" tabindex="-1">Master Mode</button>
     <button class="tab-btn"        data-tab="dev"         role="tab" id="tabbtn-dev"         aria-controls="tab-dev"         aria-selected="false" tabindex="-1">Dev</button>
@@ -740,39 +718,6 @@
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-title">Outbox</div>
-        <div class="info-row">
-          <span class="info-key">Depth</span>
-          <span class="info-val" id="dOutboxDepth">—</span>
-        </div>
-        <div class="info-row">
-          <span class="info-key">Last push</span>
-          <span class="info-val" id="dLastPush">—</span>
-        </div>
-        <div class="info-row">
-          <span class="info-key">Last error</span>
-          <span class="info-val" id="dLastErr">—</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- === HARDWARE === -->
-    <div class="tab-panel" id="tab-hardware" role="tabpanel" aria-labelledby="tabbtn-hardware" tabindex="0">
-      <div class="card">
-        <div class="card-title">Relay Boards</div>
-        <table class="data-table" id="boardsTable">
-          <thead>
-            <tr>
-              <th>ID</th><th>IP</th><th>Status</th><th>RTT</th>
-              <th>Errors</th><th>Mismatches</th><th>Coils (ch 1–16)</th>
-            </tr>
-          </thead>
-          <tbody id="boardsBody">
-            <tr><td colspan="6" style="color:var(--muted)">Loading…</td></tr>
-          </tbody>
-        </table>
-      </div>
 
       <div class="card">
         <div class="card-title">Inputs — SM-NODE-TRIG</div>
@@ -1042,40 +987,6 @@
       </div>
     </div>
 
-    <!-- === CLOUD SYNC === -->
-    <div class="tab-panel" id="tab-cloudsync" role="tabpanel" aria-labelledby="tabbtn-cloudsync" tabindex="0">
-      <div class="card">
-        <div class="card-title">Status</div>
-        <div class="info-row">
-          <span class="info-key">Outbox depth</span>
-          <span class="info-val" id="syncDepth">—</span>
-        </div>
-        <div class="info-row">
-          <span class="info-key">Last successful push</span>
-          <span class="info-val" id="syncLastOk">—</span>
-        </div>
-        <div class="info-row">
-          <span class="info-key">Last error</span>
-          <span class="info-val" id="syncLastErr">—</span>
-        </div>
-        <div class="info-row">
-          <span class="info-key">Sync paused</span>
-          <span class="info-val" id="syncPaused">—</span>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Controls</div>
-        <div class="flex-row">
-          <button class="btn btn-primary" id="btnPushNow">Push Now</button>
-          <button class="btn btn-warn"    id="btnPauseResume">Pause / Resume</button>
-          <button class="btn btn-default" id="btnRetryFailed">Retry Failed</button>
-          <button class="btn btn-default" id="btnTestEndpoint">Test Endpoint</button>
-          <button class="btn btn-default" id="btnExportSnapshot">Export Snapshot</button>
-        </div>
-        <div id="syncActionMsg" style="margin-top:12px; font-size:13px; font-family:var(--font);"></div>
-      </div>
-    </div>
 
     <!-- === LOGS === -->
     <div class="tab-panel" id="tab-logs" role="tabpanel" aria-labelledby="tabbtn-logs" tabindex="0">
@@ -1087,7 +998,6 @@
           <option value="scanmania-web">scanmania-web</option>
           <option value="scanmania-vision">scanmania-vision</option>
           <option value="scanmania-io">scanmania-io</option>
-          <option value="scanmania-sync">scanmania-sync</option>
           <option value="scanmania-kiosk">scanmania-kiosk</option>
         </select>
         <input type="text" id="logFilter" aria-label="Filter log lines" placeholder="Filter…"
@@ -1383,7 +1293,6 @@
           break;
         case "runs":        loadRuns(true); break;
         case "leaderboard": loadLeaderboard(); break;
-        case "cloudsync":   loadSyncStatus(); break;
         case "config":      loadConfig(); break;
         case "presets":     loadPresets(); break;
         case "beams":       loadBeams(); break;
@@ -1795,15 +1704,6 @@
       const abortedEl = document.getElementById("dAborted");
       abortedEl.textContent = d.aborted ?? "—";
       abortedEl.style.color = "var(--orange)";
-      // Outbox depth — a backing-up outbox must be impossible to miss
-      const depthEl = document.getElementById("dOutboxDepth");
-      const depth = d.outbox_depth;
-      depthEl.textContent = depth ?? "—";
-      depthEl.className = "info-val outbox-depth-val" +
-        (depth == null ? "" : (depth > 0 ? " nonzero" : " zero"));
-
-      // last_push is a monotonic float — only the ISO field is a real timestamp
-      setRelTime("dLastPush", d.last_push_iso);
       const lastErrEl = document.getElementById("dLastErr");
       lastErrEl.textContent = d.last_error || "—";
       lastErrEl.style.color = d.last_error ? "var(--red)" : "";
@@ -2214,83 +2114,6 @@
     document.getElementById("btnLbRefresh").addEventListener("click", loadLeaderboard);
     document.getElementById("btnLbExportCsv").addEventListener("click", () => {
       startDownload("/api/admin/export/leaderboard.csv");
-    });
-
-    /* -----------------------------------------------------------------------
-       CLOUD SYNC
-    ----------------------------------------------------------------------- */
-    async function loadSyncStatus() {
-      try {
-        const d = await apiFetch("/api/admin/outbox");
-        const depthEl = document.getElementById("syncDepth");
-        depthEl.textContent = d.depth ?? "—";
-        depthEl.style.color = d.depth ? "var(--red)" : "var(--green)";
-        // last_push_ok_at may be monotonic — only render a real ISO timestamp
-        setRelTime("syncLastOk", isoOrNull(d.last_push_iso) || isoOrNull(d.last_push_ok_at));
-        const errEl = document.getElementById("syncLastErr");
-        errEl.textContent = d.last_error || "—";
-        errEl.style.color = d.last_error ? "var(--red)" : "";
-        document.getElementById("syncPaused").textContent  = d.paused ? "YES" : "No";
-        document.getElementById("syncPaused").style.color  = d.paused ? "var(--red)" : "var(--green)";
-        document.getElementById("btnPauseResume").textContent = d.paused ? "Resume Backup" : "Pause Backup";
-      } catch (e) {
-        ["syncDepth","syncLastOk","syncLastErr","syncPaused"].forEach(id => {
-          const el = document.getElementById(id);
-          if (el) { el.textContent = "—"; el.title = ""; }
-        });
-        showMsg("syncActionMsg", "Sync status unavailable: " + e.message, true);
-      }
-    }
-
-    document.getElementById("btnPushNow").addEventListener("click", async function () {
-      try {
-        await btnLoading(this, apiPost("/api/admin/outbox/push"));
-        showMsg("syncActionMsg", "Push triggered.");
-        toast("Outbox push triggered.");
-        setTimeout(loadSyncStatus, 1500);
-      } catch (e) {
-        showMsg("syncActionMsg", e.message, true);
-        toast("Push failed: " + e.message, "error");
-      }
-    });
-
-    document.getElementById("btnPauseResume").addEventListener("click", async function () {
-      try {
-        const d = await apiFetch("/api/admin/outbox");
-        await btnLoading(this, apiPost(d.paused ? "/api/admin/outbox/resume" : "/api/admin/outbox/pause"));
-        showMsg("syncActionMsg", d.paused ? "Sync resumed." : "Sync paused.");
-        toast(d.paused ? "Cloud sync resumed." : "Cloud sync paused.", d.paused ? "ok" : "warn");
-        setTimeout(loadSyncStatus, 800);
-      } catch (e) {
-        showMsg("syncActionMsg", e.message, true);
-        toast("Pause/resume failed: " + e.message, "error");
-      }
-    });
-
-    document.getElementById("btnRetryFailed").addEventListener("click", async function () {
-      try {
-        await btnLoading(this, apiPost("/api/admin/outbox/reset-backoff"));
-        showMsg("syncActionMsg", "Backoff reset on failed rows.");
-        toast("Backoff reset on failed rows.");
-      } catch (e) {
-        showMsg("syncActionMsg", e.message, true);
-        toast("Retry failed: " + e.message, "error");
-      }
-    });
-
-    document.getElementById("btnTestEndpoint").addEventListener("click", async function () {
-      try {
-        const d = await btnLoading(this, apiFetch("/api/admin/outbox/test"));
-        showMsg("syncActionMsg", `Endpoint OK: ${JSON.stringify(d.result) || "200"}`);
-        toast("Endpoint reachable.");
-      } catch (e) {
-        showMsg("syncActionMsg", `Failed: ${e.message}`, true);
-        toast("Endpoint test failed: " + e.message, "error");
-      }
-    });
-
-    document.getElementById("btnExportSnapshot").addEventListener("click", () => {
-      startDownload("/api/admin/snapshot");
     });
 
     /* -----------------------------------------------------------------------

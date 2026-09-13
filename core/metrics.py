@@ -33,7 +33,6 @@ RELAY_MISMATCH         = "relay.mismatch"
 RELAY_TIMEOUT          = "relay.timeout"
 PICO_LINK_DOWN         = "pico.link_down"
 PREFLIGHT_FAILED       = "preflight.failed"
-SYNC_OUTBOX_DEPTH      = "sync.outbox_depth"
 SYNC_PAUSED            = "sync.paused"
 SYNC_PUSH_FAILED       = "sync.push_failed"
 COUNTIN_ABORTED        = "countin.aborted"
@@ -55,7 +54,7 @@ def configure(sink: Callable[[str, float, dict], None]) -> None:
     passing here. Calling configure() again replaces the previous sink.
 
     Example sinks defined in §9.1: sqlite (always on), prometheus_textfile,
-    cloud (piggybacked on the §8 outbox).
+    cloud.
     """
     global _sink
     _sink = sink

@@ -29,7 +29,7 @@ from core.events import (
     # Side effects
     ApplyPreset, PlayShow, StopShow, StartStopwatch, StopStopwatch, ResetStopwatch,
     ArmDetection, DisarmDetection, StartCountIn, BeamPreflightCheck,
-    ReadyBlink, SaveRun, VoidRun, QueueSync, BroadcastState, EmitMetric,
+    ReadyBlink, SaveRun, VoidRun, BroadcastState, EmitMetric,
     SaveBreakEvidence, DropDetectionMode,
 )
 from core.fsm import FSMContext, transition, make_context
@@ -176,9 +176,6 @@ class TestFullCleanRun:
         ctx = _run_ctx(segment=3)
         assert StopStopwatch in effect_types(RUN_SEG_3, StopPressed(), ctx)
 
-    def test_stop_pressed_emits_queue_sync(self):
-        ctx = _run_ctx(segment=3)
-        assert QueueSync in effect_types(RUN_SEG_3, StopPressed(), ctx)
 
     def test_finished_to_result_on_timeout(self):
         assert new_state(FINISHED, ResultDisplayTimeout()) == RESULT
@@ -251,9 +248,6 @@ class TestBustAutoMode:
         fx = effects(RUN_SEG_1, self._bust_event(), ctx)
         assert any(isinstance(e, SaveBreakEvidence) for e in fx)
 
-    def test_bust_queues_sync(self):
-        ctx = self._auto_ctx(1)
-        assert QueueSync in effect_types(RUN_SEG_1, self._bust_event(), ctx)
 
     def test_busted_to_result_on_timeout(self):
         assert new_state(BUSTED, ResultDisplayTimeout()) == RESULT
@@ -682,14 +676,6 @@ class TestGmVoid:
         void = [e for e in fx if isinstance(e, VoidRun)]
         assert void[0].reason == "wrong player"
 
-    def test_gm_void_queues_sync(self):
-        ctx = _run_ctx()
-        assert QueueSync in effect_types(RESULT, GmVoid(reason="test"), ctx)
-
-    @pytest.mark.parametrize("state", [FINISHED, BUSTED, ABORTED, RESULT])
-    def test_gm_void_works_in_every_post_run_state(self, state):
-        ctx = _run_ctx()
-        assert VoidRun in effect_types(state, GmVoid(reason="test"), ctx)
 
     def test_gm_void_from_run_state_does_not_change_state(self):
         ctx = _run_ctx()

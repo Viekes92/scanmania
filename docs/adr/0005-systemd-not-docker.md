@@ -18,7 +18,7 @@ scanmania-io.service       Modbus master + reconciliation
 scanmania-vision.service   per-camera decode, dot detection, MJPEG out
 scanmania-core.service     FSM, stopwatch, scoring, Pico serial
 scanmania-web.service      FastAPI + WebSocket + static frontends
-scanmania-sync.service     outbox drain, snapshots, exports
+(snapshots and exports now run inside scanmania.service — ADR 0008)
 scanmania-kiosk.service    user unit: X session + 2x Chromium kiosk
 ```
 

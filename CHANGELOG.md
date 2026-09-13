@@ -7,6 +7,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- **Cloud sync, entirely.** See [ADR 0008](docs/adr/0008-remove-cloud-sync.md). It was
+  built and never connected to an endpoint — `OutboxWorker` only started when
+  `SCANMANIA_SYNC_URL` was set, and it never was. Gone: `persist/outbox.py`, the
+  `outbox` table (schema v3 drops it), the `QueueSync` side effect and its 8 FSM
+  emission sites, `httpx`, the six `/api/admin/outbox/*` routes, the Cloud Sync
+  admin tab, the `scanmania-sync` log unit, and `SCANMANIA_SYNC_URL` /
+  `SCANMANIA_SYNC_TOKEN`.
+
+  `persist/sync.py` is renamed `persist/backup.py`. It never contained any cloud
+  code — only snapshots and CSV export — and the filename was the single biggest
+  remaining suggestion that sync still existed.
+
+  Invariant 6 is rewritten, not deleted: "gameplay never awaits the network" still
+  binds Modbus, Art-Net, RTSP and WebSocket.
+
+  **Migration note:** existing databases lose their outbox rows on first start.
+  Verified on a real v2 database — schema goes to v3, the table is dropped, runs and
+  players are untouched. Back up before deploying; a dropped table does not come back
+  with a git revert.
+
 ### Fixed
 
 - **The reconciler re-lit the maze during count-in and throughout ARM.** `_run_count_in_ramp()`

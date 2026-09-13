@@ -11,7 +11,7 @@ A laser maze in a shipping container. Haze makes the beams visible; each laser t
 
 ## 1. Scope and operating model
 
-**In scope:** control system, game logic, beam-break detection, displays, player/gamemaster/admin frontends, results persistence and cloud backup.
+**In scope:** control system, game logic, beam-break detection, displays, player/gamemaster/admin frontends, results persistence and local backup.
 
 **Out of scope, owned elsewhere:** laser safety classification, GDPR/DPA, venue smoke-detection coordination, structural fit-out, and the electro-mechanical build of the start plate and checkpoint plates. This plan treats every plate as "a momentary dry contact" and stops there.
 
@@ -37,7 +37,7 @@ A laser maze in a shipping container. Haze makes the beams visible; each laser t
 | Physical inputs | Raspberry Pi Pico over USB CDC serial. No OS, no SD card. §4.4. |
 | Displays | HDMI 1 → in-container stopwatch. HDMI 2 → outdoor screen (live feed + stopwatch + leaderboard). |
 | Frontends | Three separate apps: **player sign-in**, **gamemaster console**, **admin portal**. §7. |
-| Results durability | Local SQLite is source of truth; **append-only outbox syncs to cloud**. Scoreboard cannot be lost. §8. |
+| Results durability | Local SQLite is source of truth. Cloud sync **removed** (ADR 0008); local snapshots + CSV export are the whole story. §8. |
 | Metrics | Schema-stable event stream + pluggable sink, built now, populated later. §9. |
 | Runtime | Native Python + systemd. Not Docker. §10.1. |
 | Calibration UI | **Deferred.** v1 uses a hand-edited `config/beams.json` plus a read-only overlay verification page. §4.3. |
@@ -425,6 +425,13 @@ One X session, `xrandr` places the two outputs side by side, two Chromium window
 ---
 
 ## 8. Results durability and cloud backup
+
+> **Superseded in part, 2026-09-13 — see [ADR 0008](docs/adr/0008-remove-cloud-sync.md).**
+> The cloud half of this section was built, never connected to an endpoint, and has
+> been removed: no outbox table, no `QueueSync`, no `httpx`, no sync service. The
+> local-first half stands and is what ships. Snapshots (on demand, on clean shutdown,
+> and hourly) plus CSV export are the whole durability story, and someone has to
+> collect the files off the NUC. The text below is kept as the original design record.
 
 Requirement: **the scoreboard can never be lost.** Design principle: **local-first, cloud-eventually, gameplay never blocks on the network.**
 
@@ -845,14 +852,17 @@ Three protocols on site. One computer. One state machine that's a pure function.
 5. **What happens after a BUST** — does the player walk out, or get an immediate retry? Affects `RESULT` duration and gamemaster flow.
 6. **Sign-in fields** — final list, so the form and `players.extra_json` can be settled.
 7. **Leaderboard scope** — daily reset, or the whole activation? Are busted runs shown at all?
-8. **Cloud host and endpoint** — which of the §8.2 options, and who owns the account?
-9. **Internet on site** — wired, 4G, or neither at first?
+8. ~~**Cloud host and endpoint**~~ — void: cloud sync removed (ADR 0008).
+9. ~~**Internet on site**~~ — void: nothing depends on it (ADR 0008).
 10. **Which switch model?** Confirm per-port PoE control via API or SNMP; §12 relies on it for camera recovery.
 11. **Metric definitions** from the client, when available (§9).
 
 ---
 
-## 17. Task: remove cloud sync
+## 17. Task: remove cloud sync — DONE 2026-09-13
+
+Completed. See [ADR 0008](docs/adr/0008-remove-cloud-sync.md). The impact map below
+is kept as a record of what was touched.
 
 Decided 2026-09-12. Cloud sync is being dropped. It is inert today — the
 OutboxWorker only starts when `SCANMANIA_SYNC_URL` is set — but it still costs

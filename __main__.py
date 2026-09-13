@@ -369,31 +369,14 @@ async def async_main(args: argparse.Namespace) -> int:
     tasks.append(asyncio.create_task(uvicorn_server.serve(), name="web"))
     log.info("Web server starting on port %d", cfg.hardware.network.web_port)
 
-    # OutboxWorker — drains the sync outbox to cloud (optional)
-    outbox = None
-    try:
-        endpoint_url = os.environ.get("SCANMANIA_SYNC_URL", "")
-        sync_token = os.environ.get("SCANMANIA_SYNC_TOKEN", "")
-        if not endpoint_url:
-            log.info("OutboxWorker skipped — SCANMANIA_SYNC_URL not set")
-        else:
-            from persist.outbox import OutboxWorker
-            import core.metrics as _metrics
-            outbox = OutboxWorker(db, endpoint_url, sync_token, _metrics.emit)
-            web_app.set_outbox(outbox)
-            tasks.append(asyncio.create_task(outbox.run(), name="outbox"))
-            log.info("OutboxWorker started → %s", endpoint_url)
-    except (ImportError, Exception) as e:
-        log.warning("OutboxWorker unavailable — no cloud sync: %s", e)
-
     # ---- Rolling DB snapshots ----
-    # persist/sync.py documented this as an invariant but nothing ever started
+    # persist/backup.py documented this as an invariant but nothing ever started
     # the loop. Manual and on-stop snapshots worked, so an unclean shutdown
     # (power cut, OOM kill) lost every run back to the last button press.
     snap_min = getattr(cfg.game, "snapshot_interval_min", 60)
     if snap_min > 0:
         import tempfile, sys as _sys
-        from persist.sync import rolling_snapshot_loop
+        from persist.backup import rolling_snapshot_loop
         snap_dir = (
             os.path.join(tempfile.gettempdir(), "scanmania-backups")
             if _sys.platform == "darwin"
@@ -451,7 +434,7 @@ async def async_main(args: argparse.Namespace) -> int:
     # Export a snapshot before exit (best-effort)
     try:
         import tempfile, sys as _sys
-        from persist.sync import export_snapshot
+        from persist.backup import export_snapshot
         backup_dir = (
             os.path.join(tempfile.gettempdir(), "scanmania-backups")
             if _sys.platform == "darwin"

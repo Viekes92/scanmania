@@ -157,7 +157,7 @@ class StandaloneRunner:
     async def _apply(self, fx) -> None:
         """Execute a side effect. Only the effects relevant to the CLI script."""
         from core.events import (
-            SaveRun, VoidRun, QueueSync, BroadcastState, StartStopwatch, StopStopwatch,
+            SaveRun, VoidRun, BroadcastState, StartStopwatch, StopStopwatch,
             ResetStopwatch, ApplyPreset, PlayShow, StopShow, ArmDetection, DisarmDetection,
             StartCountIn, BeamPreflightCheck, ReadyBlink, EmitMetric,
             SaveBreakEvidence, AutoMaskBeam, DropDetectionMode,
@@ -178,7 +178,7 @@ class StandaloneRunner:
         elif isinstance(fx, VoidRun):
             await self.db.void_run(fx.run_id, fx.reason)
 
-        elif isinstance(fx, (QueueSync, BroadcastState, StartStopwatch,
+        elif isinstance(fx, (BroadcastState, StartStopwatch,
                               StopStopwatch, ResetStopwatch, ApplyPreset,
                               PlayShow, StopShow,
                               ArmDetection, DisarmDetection, StartCountIn,

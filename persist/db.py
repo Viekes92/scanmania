@@ -69,14 +69,6 @@ CREATE TABLE IF NOT EXISTS beam_hits (
     thumb_path  TEXT
 );
 
-CREATE TABLE IF NOT EXISTS outbox (
-    run_id          TEXT PRIMARY KEY REFERENCES runs(id),
-    payload_json    TEXT NOT NULL,
-    attempts        INTEGER NOT NULL DEFAULT 0,
-    last_attempt_at TEXT,
-    last_error      TEXT
-);
-
 CREATE TABLE IF NOT EXISTS health (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     ts        TEXT NOT NULL,
@@ -103,7 +95,7 @@ CREATE INDEX IF NOT EXISTS idx_health_ts          ON health(ts);
 """
 
 # Current schema version — bump when adding migrations.
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 
 def _now_iso() -> str:
@@ -168,6 +160,10 @@ class Database:
                 except Exception as exc:
                     if "duplicate column" not in str(exc).lower():
                         raise
+            if current < 3:
+                # v3: cloud sync removed. The outbox only ever buffered rows
+                # for an endpoint that is no longer part of the system.
+                await self._db.execute("DROP TABLE IF EXISTS outbox")
             await self._db.execute("DELETE FROM _schema_version")
             await self._db.execute(
                 "INSERT INTO _schema_version VALUES (?)", (_SCHEMA_VERSION,)
@@ -490,61 +486,6 @@ class Database:
     # ------------------------------------------------------------------
     # Outbox
     # ------------------------------------------------------------------
-
-    async def insert_outbox(self, run_id: str, payload: dict) -> None:
-        payload_json = json.dumps(payload)
-        await self._db.execute(
-            """
-            INSERT OR IGNORE INTO outbox (run_id, payload_json, attempts)
-            VALUES (?, ?, 0)
-            """,
-            (run_id, payload_json),
-        )
-        await self._db.commit()
-
-    async def get_pending_outbox(self, limit: int = 10) -> list[dict]:
-        """Return rows ordered by attempts asc (less-retried first)."""
-        async with self._db.execute(
-            """
-            SELECT * FROM outbox
-            ORDER BY attempts ASC, last_attempt_at ASC NULLS FIRST
-            LIMIT ?
-            """,
-            (limit,),
-        ) as cur:
-            rows = await cur.fetchall()
-        return [dict(r) for r in rows]
-
-    async def mark_outbox_success(self, run_id: str) -> None:
-        """Delete the outbox row on successful push."""
-        await self._db.execute("DELETE FROM outbox WHERE run_id = ?", (run_id,))
-        await self._db.commit()
-
-    async def mark_outbox_attempt(
-        self, run_id: str, error: str | None = None
-    ) -> None:
-        """Increment attempt counter and record last error."""
-        await self._db.execute(
-            """
-            UPDATE outbox
-            SET attempts = attempts + 1,
-                last_attempt_at = ?,
-                last_error = ?
-            WHERE run_id = ?
-            """,
-            (_now_iso(), error, run_id),
-        )
-        await self._db.commit()
-
-    async def outbox_depth(self) -> int:
-        async with self._db.execute("SELECT COUNT(*) FROM outbox") as cur:
-            row = await cur.fetchone()
-        return row[0] if row else 0
-
-    async def reset_outbox_backoff(self) -> None:
-        """Zero the attempt counter on all outbox rows to reset backoff."""
-        await self._db.execute("UPDATE outbox SET attempts = 0, last_error = NULL")
-        await self._db.commit()
 
     # ------------------------------------------------------------------
     # Health

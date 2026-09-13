@@ -24,7 +24,7 @@ from core.events import (
     # Side effects
     ApplyPreset, PlayShow, StopShow, StartStopwatch, StopStopwatch, ResetStopwatch,
     ArmDetection, DisarmDetection, StartCountIn, BeamPreflightCheck,
-    ReadyBlink, SaveRun, VoidRun, QueueSync, BroadcastState, EmitMetric,
+    ReadyBlink, SaveRun, VoidRun, BroadcastState, EmitMetric,
     SaveBreakEvidence, AutoMaskBeam, DropDetectionMode,
     # Input events for internal production
     BootComplete, SelfTestPass, ProcessRestart, RampComplete,
@@ -647,18 +647,6 @@ class GameRunner:
         except Exception:
             log.exception("VoidRun: leaderboard refresh failed")
 
-    async def _handle_queue_sync(self, effect: QueueSync) -> None:
-        """Insert the run into the cloud-sync outbox."""
-        log.info("[SideEffect] QueueSync(run_id=%r)", effect.run_id)
-        if not self.db or not hasattr(self.db, "insert_outbox"):
-            return
-        try:
-            run = await self.db.get_run(effect.run_id)
-            if run:
-                await self.db.insert_outbox(effect.run_id, run)
-        except Exception:
-            log.exception("QueueSync: outbox insert failed")
-
     async def _handle_broadcast_state(self, effect: BroadcastState) -> None:
         """Broadcast current FSM state + stopwatch clock over WebSocket."""
         log.debug("[SideEffect] BroadcastState(state=%r)", self.state)
@@ -1122,7 +1110,6 @@ _EFFECT_HANDLERS: dict = {
     ReadyBlink:       GameRunner._handle_ready_blink,
     SaveRun:          GameRunner._handle_save_run,
     VoidRun:          GameRunner._handle_void_run,
-    QueueSync:        GameRunner._handle_queue_sync,
     BroadcastState:   GameRunner._handle_broadcast_state,
     EmitMetric:       GameRunner._handle_emit_metric,
     SaveBreakEvidence: GameRunner._handle_save_break_evidence,

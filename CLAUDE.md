@@ -46,7 +46,7 @@ event pipelines. See `docs/testing.md`.
 3. **`config/beams.json` is the only source of truth for ROIs and thresholds.** The admin portal writes to it. `tools/pick_rois.py` only *prints* stanzas to stdout for you to paste in — it never writes the file. Nothing else creates or modifies beam geometry. ROIs are frame pixels, so record the capture resolution alongside them: a camera substream resolution change silently invalidates every saved ROI.
 4. **Never write coils outside `iobackend/presets.py`.** Every coil write goes through `apply_preset()`, `apply_all_off()`, `apply_channels()` or `apply_direct()`. The one sanctioned exception is `iobackend/reconcile.py`, which re-asserts desired state and documents itself as such. A direct `write_coils()` leaves `_desired` stale and the reconciler undoes the write within 500 ms.
 5. **Vision suppresses events when unsure.** Frame gap > 300 ms → no break events emitted, auto-drop to `manual` detection mode. A false positive ends someone's run in front of a queue; silence is always safer.
-6. **Gameplay never awaits the network.** Cloud sync runs in its own asyncio task (`OutboxWorker`), inside `scanmania.service` — `docs/architecture.md` describes a separate `scanmania-sync.service`, but on the NUC it is collapsed into the one unit. The game path returns immediately after writing to SQLite + outbox. Never `await` anything in `persist/sync.py` from the game path.
+6. **Gameplay never awaits the network.** Cloud sync was removed (ADR 0008); there is no outbox and no remote endpoint. The rule still binds every remaining network path — Modbus to the relay boards, Art-Net to the hazer, RTSP to the cameras, WebSocket to the frontends: the game path writes to SQLite and returns. `persist/backup.py` does local snapshots only and is never awaited from the game path.
 7. **Never resume a run after a restart.** There is no checkpoint file and nothing is persisted mid-run, so `runner.py` starts clean every time — the safety half of this invariant holds by construction. The record-keeping half does **not**: `ProcessRestart` is never emitted, and wiring it up would not help, because after a restart the state is `BOOT` with no `run_id` to write. A crash mid-run currently leaves no DB row at all. Fixing it means writing the row pessimistically at GO, not adding a recovery query.
 
 ## Where things live
@@ -56,10 +56,11 @@ core/       Pure logic: FSM, stopwatch, scoring, events dataclasses, metrics fa�
 iobackend/  Modbus master, preset resolution, reconciliation loop. fake.py is mandatory.
 inputs/     Pico USB serial link + MicroPython firmware. fake.py is mandatory.
 vision/     RTSP decode, dot detection, baseline, evidence thumbnails, MJPEG out. fake.py is mandatory.
-persist/    SQLite schema + migrations, outbox drain, cloud sync, snapshots, exports.
+persist/    SQLite schema + migrations, local snapshots, CSV exports. No cloud sync.
 web/        FastAPI + WebSocket broadcast, route handlers, static frontends (no build step).
 config/     YAML/JSON files — the only place to change hardware topology or game settings.
-tools/      Dev utilities: fake_run.py, pick_rois.py, ramp.py, cam_probe.py, dot_calib.py.
+tools/      Dev utilities: fake_run.py, pick_rois.py, ramp.py, cam_probe.py, dot_calib.py,
+            click_relays.py.
 tests/      Pure-logic modules are covered; every I/O boundary is not (see docs/testing.md).
             FSM tests are the most important — run them first.
 docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is not done.

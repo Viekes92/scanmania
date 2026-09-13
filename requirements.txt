@@ -19,9 +19,6 @@ python-multipart>=0.0.9          # for form/file upload support in FastAPI
 # ---- Database ----
 aiosqlite>=0.20.0                # async SQLite (local source of truth)
 
-# ---- HTTP client ----
-httpx>=0.27.0                    # cloud sync outbox worker
-
 # ---- Hardware ----
 pymodbus>=3.6.0                  # Modbus TCP to Waveshare relay boards
 pyserial-asyncio>=0.6            # async serial for Pico USB CDC link

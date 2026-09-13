@@ -31,7 +31,7 @@ One NUC runs everything. Six systemd units communicate over localhost sockets an
 │  │ /display/in  /display/out            │                       │
 │  └──────────────────────────────────────┘                       │
 │                                                                 │
-│  scanmania-sync.service          scanmania-kiosk.service        │
+│  scanmania-kiosk.service                                       │
 │  ┌────────────────────┐          ┌───────────────────────┐      │
 │  │ Outbox drain       │          │ X session             │      │
 │  │ Cloud POST         │          │ Chromium × 2 (kiosk)  │      │
@@ -93,7 +93,6 @@ Vision detects break on beam b07
 | `scanmania-vision` | always, 2 s | Camera decode, detection, MJPEG stream |
 | `scanmania-core` | always, 2 s | FSM, stopwatch, Pico link, event log |
 | `scanmania-web` | always, 2 s | HTTP + WebSocket, static frontends |
-| `scanmania-sync` | always, 2 s | Outbox drain, cloud sync, snapshots |
 | `scanmania-kiosk` | user unit | X session, two Chromium kiosk windows |
 
 systemd hardware watchdog enabled via `RuntimeWatchdogSec`. A kernel hang reboots the NUC into `SELF_TEST → ATTRACT`.

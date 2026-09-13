@@ -250,25 +250,17 @@ class ScanManiaApp:
         reg_gm(gm_router, self._on_gm_action)
         self.app.include_router(gm_router)
 
-        self._outbox = None  # will be set via set_outbox() after startup
         admin_router = APIRouter(prefix="")
         reg_admin(
             admin_router,
             self._db,
-            self,  # pass self so admin routes can call get_outbox()
+            self,
             self._on_admin_action,
             str(self._config_dir),
             get_runner=lambda: self._runner,
             fake_mode=self._fake_mode,
         )
         self.app.include_router(admin_router)
-
-    def set_outbox(self, outbox: Any) -> None:
-        """Inject the OutboxWorker after startup."""
-        self._outbox = outbox
-
-    def get_outbox(self) -> Any:
-        return self._outbox
 
     def set_hazer(self, hazer: Any) -> None:
         self._hazer = hazer

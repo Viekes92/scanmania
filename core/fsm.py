@@ -35,7 +35,7 @@ from core.events import (
     # Side effects
     ApplyPreset, PlayShow, StopShow, StartStopwatch, StopStopwatch, ResetStopwatch,
     ArmDetection, DisarmDetection, StartCountIn, BeamPreflightCheck,
-    ReadyBlink, SaveRun, VoidRun, QueueSync, BroadcastState, EmitMetric,
+    ReadyBlink, SaveRun, VoidRun, BroadcastState, EmitMetric,
     SaveBreakEvidence, DropDetectionMode,
 )
 
@@ -111,7 +111,6 @@ def _bust_effects(ctx: FSMContext) -> list:
     if ctx.run_id:
         effects += [
             SaveRun(outcome=RunOutcome.busted, run_id=ctx.run_id),
-            QueueSync(run_id=ctx.run_id),
         ]
     effects.append(BroadcastState())
     return effects
@@ -126,7 +125,6 @@ def _abort_effects(ctx: FSMContext) -> list:
     if ctx.run_id:
         effects += [
             SaveRun(outcome=RunOutcome.aborted, run_id=ctx.run_id),
-            QueueSync(run_id=ctx.run_id),
         ]
     effects.append(BroadcastState())
     return effects
@@ -280,7 +278,6 @@ def _break_effects_for_mode(ctx: FSMContext, event: BreakConfirmed, current_run_
         if ctx.run_id:
             effects += [
                 SaveRun(outcome=RunOutcome.busted, run_id=ctx.run_id, busting_beam_id=event.beam_id),
-                QueueSync(run_id=ctx.run_id),
             ]
         effects.append(BroadcastState())
         return BUSTED, effects
@@ -373,7 +370,6 @@ def _run_seg3_handlers() -> dict:
         if ctx.run_id:
             effects += [
                 SaveRun(outcome=RunOutcome.clean, run_id=ctx.run_id),
-                QueueSync(run_id=ctx.run_id),
             ]
         effects.append(BroadcastState())
         return FINISHED, effects
@@ -460,7 +456,6 @@ def _handle_global(state: str, event: Any, ctx: FSMContext) -> tuple[str, list] 
         if ctx.run_id and state in RUN_STATES:
             effects += [
                 SaveRun(outcome=RunOutcome.aborted, run_id=ctx.run_id),
-                QueueSync(run_id=ctx.run_id),
             ]
         effects.append(BroadcastState())
         return ABORTED, effects
@@ -477,7 +472,6 @@ def _handle_global(state: str, event: Any, ctx: FSMContext) -> tuple[str, list] 
         if ctx.run_id and state in _VOIDABLE_STATES:
             effects += [
                 VoidRun(run_id=ctx.run_id, reason=event.reason),
-                QueueSync(run_id=ctx.run_id),
             ]
         effects.append(BroadcastState())
         return state, effects
@@ -496,7 +490,6 @@ def _handle_global(state: str, event: Any, ctx: FSMContext) -> tuple[str, list] 
         if ctx.run_id:
             effects += [
                 SaveRun(outcome=RunOutcome.busted, run_id=ctx.run_id, busting_beam_id=busting_beam),
-                QueueSync(run_id=ctx.run_id),
             ]
         effects.append(BroadcastState())
         return BUSTED, effects
@@ -518,7 +511,6 @@ def _handle_global(state: str, event: Any, ctx: FSMContext) -> tuple[str, list] 
             if ctx.run_id:
                 effects += [
                     SaveRun(outcome=RunOutcome.aborted, run_id=ctx.run_id),
-                    QueueSync(run_id=ctx.run_id),
                 ]
             effects.append(BroadcastState())
             return ABORTED, effects

@@ -1,6 +1,9 @@
 # ADR 0006: Local-first, cloud-eventually results durability
 
-**Status:** Accepted
+**Status:** Partially superseded by [ADR 0008](0008-remove-cloud-sync.md)
+**Note:** the local-first half stands. The cloud-eventually half was removed on
+2026-09-13 — there is no outbox and no remote endpoint. `persist/sync.py` is now
+`persist/backup.py` and does local snapshots only.
 **Date:** 2024-01-15
 
 ## Context

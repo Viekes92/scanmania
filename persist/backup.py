@@ -1,5 +1,5 @@
 """
-persist/sync.py — snapshot exports and rolling local backups.
+persist/backup.py — snapshot exports and rolling local backups.
 
 Inputs:  Database instance, backup output directory path.
 Outputs: dated .db snapshot files via VACUUM INTO; leaderboard CSV files.

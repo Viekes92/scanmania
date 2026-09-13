@@ -59,7 +59,7 @@ vision/     RTSP decode, dot detection, baseline, evidence thumbnails, MJPEG out
 persist/    SQLite schema + migrations, local snapshots, CSV exports. No cloud sync.
 web/        FastAPI + WebSocket broadcast, route handlers, static frontends (no build step).
 config/     YAML/JSON files — the only place to change hardware topology or game settings.
-tools/      Dev utilities: fake_run.py, pick_rois.py, ramp.py, cam_probe.py, dot_calib.py,
+tools/      Dev utilities: fake_run.py, pick_rois.py, ramp.py, camshow.py, dot_calib.py,
             click_relays.py.
 tests/      Pure-logic modules are covered; every I/O boundary is not (see docs/testing.md).
             FSM tests are the most important — run them first.

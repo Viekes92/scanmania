@@ -207,3 +207,51 @@ def test_a_shape_change_produces_no_break(cfg):
         d.process_frame(frame, ts + i * 40_000_000, cfg.beams.beams[0].camera)
 
     assert breaks == [], f"maze change reported breaks: {breaks}"
+
+
+# ---------------------------------------------------------------------------
+# Per-dot camera routing and the fault threshold
+# ---------------------------------------------------------------------------
+
+def test_a_channels_dots_can_straddle_two_cameras(cfg):
+    """
+    The fields of view overlap, so one channel's 5 colinear dots can land on
+    two different cameras. Routing per channel could not express that: the dots
+    on the other camera were sampled against coordinates meaningless there.
+    """
+    beam = cfg.beams.beams[0]
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    beam.dots = [
+        loader.DotROI(cx=30 + i * 40, cy=100, r=6, baseline=200.0,
+                      camera="cam_1" if i < 3 else "cam_2")
+        for i in range(5)
+    ]
+    d = _detector(cfg, [])
+
+    on_cam1 = d._channel_signal(frame, beam, "cam_1")
+    on_cam2 = d._channel_signal(frame, beam, "cam_2")
+
+    assert on_cam1 is not None and on_cam1[1] == 3, "cam_1 should see 3 of the 5"
+    assert on_cam2 is not None and on_cam2[1] == 2, "cam_2 should see the other 2"
+
+
+def test_all_dark_on_a_short_channel_is_a_break_not_a_fault(cfg):
+    """
+    The fault rule assumes a body cannot cover every dot on a channel. That
+    holds for five colinear dots; it does not hold for two. A channel that
+    calibration could only find 2 dots for must still bust the player, or a
+    real break reads as a hardware fault and they sail through.
+    """
+    breaks, faults = [], []
+    beam, frame = _five_dot_channel(cfg)
+    beam.dots = beam.dots[:2]                      # calibration found only 2
+    d = _detector(cfg, breaks, faults)
+    d.set_watchlist([beam.id], settle_ms=0)
+    d.arm("run-1", grace_ms=0)
+
+    ts = time.monotonic_ns()
+    for i in range(cfg.beams.detection.consecutive_frames + 1):
+        d.process_frame(frame, ts + i * 40_000_000, beam.camera)
+
+    assert breaks == [beam.id], "a short channel going dark must still bust"
+    assert faults == [], "2 dark dots is not enough to call a hardware fault"

@@ -92,7 +92,17 @@ class DotROI:
     cx: int
     cy: int
     r: int
+    # Which camera's frame these pixels belong to. Per DOT, not per channel:
+    # the cameras' fields of view overlap, so a channel's 5 colinear dots can
+    # straddle two of them. A single camera on the parent channel could not
+    # express that, and the dots on the other camera would be sampled against
+    # coordinates that mean nothing.
+    camera: str = ""
     baseline: float = 0.0
+    # Residual brightness in this ROI when its own channel is off but the rest
+    # of the maze is lit. Must sit well below break_ratio or the dot can never
+    # fire — neighbouring dots bloom into the ROI and hold it above threshold.
+    dark_floor: float = 0.0
     masked: bool = False        # one dead laser should not retire the other four
     note: str = ""
 
@@ -285,7 +295,9 @@ def _parse_dots(b: dict) -> list[DotROI]:
         return [
             DotROI(
                 cx=d["cx"], cy=d["cy"], r=d.get("r", 9),
+                camera=d.get("camera", b.get("camera", "")),
                 baseline=d.get("baseline", 0.0),
+                dark_floor=d.get("dark_floor", 0.0),
                 masked=d.get("masked", False),
                 note=d.get("note", ""),
             )
@@ -295,6 +307,7 @@ def _parse_dots(b: dict) -> list[DotROI]:
     if not roi:
         return []
     return [DotROI(cx=roi["cx"], cy=roi["cy"], r=roi.get("r", 9),
+                   camera=b.get("camera", ""),
                    baseline=b.get("baseline", 0.0))]
 
 

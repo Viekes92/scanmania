@@ -25,6 +25,53 @@ log = logging.getLogger(__name__)
 # How many top-percentile pixels to use for the ROI sample
 _TOP_FRACTION = 0.20
 
+# Minimum usable dots on a channel before "all of them dark" is read as a
+# hardware fault rather than a break. A body blocks part of a colinear array; it
+# cannot plausibly cover five. It can easily cover two. So a channel that
+# calibration could only find 2-3 dots for would have every real break misread
+# as a fault, and the player would sail through.
+_MIN_DOTS_FOR_FAULT = 4
+
+
+def sample_circle(frame: np.ndarray, cx: int, cy: int, r: int) -> float:
+    """
+    Sample mean of the top 20% brightest pixels in the circular ROI on the
+    red-isolated image: R - (G+B)/2, clipped to [0, 255].
+
+    Module level on purpose: tools/sweep.py measures calibration baselines
+    with this exact function, so stored baselines and runtime samples are
+    always in the same units.
+    """
+    h, w = frame.shape[:2]
+
+    # Bounding box of the circle, clamped to frame
+    x0 = max(0, cx - r)
+    y0 = max(0, cy - r)
+    x1 = min(w, cx + r + 1)
+    y1 = min(h, cy + r + 1)
+
+    patch = frame[y0:y1, x0:x1]
+    if patch.size == 0:
+        return 0.0
+
+    # Red isolation: R - (G+B)/2
+    b_ch = patch[:, :, 0].astype(np.float32)
+    g_ch = patch[:, :, 1].astype(np.float32)
+    r_ch = patch[:, :, 2].astype(np.float32)
+    isolated = np.clip(r_ch - (g_ch + b_ch) / 2.0, 0, 255)
+
+    # Circular mask
+    ys, xs = np.ogrid[y0:y1, x0:x1]
+    mask = ((xs - cx) ** 2 + (ys - cy) ** 2) <= r ** 2
+    pixels = isolated[mask]
+    if pixels.size == 0:
+        return 0.0
+
+    # Top 20% brightest pixels
+    k = max(1, int(len(pixels) * _TOP_FRACTION))
+    top_k = np.partition(pixels, -k)[-k:]
+    return float(np.mean(top_k))
+
 
 class _BeamState:
     """Per-beam tracking state for the hysteresis FSM."""
@@ -222,9 +269,6 @@ class DotDetector:
 
         for beam_id, st in self._states.items():
             beam = st.beam
-            # Only beams this camera can see.
-            if camera_id is not None and beam.camera != camera_id:
-                continue
             # Only channels the current maze shape has lit, and not still settling.
             if not self._is_watched(beam_id, timestamp_ns):
                 continue
@@ -232,7 +276,7 @@ class DotDetector:
             if beam.masked or st.auto_masked:
                 continue
 
-            signal = self._channel_signal(frame, beam)
+            signal = self._channel_signal(frame, beam, camera_id)
             if signal is None:
                 # No dot on this channel has a baseline yet — nothing to compare.
                 continue
@@ -242,7 +286,7 @@ class DotDetector:
             # body blocks part of a colinear array, never all of it. This is the
             # relay not firing, the PSU dropping, or the view being occluded.
             # Reporting it as a break would end a run for a hardware fault.
-            if total >= 2 and dark == total:
+            if total >= _MIN_DOTS_FOR_FAULT and dark == total:
                 self._report_channel_fault(beam, timestamp_ns)
                 continue
 
@@ -306,7 +350,8 @@ class DotDetector:
         sample = self._sample_roi(frame, beam)
         return sample / baseline
 
-    def _channel_signal(self, frame, beam: BeamConfig) -> tuple[int, int, float] | None:
+    def _channel_signal(self, frame, beam: BeamConfig,
+                        camera_id: str | None = None) -> tuple[int, int, float] | None:
         """
         Sample every dot on this relay channel.
 
@@ -324,6 +369,12 @@ class DotDetector:
         worst = 1.0
         for dot in beam.dots:
             if dot.masked:
+                continue
+            # Route per DOT, not per channel. The cameras' fields of view
+            # overlap, so one channel's 5 colinear dots can straddle two of
+            # them; sampling a dot against the wrong camera's frame reads
+            # coordinates that mean nothing there.
+            if camera_id is not None and (dot.camera or beam.camera) != camera_id:
                 continue
             baseline = dot.baseline or self._baselines.get(beam.id, beam.baseline)
             if baseline <= 0:
@@ -446,38 +497,14 @@ class DotDetector:
 
     def _sample_circle(self, frame: np.ndarray, cx: int, cy: int, r: int) -> float:
         """
-        Sample mean of the top 20% brightest pixels in the circular ROI on the
-        red-isolated image: R - (G+B)/2, clipped to [0, 255].
+        Instance shim over the module-level sample_circle().
+
+        tools/sweep.py measures calibration baselines through the same function,
+        so a stored baseline is in exactly the units the detector compares
+        against. If the two ever diverged, every ratio in the game would be
+        silently wrong.
         """
-        h, w = frame.shape[:2]
-
-        # Bounding box of the circle, clamped to frame
-        x0 = max(0, cx - r)
-        y0 = max(0, cy - r)
-        x1 = min(w, cx + r + 1)
-        y1 = min(h, cy + r + 1)
-
-        patch = frame[y0:y1, x0:x1]
-        if patch.size == 0:
-            return 0.0
-
-        # Red isolation: R - (G+B)/2
-        b_ch = patch[:, :, 0].astype(np.float32)
-        g_ch = patch[:, :, 1].astype(np.float32)
-        r_ch = patch[:, :, 2].astype(np.float32)
-        isolated = np.clip(r_ch - (g_ch + b_ch) / 2.0, 0, 255)
-
-        # Circular mask
-        ys, xs = np.ogrid[y0:y1, x0:x1]
-        mask = ((xs - cx) ** 2 + (ys - cy) ** 2) <= r ** 2
-        pixels = isolated[mask]
-        if pixels.size == 0:
-            return 0.0
-
-        # Top 20% brightest pixels
-        k = max(1, int(len(pixels) * _TOP_FRACTION))
-        top_k = np.partition(pixels, -k)[-k:]
-        return float(np.mean(top_k))
+        return sample_circle(frame, cx, cy, r)
 
     def update_baseline_from_frame(self, frame: np.ndarray, beam_id: str) -> float:
         """

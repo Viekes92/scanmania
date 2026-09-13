@@ -56,6 +56,10 @@ from vision.detect import sample_circle
 
 log = logging.getLogger("sweep")
 
+
+class AmbientTooBright(RuntimeError):
+    """Raised when the room is lit and the cameras cannot see laser dots."""
+
 # Detection parameters for FINDING dots. Deliberately not the game's sampler:
 # that measures a known ROI, this locates unknown ones. The recipe is
 # tools/dot_calib.py's, which was tuned against the real ceiling — a white
@@ -238,16 +242,50 @@ async def light_only(resolver, io, channels: list[int]) -> None:
 # The sweep
 # ---------------------------------------------------------------------------
 
+# With every channel off, a correctly exposed ceiling camera sees near-nothing.
+# More blobs than this means something other than lasers is lighting the scene.
+_MAX_AMBIENT_BLOBS = 15
+
+
+async def check_ambient(cams: Cameras, resolver, io) -> dict[str, int]:
+    """
+    Blobs visible with every laser off.
+
+    House lights blind this completely. The cameras are exposed for bright dots
+    on a dark ceiling, so with the room lit the top-hat picks up ceiling texture
+    and light fittings, the LABEL pass records those as dots, and the MEASURE
+    pass then reads 0 for every one of them — because ceiling texture is not
+    red. The result is a calibration that looks populated and detects nothing.
+
+    Cheaper to refuse than to debug later.
+    """
+    await light_only(resolver, io, [])
+    await asyncio.sleep(0.6)
+    frames = await cams.median_capture()
+    return {cid: len(find_dots(f)) for cid, f in frames.items()}
+
+
 async def run_sweep(cfg, cams: Cameras, resolver, io, channels: list, args) -> dict:
     board_order = [b.id for b in cfg.hardware.relay_boards]
     all_globals = [g for g in (global_channel(b, board_order) for b in channels)
                    if g is not None]
     results: dict[str, dict] = {}
 
+    # ---- ambient check ----------------------------------------------------
+    ambient = await check_ambient(cams, resolver, io)
+    log.info("ambient blobs with all lasers off: %s", ambient)
+    hot = {cid: n for cid, n in ambient.items() if n > _MAX_AMBIENT_BLOBS}
+    if hot and not args.ignore_ambient:
+        raise AmbientTooBright(
+            f"{len(hot)} camera(s) see light with every laser off: "
+            f"{', '.join(f'{c}={n} blobs' for c, n in sorted(hot.items()))}. "
+            f"Turn the house lights off — the cameras are exposed for dots on a "
+            f"dark ceiling and cannot see them otherwise. "
+            f"Override with --ignore-ambient if you know better."
+        )
+
     # ---- LABEL pass -------------------------------------------------------
     log.info("LABEL pass: %d channels, one at a time", len(channels))
-    await light_only(resolver, io, [])
-    await asyncio.sleep(0.5)
     dark = await cams.median_capture()
 
     for i, beam in enumerate(channels, 1):
@@ -462,6 +500,9 @@ async def amain(args) -> int:
 
     resolver = PresetResolver(cfg.mazes, cfg.hardware)
 
+    log.warning("This drives the relay boards. Lasers WILL switch on. "
+                "House lights must be off, and nobody should be in the container.")
+
     cams = Cameras(cfg)
     await cams.start()
     sizes = {cid: (f.shape[1], f.shape[0])
@@ -470,6 +511,9 @@ async def amain(args) -> int:
 
     try:
         results = await run_sweep(cfg, cams, resolver, io, channels, args)
+    except AmbientTooBright as exc:
+        log.error("%s", exc)
+        return 3
     finally:
         await light_only(resolver, io, [])
         await cams.stop()
@@ -484,8 +528,8 @@ async def amain(args) -> int:
         log.error("NOT writing beams.json — %d error(s). Use --force to override.",
                   len(errors))
         return 1
-    if args.dry_run:
-        log.info("--dry-run: not writing. %d channel(s) would be updated.",
+    if args.no_write:
+        log.info("--no-write: not writing. %d channel(s) would have been updated.",
                  len([c for c in channels if results.get(c.id)]))
         return 0
 
@@ -507,7 +551,12 @@ def main() -> int:
     ap.add_argument("--channels", default="",
                     help="comma-separated channel ids to sweep, e.g. 11,12 "
                          "(default: all 45)")
-    ap.add_argument("--dry-run", action="store_true", help="sweep but do not write")
+    ap.add_argument("--no-write", action="store_true",
+                    help="run the full sweep but leave beams.json alone. NOTE: "
+                         "this still drives the relays — lasers will switch on")
+    ap.add_argument("--ignore-ambient", action="store_true",
+                    help="proceed even though the cameras see light with all "
+                         "lasers off (house lights on). Produces ghost dots")
     ap.add_argument("--force", action="store_true",
                     help="write even if validation reported errors")
     ap.add_argument("--write-refs", action="store_true",

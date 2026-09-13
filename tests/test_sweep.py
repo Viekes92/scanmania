@@ -214,3 +214,39 @@ def test_warnings_are_one_per_channel_not_one_per_dot(channels):
                    if "read 0 at all_on" in w]
     assert len(per_channel) == len(channels), \
         f"expected 1 warning per channel, got {len(per_channel)}"
+
+
+# ---------------------------------------------------------------------------
+# Ambient light — the failure that produced a populated, useless calibration
+# ---------------------------------------------------------------------------
+
+def test_a_lit_room_produces_ghosts_not_dots():
+    """
+    Why the ambient check exists. Ceiling texture under house lights survives
+    the top-hat and gets recorded as dots, but reads 0 through the red-isolated
+    sampler the game uses — so the calibration looks populated and detects
+    nothing.
+    """
+    from vision.detect import sample_circle
+    lit_room = np.full((240, 320, 3), 90, np.uint8)
+    cv2.rectangle(lit_room, (40, 40), (56, 56), (150, 150, 150), -1)   # a fitting
+    cv2.circle(lit_room, (200, 120), 5, (140, 140, 140), -1)           # texture
+
+    ghosts = sweep.find_dots(lit_room)
+    assert ghosts, "fixture should produce ghost blobs"
+    for (cx, cy, r) in ghosts:
+        assert sample_circle(lit_room, cx, cy, r) < 20, \
+            "a grey ghost must read near zero through the red-isolated sampler"
+
+
+def test_ambient_threshold_rejects_a_noisy_scene():
+    noisy = np.zeros((240, 320, 3), np.uint8)
+    rng = np.random.default_rng(3)
+    for _ in range(40):
+        x, y = int(rng.integers(10, 310)), int(rng.integers(10, 230))
+        cv2.circle(noisy, (x, y), 3, (120, 120, 120), -1)
+    assert len(sweep.find_dots(noisy)) > sweep._MAX_AMBIENT_BLOBS
+
+
+def test_a_dark_scene_passes_the_ambient_threshold():
+    assert len(sweep.find_dots(np.zeros((240, 320, 3), np.uint8))) <= sweep._MAX_AMBIENT_BLOBS

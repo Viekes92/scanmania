@@ -969,3 +969,58 @@ and harder to misuse.
 Until then `/display/out` falls back to a black background, which it already
 does gracefully.
 
+---
+
+## 19. Calibration: how it runs
+
+`tools/sweep.py`. Two passes, because they answer different questions.
+
+**LABEL** — one channel lit at a time from dark. Five bright spots on a
+near-black frame: unambiguous, no diffing, no bloom. This is where a dot gets
+its channel and its camera.
+
+**MEASURE** — everything lit, each channel blinked off. The game never sees "a
+dot appears in darkness", it sees "a dot vanishes while ~180 others stay lit".
+This measures the lit baseline and the `dark_floor` — the residual when a dot's
+own channel is off but the rest of the maze is on. A dot whose disappearance is
+masked by a neighbour's bloom passes LABEL and is a dead sensor in the maze;
+only the dark floor catches it.
+
+### Prerequisites, in order
+
+1. **House lights OFF.** Not optional. The cameras are exposed for bright dots
+   on a dark ceiling. With the room lit, the top-hat picks up ceiling texture and
+   light fittings, LABEL records those as dots, and MEASURE then reads 0 for
+   every one — because ceiling texture is not red. The result is a calibration
+   that looks fully populated and detects nothing. The tool refuses to start if
+   any camera sees more than `_MAX_AMBIENT_BLOBS` with every laser off.
+2. **Camera settings locked** — manual exposure, manual white balance, IR-cut
+   and night mode disabled, substream resolution pinned. One visit to a camera
+   UI after this invalidates every ROI measured before it.
+3. **Cameras physically fixed.** ROIs are frame pixels. A bumped camera is a
+   full recalibration.
+4. **Game service stopped.** `ReconcileLoop` re-asserts desired coil state every
+   500 ms and would re-light channels mid-step, corrupting the labelling with no
+   visible symptom.
+5. **Nobody in the container.** A body occludes dots and changes the scene.
+6. **Lasers warm.** Diode brightness drifts for minutes after power-on.
+
+### Notes from the field
+
+- The relay boards **do not answer ICMP**. `ping` says down while Modbus on port
+  4196 works fine. Test reachability with a Modbus read, never a ping.
+- Measured on one camera with 2 rows (50 lasers) lit: 46-48 dots found. So
+  expect ~4-8% of dots to go unfound, and channels with fewer than 5 recorded
+  dots are normal rather than an error.
+- Below 4 dots on a channel, `detect.py` can no longer tell a real break from a
+  dead channel (`_MIN_DOTS_FOR_FAULT`) — the sweep warns, and those channels
+  want a look before opening.
+- Colinearity is measured and reported, never enforced. The arrays are
+  physically colinear and a pinhole projection preserves straight lines, but
+  wide-angle lenses bow them, worst at the frame edges where the far dots land.
+
+### Safety
+
+`--no-write` still drives the relays. There is no flag that runs the sweep
+without switching lasers on. Treat every invocation as "the maze is about to
+light up".

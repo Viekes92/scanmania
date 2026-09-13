@@ -117,8 +117,11 @@ class VisionService:
         # camera's frame. Without this, four cameras sample every beam four
         # times, three of them against coordinates that mean nothing.
         self._detector.process_frame(frame, timestamp_ns, camera_id)
-        if self._mjpeg is not None:
-            self._mjpeg.push_frame(frame, camera_id)
+        # Ceiling frames deliberately do NOT go to MJPEG. cam_1-4 point straight
+        # up at the dots — that view is meaningless to the crowd outside.
+        # /display/out gets its own camera (the back cam at 172.16.0.205, aimed
+        # at the play area), which is not a detection camera and must not be
+        # fed to the detector either. See plan.md section 18.
 
     def _on_camera_stall(self, camera_id: str) -> None:
         """CameraStream noticed a gap between two frames it did receive."""

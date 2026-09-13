@@ -918,3 +918,54 @@ must be marked `Superseded by 00NN`, with a new ADR recording this decision.
 - The outbox is also the only thing that would have carried run data off the
   NUC. After this, `export_snapshot` and the CSV export are the whole backup
   story — confirm someone actually collects them.
+
+---
+
+## 18. Backlog: the outdoor display's camera
+
+Raised 2026-09-13.
+
+`/display/out` shows a live feed behind the stopwatch and leaderboard. That feed
+is **not** one of the detection cameras.
+
+`cam_1`-`cam_4` point straight up at the ceiling dots. Their view is a grid of
+bright spots on a flat surface — meaningless to a crowd on the street, and it
+would give away nothing about the game. The outdoor feed needs the **back cam at
+172.16.0.205**, aimed at the play area, showing a player actually running the
+maze.
+
+### What this means for the code
+
+- The back cam is a **display source only**. It must never reach `DotDetector`,
+  and no `beams.json` entry should reference it.
+- `VisionService._on_frame` no longer pushes ceiling frames to MJPEG — it used
+  to, which would have put the ceiling on the outdoor screen the moment the
+  MJPEG server could start.
+- So the back cam wants its own path: either a fifth `CameraStream` whose only
+  consumer is the MJPEG server, or a separate lightweight relay that never
+  touches the vision pipeline at all.
+
+### Decide first
+
+**How MJPEG gets served.** `vision/mjpeg.py` imports `aiohttp`, which is declared
+in neither `requirements.txt` nor `pyproject.toml` — nobody noticed, because
+`MjpegServer` was never instantiated. Two options:
+
+1. Add `aiohttp` and keep the standalone server on :8081, as `display_out`
+   already expects (`http://${location.hostname}:8081/cam_a.mjpg`).
+2. Serve the stream from the FastAPI app already running on :8000. No new
+   dependency, no second port, one less thing to supervise — but the frontend
+   URL changes and the route has to stream multipart properly.
+
+Option 2 is cleaner. Either way the frontend's hardcoded `cam_a.mjpg` needs to
+point at the back cam.
+
+**Whether it belongs in `hardware.yaml` at all.** The `cameras:` list currently
+means "detection cameras" — `config/loader.py` validates that every beam's
+`camera` field matches one. Adding a non-detection camera to that list either
+needs a `role:` field or a separate `display_camera:` key. The second is simpler
+and harder to misuse.
+
+Until then `/display/out` falls back to a black background, which it already
+does gracefully.
+

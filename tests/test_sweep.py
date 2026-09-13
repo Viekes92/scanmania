@@ -341,3 +341,60 @@ def test_channel_selection_falls_back_to_the_chosen_mazes():
     picked = sweep._select_channels(cfg, args, "", "maze_1")
     assert {b.id for b in picked} == set(cfg.watchlists["maze_1"])
     assert len(picked) < len(cfg.beams.beams), "should skip channels maze_1 does not light"
+
+
+# ---------------------------------------------------------------------------
+# Live detection tuning
+# ---------------------------------------------------------------------------
+
+def _noisy_frame():
+    """Five real dots plus sensor specks — what produced 16-22 blobs per channel."""
+    f = np.zeros((600, 900, 3), np.uint8)
+    for i in range(5):
+        cv2.circle(f, (150 + i * 130, 300), 8, (40, 40, 255), -1)
+    rng = np.random.default_rng(2)
+    for _ in range(30):
+        cv2.circle(f, (int(rng.integers(0, 890)), int(rng.integers(0, 590))),
+                   1, (30, 30, 90), -1)
+    return f
+
+
+def test_min_area_filters_sensor_specks():
+    """
+    The bug behind the first real sweep: min_area 2 at full HD counts every
+    speck, so a 5-laser channel reported 16-22 dots and everything downstream
+    sampled positions that were not dots.
+    """
+    f = _noisy_frame()
+    loose = len(sweep.find_dots(f, {"min_area": 1}))
+    tight = len(sweep.find_dots(f, {"min_area": 30}))
+    assert loose > tight, "min_area had no effect"
+    assert tight <= 5, f"specks survived a sane min_area: {tight}"
+
+
+def test_params_are_clamped_and_kernel_forced_odd():
+    ui = sweep._UI()
+    ui.set_params({"tophat": 16, "thr": "junk", "min_area": 9})
+    assert ui.params["tophat"] == 16          # stored as given
+    assert ui.params["min_area"] == 9
+    assert ui.params["thr"] == sweep.DEFAULT_PARAMS["thr"], "bad value overwrote a good one"
+    # find_dots forces an odd kernel; an even one makes getStructuringElement
+    # off-centre and shifts every centroid.
+    sweep.find_dots(_noisy_frame(), ui.params)
+
+
+def test_light_request_reaches_the_run_loop():
+    ui = sweep._UI()
+    assert ui.take_light() is None
+    ui.request_light("11,12")
+    assert ui.take_light() == "11,12"
+    ui.request_light("")                       # blackout is a real request
+    assert ui.take_light() == ""
+
+
+def test_light_is_refused_during_a_sweep():
+    """Relighting mid-sweep would corrupt the labelling."""
+    ui = sweep._UI()
+    ui.request_start({"channels": "", "mazes": "maze_1", "no_write": True})
+    ui.take_start()
+    assert ui.request_light("11") is False

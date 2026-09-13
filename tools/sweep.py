@@ -87,6 +87,12 @@ _THRESHOLD = 25
 _MIN_AREA = 2
 _MAX_AREA = 400
 
+# Starting point for dot finding, tunable live from the page. These are only a
+# starting point: the first real sweep found 16-22 blobs for a 5-laser channel,
+# because min_area 2 at 1920x1080 catches every speck of sensor noise.
+DEFAULT_PARAMS = {"thr": _THRESHOLD, "tophat": _TOPHAT_K,
+                  "min_area": _MIN_AREA, "max_area": _MAX_AREA}
+
 _MEDIAN_FRAMES = 7          # frames to median per capture; kills sensor noise
 _CHANGE_TIMEOUT_S = 4.0     # give up waiting for a switch to appear on camera
 _SETTLE_AFTER_CHANGE_S = 0.15
@@ -111,14 +117,17 @@ class _UI:
             "phase": "starting", "maze": None, "channel": None,
             "done": 0, "total": 0, "ambient": {}, "channels": {},
             "maze_counts": {}, "warnings": [], "errors": [], "finished": False,
+            "params": dict(DEFAULT_PARAMS), "live_counts": {},
         }
         self._frames: dict[str, bytes] = {}
         self._httpd = None
         # Set by the browser, consumed by the run loop. The HTTP handler runs on
         # its own thread, so everything crossing that boundary takes the lock.
         self._pending_start: dict | None = None
+        self._pending_light: str | None = None
         self._abort = False
         self._busy = False
+        self._params = dict(DEFAULT_PARAMS)
 
     def set(self, **kw) -> None:
         with self._lock:
@@ -151,6 +160,36 @@ class _UI:
         with self._lock:
             self._abort = True
 
+    # -- detection tuning ---------------------------------------------------
+
+    @property
+    def params(self) -> dict:
+        with self._lock:
+            return dict(self._params)
+
+    def set_params(self, p: dict) -> None:
+        with self._lock:
+            for k in DEFAULT_PARAMS:
+                if k in p:
+                    try:
+                        self._params[k] = int(p[k])
+                    except (TypeError, ValueError):
+                        pass
+            self._state["params"] = dict(self._params)
+
+    def request_light(self, channels: str) -> bool:
+        """Light these channel ids for tuning. Empty string = blackout."""
+        with self._lock:
+            if self._busy:
+                return False
+            self._pending_light = channels
+            return True
+
+    def take_light(self) -> str | None:
+        with self._lock:
+            v, self._pending_light = self._pending_light, None
+            return v
+
     @property
     def aborting(self) -> bool:
         with self._lock:
@@ -177,12 +216,15 @@ class _UI:
             # and sets it per channel. Incrementing here as well double-counted.
 
     def publish_frames(self, frames: dict, annotate: bool = True) -> None:
-        """Store a JPEG per camera, dots circled, for the preview panes."""
-        out = {}
+        """Store a JPEG per camera, dots circled with the CURRENT params."""
+        out, counts = {}, {}
+        params = self.params
         for cid, f in frames.items():
             img = f.copy()
             if annotate:
-                for (cx, cy, r) in find_dots(f):
+                found = find_dots(f, params)
+                counts[cid] = len(found)
+                for (cx, cy, r) in found:
                     cv2.circle(img, (cx, cy), max(r + 4, 8), (0, 255, 0), 2)
             small = cv2.resize(img, (640, int(640 * img.shape[0] / img.shape[1])))
             ok, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 70])
@@ -190,6 +232,8 @@ class _UI:
                 out[cid] = buf.tobytes()
         with self._lock:
             self._frames = out
+            if counts:
+                self._state["live_counts"] = counts
 
     def snapshot(self) -> dict:
         with self._lock:
@@ -235,6 +279,14 @@ class _UI:
                         "mazes": body.get("mazes") or "maze_1",
                         "no_write": bool(body.get("no_write", True)),
                     })
+                    self._send(200, "application/json",
+                               json.dumps({"ok": ok}).encode())
+                elif self.path.startswith("/params"):
+                    ui.set_params(body)
+                    self._send(200, "application/json",
+                               json.dumps(ui.params).encode())
+                elif self.path.startswith("/light"):
+                    ok = ui.request_light((body.get("channels") or "").strip())
                     self._send(200, "application/json",
                                json.dumps({"ok": ok}).encode())
                 elif self.path.startswith("/abort"):
@@ -305,6 +357,33 @@ _PAGE = """<!doctype html><meta charset=utf-8><title>ScanMania calibration</titl
       letter-spacing:2px;cursor:pointer;display:none">ABORT</button>
   </div>
   <div class=warn style=margin-top:10px>Lasers switch on. House lights off, container empty.</div>
+</div>
+<div class=card style=margin-bottom:16px>
+  <div class=t>Tune detection <span class=muted>— light one channel, then adjust until it finds 5</span></div>
+  <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+    <label>light channel<br><input id=lightch placeholder="11" style="width:90px;background:#0d1525;
+      border:1px solid var(--border);color:var(--text);padding:7px;border-radius:4px;
+      font-family:inherit"></label>
+    <button id=lighton style="background:var(--ok);color:#000;border:0;padding:9px 16px;
+      border-radius:5px;font:700 12px 'Courier New',monospace;cursor:pointer">LIGHT</button>
+    <button id=lightoff style="background:transparent;color:var(--muted);border:1px solid
+      var(--border);padding:9px 16px;border-radius:5px;font:700 12px 'Courier New',monospace;
+      cursor:pointer">DARK</button>
+    <span style=width:18px></span>
+    <label>threshold<br><input id=p_thr type=number style="width:80px;background:#0d1525;
+      border:1px solid var(--border);color:var(--text);padding:7px;border-radius:4px"></label>
+    <label>top-hat<br><input id=p_tophat type=number style="width:80px;background:#0d1525;
+      border:1px solid var(--border);color:var(--text);padding:7px;border-radius:4px"></label>
+    <label>min area<br><input id=p_min type=number style="width:80px;background:#0d1525;
+      border:1px solid var(--border);color:var(--text);padding:7px;border-radius:4px"></label>
+    <label>max area<br><input id=p_max type=number style="width:80px;background:#0d1525;
+      border:1px solid var(--border);color:var(--text);padding:7px;border-radius:4px"></label>
+    <button id=apply style="background:var(--accent);color:#000;border:0;padding:9px 20px;
+      border-radius:5px;font:700 12px 'Courier New',monospace;cursor:pointer">APPLY</button>
+  </div>
+  <div id=livecounts class=big style=margin-top:12px>—</div>
+  <div class=muted>Dots the current settings find, updated every second. One lit
+    channel should read 5 across all cameras combined.</div>
 </div>
 <div class=row>
   <div class=card>
@@ -377,6 +456,17 @@ async function tick(){
         return `<tr><td>${k}</td><td class=${cls}>${e.dots}</td>
                 <td class=muted>${(e.cameras||[]).join(' ')}</td></tr>`;}).join('')
     : '<tr><td class=muted>waiting</td></tr>';
+  if(!paramsLoaded && s.params){
+    for(const k in P) P[k].value=s.params[k];
+    paramsLoaded=true;
+  }
+  const lc=s.live_counts||{};
+  const tot=Object.values(lc).reduce((a,b)=>a+b,0);
+  elLive.innerHTML=Object.keys(lc).length
+    ? Object.entries(lc).map(([c,n])=>`<span class=muted style=font-size:13px>${c}</span>
+        <span class="${n>0?'ok':'muted'}">${n}</span>`).join(' &nbsp; ')
+      +` <span class=muted style=font-size:13px>total</span> <span class=${tot===5?'ok':'warn'}>${tot}</span>`
+    : '—';
   const all=[...(s.errors||[]).map(t=>['err',t]),...(s.warnings||[]).map(t=>['warn',t])];
   elIssuesCard.style.display=all.length?'block':'none';
   elIssues.innerHTML=all.map(([c,t])=>`<li class=${c}>${t}</li>`).join('');
@@ -385,7 +475,20 @@ const $=id=>document.getElementById(id);
 const elPhase=$('phase'), elChan=$('chan'), elBar=$('bar'), elCount=$('count'),
       elAmb=$('amb'), elMz=$('mz'), elCh=$('ch'), elIssues=$('issues'),
       elIssuesCard=$('issuesCard'), elGo=$('go'), elStop=$('stop'),
-      elChans=$('chans'), elNoWrite=$('nowrite');
+      elChans=$('chans'), elNoWrite=$('nowrite'), elLive=$('livecounts'),
+      elLightCh=$('lightch'), elApply=$('apply'),
+      P={thr:$('p_thr'),tophat:$('p_tophat'),min_area:$('p_min'),max_area:$('p_max')};
+let paramsLoaded=false;
+$('lighton').onclick=()=>fetch('/light',{method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({channels:elLightCh.value})});
+$('lightoff').onclick=()=>fetch('/light',{method:'POST',
+  headers:{'Content-Type':'application/json'},body:JSON.stringify({channels:''})});
+elApply.onclick=async()=>{
+  const body={}; for(const k in P) body[k]=parseInt(P[k].value);
+  await fetch('/params',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)});
+};
 elGo.onclick=async()=>{
   const mazes=[...document.querySelectorAll('.mz:checked')].map(c=>c.value).join(',');
   if(!mazes){alert('pick at least one maze');return;}
@@ -405,19 +508,29 @@ setInterval(tick,600); tick();
 # Dot finding
 # ---------------------------------------------------------------------------
 
-def find_dots(frame: np.ndarray) -> list[tuple[int, int, int]]:
-    """Return [(cx, cy, r)] for every dot-like blob. See the recipe note above."""
+def find_dots(frame: np.ndarray, params: dict | None = None) -> list[tuple[int, int, int]]:
+    """
+    Return [(cx, cy, r)] for every dot-like blob. See the recipe note above.
+
+    Tunable, because the right numbers depend on the ceiling, the haze and the
+    exposure. The first real sweep with the defaults found 16-22 blobs per
+    5-laser channel: min_area 2 at 1920x1080 catches every speck of sensor
+    noise, and everything downstream then samples positions that are not dots.
+    Tune on the page against a lit channel until a channel reports 5.
+    """
+    p = {**DEFAULT_PARAMS, **(params or {})}
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (_TOPHAT_K, _TOPHAT_K))
+    k = max(3, int(p["tophat"]) | 1)      # kernel must be odd
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
     sig = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, k)
-    _, mask = cv2.threshold(sig, _THRESHOLD, 255, cv2.THRESH_BINARY)
+    _, mask = cv2.threshold(sig, int(p["thr"]), 255, cv2.THRESH_BINARY)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,
                             cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
     n, _, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
     out = []
     for i in range(1, n):
         area = stats[i, cv2.CC_STAT_AREA]
-        if not (_MIN_AREA <= area <= _MAX_AREA):
+        if not (int(p["min_area"]) <= area <= int(p["max_area"])):
             continue
         cx, cy = centroids[i]
         r = max(3, int(round((area / np.pi) ** 0.5)) + 2)
@@ -602,7 +715,7 @@ async def check_ambient(cams: Cameras, resolver, io) -> dict[str, int]:
     await light_only(resolver, io, [])
     await asyncio.sleep(0.6)
     frames = await cams.median_capture()
-    return {cid: len(find_dots(f)) for cid, f in frames.items()}
+    return {cid: len(find_dots(f, UI.params)) for cid, f in frames.items()}
 
 
 async def run_sweep(cfg, cams: Cameras, resolver, io, channels: list, args) -> dict:
@@ -631,7 +744,7 @@ async def run_sweep(cfg, cams: Cameras, resolver, io, channels: list, args) -> d
     log.info("LABEL pass: %d channels, one at a time", len(channels))
     UI.set(phase="label", total=len(channels), done=0)
     dark = await cams.median_capture()
-    dark_dots = {cid: find_dots(f) for cid, f in dark.items()}
+    dark_dots = {cid: find_dots(f, UI.params) for cid, f in dark.items()}
 
     for i, beam in enumerate(channels, 1):
         UI.check_abort()
@@ -649,7 +762,7 @@ async def run_sweep(cfg, cams: Cameras, resolver, io, channels: list, args) -> d
 
         found: list[dict] = []
         for cid, frame in lit.items():
-            for (cx, cy, r) in find_dots(frame):
+            for (cx, cy, r) in find_dots(frame, UI.params):
                 if match_dot((cx, cy, r), dark_dots.get(cid, [])):
                     continue          # present with the lasers off — ambient
                 found.append({"cx": cx, "cy": cy, "r": r, "camera": cid,
@@ -678,7 +791,7 @@ async def run_sweep(cfg, cams: Cameras, resolver, io, channels: list, args) -> d
         frames = await cams.median_capture()
         results.setdefault("_maze_counts", {})[maze] = {
             "expected": len(lit_ids) * 5,
-            "found": {cid: len(find_dots(f)) for cid, f in frames.items()},
+            "found": {cid: len(find_dots(f, UI.params)) for cid, f in frames.items()},
         }
         UI.set(maze_counts=results["_maze_counts"])
 
@@ -956,6 +1069,17 @@ async def amain(args) -> int:
     log.info("ready — open http://<this-host>:%d and press START", args.ui_port)
     try:
         while True:
+            lit = UI.take_light()
+            if lit is not None:
+                ids = [c.strip() for c in lit.split(",") if c.strip()]
+                board_order = [b.id for b in cfg.hardware.relay_boards]
+                by_id = {b.id: b for b in cfg.beams.beams}
+                gl = [g for g in (global_channel(by_id[i], board_order)
+                                  for i in ids if i in by_id) if g is not None]
+                await light_only(resolver, io, gl)
+                UI.set(phase=f"lit: {lit}" if gl else "blackout")
+                log.info("tuning: lit %s", lit or "nothing")
+
             params = UI.take_start()
             if params is None:
                 await asyncio.sleep(0.25)

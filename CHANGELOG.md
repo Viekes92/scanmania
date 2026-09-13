@@ -178,6 +178,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- **The GM action row no longer moves under the operator's thumb.** Seven buttons were
+  `flex: 1 1 0` and `applyState` hid the inapplicable ones with `display: none`, so the
+  survivors resized *and relocated* on every transition. FORCE RESET — the most
+  destructive control in the app — took a third to half the bar in every state at the
+  same 72px height as BUST. Worse, COUNTDOWN → RUN happens automatically with no tap,
+  so the leftmost third silently changed meaning from ABORT to BUST while the GM was
+  reaching for it.
+
+  Now a 6-column grid. Every button owns its column for the whole session and dims
+  when it does not apply, so ABORT (col 4) and BUST (col 5) can never swap. FORCE RESET
+  moved out to a small fixed corner control, still tap-to-confirm and still clearing the
+  44px touch minimum.
+
+  Banners moved *below* the action row. Above it, every appearing or disappearing banner
+  shoved the buttons vertically — the manual-mode banner moved them ~39px at the exact
+  moment the GM needs BUST.
+
+  Disabled opacity went 0.2 → 0.28: at 0.2 the dimmed set was barely readable, and the
+  point of keeping them on screen is that the GM can see what is not available yet.
+
 - Display type scale: every `clamp()` on both HDMI screens saturated below 1500 px while the panels
   are 2560 px, so both rendered at roughly half their intended size. Caps raised — the in-container
   stopwatch from 260 px to 520 px, the countdown digit from 120 px to 560 px inside its 720 px ring.

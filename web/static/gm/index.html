@@ -228,8 +228,12 @@
     /* -----------------------------------------------------------------------
        Primary action buttons row
     ----------------------------------------------------------------------- */
+    /* Fixed slots. grid, not flex: a flex row with display:none reflows the
+       survivors, so a button's position depended on which other buttons were
+       applicable. Each control now owns a column for the whole session. */
     #actions {
-      display: flex;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
       gap: 10px;
       padding: 12px 14px;
       border-bottom: 1px solid var(--border);
@@ -237,7 +241,6 @@
     }
 
     .action-btn {
-      flex: 1 1 0;
       height: var(--btn-h);
       font-size: 18px;
       font-weight: 900;
@@ -256,7 +259,7 @@
     }
 
     .action-btn:disabled {
-      opacity: 0.2;
+      opacity: 0.28;
       cursor: not-allowed;
       transform: none;
       box-shadow: none !important;
@@ -311,11 +314,24 @@
       color: var(--text);
     }
 
+    /* Recovery control. Small, cornered, and far from the game buttons — it
+       used to sit in the action row at the same 72px height as BUST, taking a
+       third to half the bar in every state. Tap-to-confirm is still applied in
+       JS, so a single stray touch cannot destroy a session. */
     #btnForceReset {
+      position: fixed;
+      bottom: 12px;
+      right: 14px;
+      z-index: 60;
+      width: auto;
+      height: 44px;              /* still clears the 44px touch minimum */
+      padding: 0 18px;
       border: 1px solid var(--accent-dim);
       color: var(--muted);
-      background: transparent;
-      font-size: 14px;
+      background: rgba(5, 5, 7, 0.92);
+      font-size: 13px;
+      letter-spacing: 1px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.6);
     }
     #btnForceReset:active:not(:disabled) {
       background: var(--accent-dim);
@@ -740,12 +756,6 @@
   <!-- -----------------------------------------------------------------------
        BANNER ALERTS
   ----------------------------------------------------------------------- -->
-  <div id="banners">
-    <div class="banner banner-red"   id="bannerManual">⚠ DETECTION OFFLINE — CALL BUSTS MANUALLY</div>
-    <div class="banner banner-amber" id="bannerSync">CLOUD SYNC PAUSED</div>
-    <div class="banner banner-amber" id="bannerMasked"></div>
-  </div>
-
   <!-- -----------------------------------------------------------------------
        PLAYER SIGN-IN PANEL (toggled by NEW PLAYER button, visible in ATTRACT)
   ----------------------------------------------------------------------- -->
@@ -828,15 +838,36 @@
   <!-- -----------------------------------------------------------------------
        PRIMARY ACTIONS
   ----------------------------------------------------------------------- -->
+  <!-- Six fixed slots, in game order. Every button keeps its column in every
+       state; inapplicable ones dim rather than disappear.
+
+       They used to be flex:1 with display:none, so the surviving buttons
+       resized and relocated on each transition. COUNTDOWN -> RUN happens with
+       no tap, so the leftmost third silently changed meaning from ABORT to
+       BUST under the operator's thumb. ABORT and BUST now never move.
+
+       FORCE RESET is not here — it is a recovery control, not a game control,
+       and it was taking a third to half of this bar in every state. -->
   <div id="actions">
-    <button class="action-btn" id="btnNewPlayer"   style="border:2px solid var(--green); color:var(--green);">NEW PLAYER</button>
+    <button class="action-btn" id="btnNewPlayer" style="border:2px solid var(--green); color:var(--green);">NEW PLAYER</button>
     <button class="action-btn" id="btnCountIn"    disabled>COUNT IN</button>
-    <button class="action-btn" id="btnBust"       disabled>BUST</button>
-    <button class="action-btn" id="btnAbort"      disabled>ABORT</button>
     <button class="action-btn" id="btnCancel"     disabled>CANCEL</button>
+    <button class="action-btn" id="btnAbort"      disabled>ABORT</button>
+    <button class="action-btn" id="btnBust"       disabled>BUST</button>
     <button class="action-btn" id="btnVoid"       disabled>VOID</button>
-    <button class="action-btn" id="btnForceReset"         >FORCE RESET</button>
   </div>
+
+  <!-- Recovery control, deliberately out of thumb reach of the game buttons. -->
+  <button class="action-btn" id="btnForceReset">FORCE RESET</button>
+
+  <!-- Banners sit BELOW the action row. Above it, every appearing or
+       disappearing banner shoved the buttons down or up — the manual-mode
+       banner moved them ~39px at the exact moment the GM reaches for BUST. -->
+  <div id="banners">
+    <div class="banner banner-red"   id="bannerManual">⚠ DETECTION OFFLINE — CALL BUSTS MANUALLY</div>
+    <div class="banner banner-amber" id="bannerMasked"></div>
+  </div>
+
 
   <!-- GM action feedback -->
   <div id="gmFeedback" style="
@@ -1039,7 +1070,6 @@
     const playerNameEl     = document.getElementById("playerName");
     const detectionBadge   = document.getElementById("detectionBadge");
     const bannerManual     = document.getElementById("bannerManual");
-    const bannerSync       = document.getElementById("bannerSync");
     const bannerMasked     = document.getElementById("bannerMasked");
     const btnCountIn       = document.getElementById("btnCountIn");
     const btnBust          = document.getElementById("btnBust");
@@ -1170,14 +1200,9 @@
       btnVoid.disabled       = !voidEnabled;
       btnForceReset.disabled = false;  // always enabled
 
-      // Hide disabled buttons; show enabled ones. FORCE RESET always visible.
-      btnCountIn.style.display    = countInEnabled  ? "" : "none";
-      btnBust.style.display       = bustEnabled     ? "" : "none";
-      btnAbort.style.display      = abortEnabled    ? "" : "none";
-      btnCancel.style.display     = cancelEnabled   ? "" : "none";
-      btnVoid.style.display       = voidEnabled     ? "" : "none";
-      // NEW PLAYER visibility handled by updateSigninVisibility()
-      // FORCE RESET: always visible but small/muted (handled by CSS, no hide)
+      // Nothing is hidden. Every button holds its column and dims when it does
+      // not apply, so no control ever moves under the operator's thumb. The
+      // `disabled` attribute above is the only thing that changes.
 
       // Issue 53: reset all tap-to-confirm buttons on state change
       [btnBust, btnVoid, btnForceReset].forEach(btn => {
@@ -1233,7 +1258,6 @@
         bannerManual.classList.toggle("visible", detectionDegraded);
       }
       // Cloud sync banner: not currently in WS data, leave hidden
-      bannerSync.classList.remove("visible");
       // Masked beams banner: derived from beams_masked array
       const maskedBeams = Array.isArray(msg.beams_masked) ? msg.beams_masked : [];
       const maskedCount = maskedBeams.length;
@@ -1526,8 +1550,8 @@
     }
 
     function updateSigninVisibility(state) {
-      // Show NEW PLAYER button only in ATTRACT
-      btnNewPlayer.style.display = (state === "ATTRACT") ? "" : "none";
+      // Dim rather than hide, for the same reason as the rest of the row.
+      btnNewPlayer.disabled = (state !== "ATTRACT");
       // Auto-close the panel if we leave ATTRACT (e.g. force reset)
       if (state !== "ATTRACT") closeSigninPanel();
     }

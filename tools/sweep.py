@@ -349,19 +349,19 @@ setInterval(()=>cams.forEach(c=>{
 }),1200);
 async function tick(){
   let s; try{ s=await (await fetch('/status')).json(); }catch(e){ return; }
-  phase.textContent=s.aborting?'ABORTING':(s.busy?s.phase:(s.finished?'DONE':'IDLE'));
-  go.style.display=s.busy?'none':'';
-  stop.style.display=s.busy?'':'none';
-  chan.textContent=s.channel?('channel '+s.channel):'';
+  elPhase.textContent=s.aborting?'ABORTING':(s.busy?s.phase:(s.finished?'DONE':'IDLE'));
+  elGo.style.display=s.busy?'none':'';
+  elStop.style.display=s.busy?'':'none';
+  elChan.textContent=s.channel?('channel '+s.channel):'';
   const pct=s.total?Math.round(100*s.done/s.total):0;
-  bar.style.width=pct+'%';
-  count.textContent=s.total?`${s.done} / ${s.total}`:'';
-  amb.innerHTML=Object.keys(s.ambient||{}).length
+  elBar.style.width=pct+'%';
+  elCount.textContent=s.total?`${s.done} / ${s.total}`:'';
+  elAmb.innerHTML=Object.keys(s.ambient||{}).length
     ? Object.entries(s.ambient).map(([c,n])=>
         `${c}: <span class="${n>15?'err':'ok'}">${n}</span>`).join(' &nbsp; ')
     : '—';
   const mc=s.maze_counts||{};
-  mz.innerHTML=Object.keys(mc).length
+  elMz.innerHTML=Object.keys(mc).length
     ? '<tr><th>maze</th><th>expected</th><th>found</th></tr>'+
       Object.entries(mc).map(([m,v])=>{
         const tot=Object.values(v.found).reduce((a,b)=>a+b,0);
@@ -371,27 +371,31 @@ async function tick(){
     : '<tr><td class=muted>not measured yet</td></tr>';
   const ch=s.channels||{};
   const keys=Object.keys(ch).sort();
-  ch_.innerHTML=keys.length
+  elCh.innerHTML=keys.length
     ? '<tr><th>ch</th><th>dots</th><th>cameras</th></tr>'+keys.map(k=>{
         const e=ch[k];const cls=e.dots>=5?'ok':(e.dots>=4?'':'warn');
         return `<tr><td>${k}</td><td class=${cls}>${e.dots}</td>
                 <td class=muted>${(e.cameras||[]).join(' ')}</td></tr>`;}).join('')
     : '<tr><td class=muted>waiting</td></tr>';
   const all=[...(s.errors||[]).map(t=>['err',t]),...(s.warnings||[]).map(t=>['warn',t])];
-  issuesCard.style.display=all.length?'block':'none';
-  issues.innerHTML=all.map(([c,t])=>`<li class=${c}>${t}</li>`).join('');
+  elIssuesCard.style.display=all.length?'block':'none';
+  elIssues.innerHTML=all.map(([c,t])=>`<li class=${c}>${t}</li>`).join('');
 }
-const ch_=document.getElementById('ch');
-go.onclick=async()=>{
+const $=id=>document.getElementById(id);
+const elPhase=$('phase'), elChan=$('chan'), elBar=$('bar'), elCount=$('count'),
+      elAmb=$('amb'), elMz=$('mz'), elCh=$('ch'), elIssues=$('issues'),
+      elIssuesCard=$('issuesCard'), elGo=$('go'), elStop=$('stop'),
+      elChans=$('chans'), elNoWrite=$('nowrite');
+elGo.onclick=async()=>{
   const mazes=[...document.querySelectorAll('.mz:checked')].map(c=>c.value).join(',');
   if(!mazes){alert('pick at least one maze');return;}
-  go.disabled=true;
+  elGo.disabled=true;
   const r=await (await fetch('/start',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({channels:chans.value,mazes:mazes,no_write:nowrite.checked})})).json();
+    body:JSON.stringify({channels:elChans.value,mazes:mazes,no_write:elNoWrite.checked})})).json();
   if(!r.ok) alert('a run is already going');
-  setTimeout(()=>go.disabled=false,1500);
+  setTimeout(()=>elGo.disabled=false,1500);
 };
-stop.onclick=()=>fetch('/abort',{method:'POST'});
+elStop.onclick=()=>fetch('/abort',{method:'POST'});
 setInterval(tick,600); tick();
 </script>
 """
@@ -493,6 +497,22 @@ class Cameras:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
 
+    async def preview_loop(self, hz: float = 1.0) -> None:
+        """
+        Keep the page's camera panes fed while idle.
+
+        Frames used to be published only from median_capture(), i.e. only during
+        a sweep, so every /frame request 404'd until a run started. That is
+        backwards: the preview is how you confirm the house lights are off
+        BEFORE pressing START.
+        """
+        while True:
+            await asyncio.sleep(1.0 / hz)
+            latest = {cid: f for cid, f in self._latest.items() if f is not None}
+            if latest:
+                await asyncio.get_running_loop().run_in_executor(
+                    None, UI.publish_frames, latest)
+
     async def median_capture(self, n: int = _MEDIAN_FRAMES) -> dict[str, np.ndarray]:
         """
         Median of n frames per camera.
@@ -511,9 +531,7 @@ class Cameras:
         # camera; doing it inline blocked the loop for ~700 ms and starved the
         # RTSP readers, which then reported themselves stalled.
         loop = asyncio.get_running_loop()
-        frames = await loop.run_in_executor(None, self._median, stacks)
-        UI.publish_frames(frames)
-        return frames
+        return await loop.run_in_executor(None, self._median, stacks)
 
     @staticmethod
     def _median(stacks: dict[str, list[np.ndarray]]) -> dict[str, np.ndarray]:
@@ -920,6 +938,7 @@ async def amain(args) -> int:
 
     cams = Cameras(cfg)
     await cams.start()
+    preview = asyncio.create_task(cams.preview_loop(), name="preview")
     await light_only(resolver, io, [])
     UI.set(phase="idle")
 
@@ -948,6 +967,7 @@ async def amain(args) -> int:
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
+        preview.cancel()
         await light_only(resolver, io, [])
         await cams.stop()
         UI.stop()

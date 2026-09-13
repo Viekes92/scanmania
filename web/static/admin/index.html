@@ -718,6 +718,24 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- === HARDWARE === -->
+    <div class="tab-panel" id="tab-hardware" role="tabpanel" aria-labelledby="tabbtn-hardware" tabindex="0">
+      <div class="card">
+        <div class="card-title">Relay Boards</div>
+        <table class="data-table" id="boardsTable">
+          <thead>
+            <tr>
+              <th>ID</th><th>IP</th><th>Status</th><th>RTT</th>
+              <th>Errors</th><th>Mismatches</th><th>Coils (ch 1–16)</th>
+            </tr>
+          </thead>
+          <tbody id="boardsBody">
+            <tr><td colspan="6" style="color:var(--muted)">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <div class="card">
         <div class="card-title">Inputs — SM-NODE-TRIG</div>

@@ -482,6 +482,9 @@
     .health-led.ok   { background: var(--health-ok); }
     .health-led.warn { background: var(--health-warn); animation: pulse-warn 1.5s infinite; }
     .health-led.err  { background: var(--health-err); animation: pulse-err 0.8s infinite; }
+    /* Deliberately off, not faulty. No pulse, no red — the row's other LEDs
+       use red for failures and this would read as one. */
+    .health-led.off  { background: var(--surface2); border: 2px solid var(--muted); }
 
     @keyframes pulse-warn {
       0%, 100% { opacity: 1; }
@@ -897,7 +900,10 @@
         <span>Camera</span>
       </div>
     </div>
-    <!-- Hazer: a switch, nothing else.
+    <!-- Haze output: a switch, nothing else.
+         It gates DMX ch2 (haze volume) only. The blower on ch1 runs
+         continuously, so the machine is never shut down and haze already in the
+         container keeps circulating.
          The level lives in config/hardware.yaml (default_haze) and is tunable
          on /admin. The useful range is 1-2% of DMX, so a 0-255 slider on a
          tablet is all thumb and no control — one stray drag fogs the container
@@ -906,7 +912,7 @@
     <div style="display:flex;gap:12px;align-items:center;margin-top:8px;flex-wrap:wrap;">
       <button class="health-item" id="hHazerToggle" style="cursor:pointer;touch-action:manipulation;border:none;">
         <div class="health-led ok" id="hHazerLed"></div>
-        <span id="hHazerLabel">Hazer ON</span>
+        <span id="hHazerLabel">Haze ON</span>
       </button>
       <span id="hHazerLevel" style="font-size:11px;color:var(--muted);font-family:var(--font);"></span>
     </div>
@@ -1610,8 +1616,10 @@
     const hHazerLevel = document.getElementById("hHazerLevel");
 
     function updateHazerUI(d) {
-      hHazerLed.className = "health-led " + (d.enabled ? "ok" : "err");
-      hHazerLabel.textContent = d.enabled ? "Hazer ON" : "Hazer OFF";
+      hHazerLed.className = "health-led " + (d.enabled ? "ok" : "off");
+      // "Haze", not "Hazer": the machine and its blower stay running either
+      // way. This switch only gates haze volume on DMX ch2.
+      hHazerLabel.textContent = d.enabled ? "Haze ON" : "Haze OFF";
       // Read-only. Shows what ON means so the operator can tell the switch is
       // doing something, without handing them a control they should not have
       // mid-session. Change it in config/hardware.yaml or on /admin.
@@ -1637,7 +1645,7 @@
         if (d.available) updateHazerUI(d);
         else {
           hHazerLed.className = "health-led warn";
-          hHazerLabel.textContent = "Hazer N/A";
+          hHazerLabel.textContent = "Haze N/A";
           setLed(hDmxLed, "warn");
         }
       }).catch(() => {

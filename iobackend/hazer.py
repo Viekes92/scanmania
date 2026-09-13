@@ -3,7 +3,9 @@ iobackend/hazer.py — Art-Net DMX control for the hazer.
 
 Inputs:  ShowTec NET-2/3 Art-Net node IP, DMX channels, intensity values
 Outputs: UDP Art-Net ArtDmx packets
-Invariant: hazer ON by default. GM can toggle and adjust via sliders.
+Invariant: the blower (ch1) runs continuously. The GM switch gates haze volume
+           (ch2) only — it never shuts the machine down, so haze already in the
+           container keeps circulating. Amount comes from config, not the GM.
            Re-sends DMX every 2s to prevent timeout.
 
 DMX channels (from hazer manual):
@@ -70,12 +72,20 @@ class HazerController:
         log.info("Hazer: fan=%d", self._fan)
 
     def set_enabled(self, enabled: bool) -> None:
+        """
+        Turn haze output on or off. The blower keeps running either way.
+
+        True  -> ch2 = self._haze (the configured amount)
+        False -> ch2 = 0
+        """
         self._enabled = enabled
         self._send()
-        log.info("Hazer: %s", "ON" if enabled else "OFF")
+        log.info("Haze output: %s (blower stays at %d)",
+                 "ON" if enabled else "OFF", self._fan)
 
     @property
     def enabled(self) -> bool:
+        """True when haze volume is being output. The blower is always on."""
         return self._enabled
 
     @property
@@ -93,9 +103,15 @@ class HazerController:
 
     def _send(self) -> None:
         dmx = bytearray(512)
-        if self._enabled:
-            dmx[self._fan_ch] = self._fan
-            dmx[self._haze_ch] = self._haze
+        # The blower runs continuously. The GM switch controls haze VOLUME only
+        # (ch2), not the machine.
+        #
+        # Zeroing both channels stopped the blower as well, which is wrong on
+        # two counts: haze already in the container stops circulating and
+        # settles unevenly, and the machine loses the airflow it expects. The
+        # switch means "stop making haze", not "shut the hazer down".
+        dmx[self._fan_ch] = self._fan
+        dmx[self._haze_ch] = self._haze if self._enabled else 0
         packet = _build_artdmx(self._universe, dmx)
         try:
             self._sock.sendto(packet, (self._ip, ARTNET_PORT))

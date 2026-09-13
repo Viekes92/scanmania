@@ -14,14 +14,13 @@ The pure-logic core is well covered. Every I/O boundary is not.
 | `core/scoring.py` | yes | `test_scoring.py` |
 | `core/stopwatch.py` | yes | `test_stopwatch.py` |
 | `core/runner.py` | side-effect dispatch | `test_runner.py` |
-| `persist/outbox.py` | idempotency, pause/resume, backoff | `test_outbox.py` |
 | `iobackend/presets.py` + `reconcile.py` | desired-state drift | `test_reconcile.py` |
 | `vision/` | **no tests** | — |
 | `web/` | **no tests** | — |
 | `inputs/` | **no tests** | — |
 | `iobackend/modbus.py` | **no tests** | — |
 | `config/loader.py` | **no tests** | — |
-| `persist/db.py` | indirectly, via outbox | — |
+| `persist/db.py` | **no tests** | — |
 | `__main__.py` | **no tests** | — |
 
 That is roughly 4,800 untested lines, and it is every place the system talks to
@@ -61,9 +60,10 @@ Two habits that prevent it:
 1. **Call the real path.** Invoke the function under test, not a copy of its
    logic.
 2. **Pick an assertion that discriminates.** Ask what the test would report if
-   the guard were deleted. For the outbox, queue depth was not enough — with no
-   endpoint the push fails and the row stays either way. The `attempts` counter
-   was the discriminator, because a paused worker must not even try.
+   the guard were deleted. The clearest example was the outbox pause test
+   (removed with cloud sync): queue depth was not a discriminator, because with
+   no endpoint the push failed and the row stayed either way. The `attempts`
+   counter was, because a paused worker must not even try.
 
 Mutation-check anything security- or safety-relevant: delete the guard, confirm
 the test goes red, restore it.

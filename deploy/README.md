@@ -17,8 +17,8 @@ rebuild from a clean clone could not reproduce the running system, and
 `Restart=always` was documented in prose that nothing enforced.
 
 `docs/architecture.md` describes `scanmania-sync.service` as a separate unit.
-On the NUC it is collapsed into `scanmania.service`, which runs the outbox and
-the snapshot loop in-process. Only `scanmania.service` is authoritative.
+That unit no longer exists — cloud sync was removed (ADR 0008). Only
+`scanmania.service` is authoritative; it runs the snapshot loop in-process.
 
 ## Known gap: scanmania-kiosk.service
 

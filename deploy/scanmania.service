@@ -1,5 +1,5 @@
 [Unit]
-# The game service: FSM, relay I/O, inputs, web server, outbox, snapshots.
+# The game service: FSM, relay I/O, inputs, web server, local snapshots.
 # Kept in git so a rebuild from a clean clone reproduces the running system.
 # Before this file existed the units lived only on the NUC, and Restart=always
 # was documented in prose that nothing enforced.

@@ -64,8 +64,8 @@ The check at ARM (before count-in): every unmasked beam must read above `break_r
 `manual` — vision is advisory only; the gamemaster presses BUST.
 Switchable live from the GM console. The system drops to `manual` automatically on vision faults.
 
-**outbox**
-The `outbox` SQLite table. Every completed run is inserted here alongside the `runs` table. A background worker drains it to the cloud endpoint with idempotent POSTs. Rows are only deleted on 2xx. Nothing is ever dropped.
+**outbox** *(removed 2026-09-13)*
+Was an SQLite table buffering completed runs for a cloud endpoint. Removed with cloud sync — see [ADR 0008](adr/0008-remove-cloud-sync.md). Kept here because the term appears in older commits, `plan.md` §8 and ADR 0006. Durability is now local only: snapshots plus CSV export.
 
 **stall**
 Vision `STALLED` condition: frame gap > 300 ms. While stalled, no break events are emitted. If a run is in progress, the system auto-drops to `manual` mode rather than busting anyone on a phantom signal.

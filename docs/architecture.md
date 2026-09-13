@@ -33,7 +33,7 @@ One NUC runs everything. Six systemd units communicate over localhost sockets an
 │                                                                 │
 │  scanmania-kiosk.service                                       │
 │  ┌────────────────────┐          ┌───────────────────────┐      │
-│  │ Outbox drain       │          │ X session             │      │
+│  │ Local snapshots    │          │ X session             │      │
 │  │ Cloud POST         │          │ Chromium × 2 (kiosk)  │      │
 │  │ Snapshots/exports  │          │ HDMI1: /display/in    │      │
 │  └────────────────────┘          │ HDMI2: /display/out   │      │
@@ -71,7 +71,6 @@ Vision detects break on beam b07
   → runner.py: dispatches BREAK_CONFIRMED(beam_id="b07") to FSM
   → FSM returns (BUSTED, [StopStopwatch, ApplyPreset("bust"), BuzzerOn, LogRun])
   → runner.py: persist/db.py records run + events
-  → persist/outbox.py: queues run for cloud sync
   → WebSocket: broadcasts BUSTED to all displays
 ```
 
@@ -174,5 +173,5 @@ See `docs/adr/` for full reasoning. Short form:
 - **Hard cutoff scoring** — break = run over; no penalty accumulation, no grace periods.
 - **Pico over USB** — no OS, no SD card, deterministic, WDT for self-recovery.
 - **systemd over Docker** — USB serial, V4L2, two HDMI outputs; Docker gives opacity with no isolation benefit.
-- **Local-first cloud backup** — SQLite is source of truth; outbox drains when network exists.
+- **Local-first durability** — SQLite is source of truth. Cloud sync removed (ADR 0008); snapshots and CSV export are the whole backup story.
 - **Three detection modes + master mode** — `auto` / `assisted` / `manual` plus full manual control for the gamemaster.

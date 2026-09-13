@@ -17,5 +17,5 @@ sinks:
 
   cloud:
     enabled: false
-    # Piggybacks the §8 outbox: metric summaries are included in heartbeat pushes.
+    # Disabled: cloud sync was removed (ADR 0008). No push target exists.
     # Enable once the cloud endpoint is live and trusted.

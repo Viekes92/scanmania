@@ -33,7 +33,7 @@ pytest tests/ -v
 ```
 
 Green means the pure-logic core is covered: every FSM transition (including false starts,
-out-of-order checkpoints, all detection modes), outbox idempotency, scoring, stopwatch and
+out-of-order checkpoints, all detection modes), scoring, stopwatch and
 the reconciler. It does **not** mean the I/O layers are covered — `vision/`, `web/`,
 `inputs/`, `iobackend/modbus.py`, `config/loader.py` and `persist/db.py` have no tests, and
 the fakes are handed to the runner as inert stubs rather than driven through their own
@@ -79,7 +79,6 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
 
 - **Baseline frozen during a run.** Correct. Adapting mid-run slowly accepts a broken beam as normal. Rolling EMA only runs in `ATTRACT`.
 - **`monotonic_ns()` everywhere, never wall clock.** Correct. Wall clock can jump (NTP, DST). `events.ts_wall` stores wall time for human readability only; nothing computes durations from it.
-- **Outbox rows never dropped, even on repeated 4xx.** Correct. A misconfigured endpoint must not silently lose data. Errors surface on the admin portal; the row retries forever.
 - **FSM returns side effects as data, doesn't execute them.** Correct. This is what makes `test_fsm.py` fast and deterministic without any mocks.
 - **Count-in uses `segment_1`, not `all_on`.** Correct. The baseline is captured against exactly the preset that will be lit at GO. Flashing `all_on` would give wrong references for beams not in play.
 - **`write_coils` writes the full 16-channel board every time.** Correct. One atomic transaction is what makes the maze snap rather than morph. Never loop single-coil writes.

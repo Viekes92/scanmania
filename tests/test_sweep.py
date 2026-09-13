@@ -284,3 +284,60 @@ def test_ambient_threshold_rejects_a_noisy_scene():
 
 def test_a_dark_scene_passes_the_ambient_threshold():
     assert len(sweep.find_dots(np.zeros((240, 320, 3), np.uint8))) <= sweep._MAX_AMBIENT_BLOBS
+
+
+# ---------------------------------------------------------------------------
+# Web control — the sweep waits to be started, and can be stopped
+# ---------------------------------------------------------------------------
+
+def test_a_run_must_be_requested_before_it_starts():
+    ui = sweep._UI()
+    assert ui.take_start() is None, "ran without being asked to"
+    assert ui.request_start({"channels": "", "mazes": "maze_1", "no_write": True})
+    assert ui.take_start()["mazes"] == "maze_1"
+
+
+def test_a_second_start_is_refused_while_busy():
+    """Two concurrent sweeps would fight over the relays."""
+    ui = sweep._UI()
+    ui.request_start({"channels": "", "mazes": "maze_1", "no_write": True})
+    ui.take_start()
+    assert ui.request_start({"channels": "", "mazes": "maze_2", "no_write": True}) is False
+    ui.finished()
+    assert ui.request_start({"channels": "", "mazes": "maze_2", "no_write": True}) is True
+
+
+def test_abort_raises_inside_the_sweep():
+    """
+    Cooperative: the sweep calls check_abort() between channels so it unwinds
+    through its own finally and leaves the maze dark.
+    """
+    ui = sweep._UI()
+    ui.check_abort()                       # no-op when not aborting
+    ui.request_abort()
+    with pytest.raises(sweep.SweepAborted):
+        ui.check_abort()
+
+
+def test_finishing_clears_the_abort_flag():
+    ui = sweep._UI()
+    ui.request_start({"channels": "", "mazes": "maze_1", "no_write": True})
+    ui.take_start()
+    ui.request_abort()
+    ui.finished()
+    assert ui.aborting is False, "a stale abort would kill the next run instantly"
+
+
+def test_channel_selection_prefers_an_explicit_list(channels):
+    cfg = loader.load_all()
+    args = type("A", (), {"all_channels": False})()
+    picked = sweep._select_channels(cfg, args, "11,12", "maze_1")
+    assert sorted(b.id for b in picked) == ["11", "12"]
+
+
+def test_channel_selection_falls_back_to_the_chosen_mazes():
+    cfg = loader.load_all()
+    args = type("A", (), {"all_channels": False})()
+    picked = sweep._select_channels(cfg, args, "", "maze_1")
+    assert {b.id for b in picked} == set(cfg.watchlists["maze_1"])
+    assert len(picked) < len(cfg.beams.beams), "should skip channels maze_1 does not light"

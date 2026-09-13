@@ -1035,9 +1035,16 @@ only the dark floor catches it.
 without switching lasers on. Treat every invocation as "the maze is about to
 light up".
 
-### Watching it run
+### Running it
 
-`tools/sweep.py` serves a live page on **:8090** — progress, ambient reading,
+`tools/sweep.py` does not sweep on launch. It connects the cameras and relay
+boards, then waits. You choose channels and mazes on the page and press START,
+so you can leave it running, walk to the container, kill the house lights and
+start the run from a phone. ABORT stops mid-run and leaves the maze dark.
+
+`--now` sweeps immediately and exits, for scripting.
+
+The page on **:8090** — progress, ambient reading,
 dots found per channel, dot counts per maze against expected, and a preview per
 camera with the detected dots circled. Open it beside the admin panel.
 

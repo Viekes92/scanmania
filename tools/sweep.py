@@ -8,12 +8,19 @@ Outputs: a calibrated config/beams.json (dots, per-dot camera, baseline, dark_fl
 Invariant: drives relays only through PresetResolver (invariant 4), never raw
            write_coils. Never overwrites a good beams.json with a failed run.
 
-Stop the game service first. ReconcileLoop re-asserts desired coil state every
-500 ms and would re-light channels mid-step, corrupting the labelling silently:
+Stop the game service first — kiosk too, or its Wants= drags the game back up
+and ReconcileLoop re-lights channels mid-step, corrupting the labelling with no
+visible symptom:
 
-    systemctl stop scanmania      # on the NUC
-    python3 tools/sweep.py        # then this
-    systemctl start scanmania
+    systemctl stop scanmania-kiosk scanmania
+    .venv/bin/python tools/sweep.py         # then open :8090 and press START
+    systemctl start scanmania scanmania-kiosk
+
+The tool does NOT sweep on launch. It connects the cameras and boards, then
+waits: you pick channels and mazes on the page and press START. That means you
+can have it running, walk to the container, kill the house lights, and start the
+run from a phone. --now restores the old sweep-immediately-and-exit behaviour
+for scripting.
 
 Two passes, because they answer different questions.
 
@@ -54,6 +61,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config.loader as loader
+from iobackend.modbus import ModbusIOBackend
+from iobackend.presets import PresetResolver
 from vision.camera import CameraStream
 from vision.detect import sample_circle
 
@@ -62,6 +71,10 @@ log = logging.getLogger("sweep")
 
 class AmbientTooBright(RuntimeError):
     """Raised when the room is lit and the cameras cannot see laser dots."""
+
+
+class SweepAborted(RuntimeError):
+    """Raised when the operator stops a run from the web panel."""
 
 # Detection parameters for FINDING dots. Deliberately not the game's sampler:
 # that measures a known ROI, this locates unknown ones. The recipe is
@@ -101,10 +114,52 @@ class _UI:
         }
         self._frames: dict[str, bytes] = {}
         self._httpd = None
+        # Set by the browser, consumed by the run loop. The HTTP handler runs on
+        # its own thread, so everything crossing that boundary takes the lock.
+        self._pending_start: dict | None = None
+        self._abort = False
+        self._busy = False
 
     def set(self, **kw) -> None:
         with self._lock:
             self._state.update(kw)
+
+    # -- control, driven from the page --------------------------------------
+
+    def request_start(self, params: dict) -> bool:
+        """Queue a run. False if one is already going."""
+        with self._lock:
+            if self._busy:
+                return False
+            self._pending_start = params
+            self._abort = False
+            return True
+
+    def take_start(self) -> dict | None:
+        with self._lock:
+            p, self._pending_start = self._pending_start, None
+            if p is not None:
+                self._busy = True
+            return p
+
+    def finished(self) -> None:
+        with self._lock:
+            self._busy = False
+            self._abort = False
+
+    def request_abort(self) -> None:
+        with self._lock:
+            self._abort = True
+
+    @property
+    def aborting(self) -> bool:
+        with self._lock:
+            return self._abort
+
+    def check_abort(self) -> None:
+        """Raise inside the sweep so it unwinds through its own finally."""
+        if self.aborting:
+            raise SweepAborted("aborted from the web panel")
 
     def channel_done(self, cid: str, dots: list, maze: str | None = None) -> None:
         with self._lock:
@@ -138,7 +193,10 @@ class _UI:
 
     def snapshot(self) -> dict:
         with self._lock:
-            return json.loads(json.dumps(self._state))
+            st = json.loads(json.dumps(self._state))
+            st["busy"] = self._busy
+            st["aborting"] = self._abort
+            return st
 
     def frame(self, cid: str) -> bytes | None:
         with self._lock:
@@ -164,6 +222,26 @@ class _UI:
                         self._send(200, "image/jpeg", buf)
                 else:
                     self._send(200, "text/html; charset=utf-8", _PAGE.encode())
+
+            def do_POST(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                try:
+                    body = json.loads(self.rfile.read(n) or b"{}")
+                except Exception:
+                    body = {}
+                if self.path.startswith("/start"):
+                    ok = ui.request_start({
+                        "channels": (body.get("channels") or "").strip(),
+                        "mazes": body.get("mazes") or "maze_1",
+                        "no_write": bool(body.get("no_write", True)),
+                    })
+                    self._send(200, "application/json",
+                               json.dumps({"ok": ok}).encode())
+                elif self.path.startswith("/abort"):
+                    ui.request_abort()
+                    self._send(200, "application/json", b'{"ok":true}')
+                else:
+                    self._send(404, "text/plain", b"no")
 
             def _send(self, code, ctype, body):
                 self.send_response(code)
@@ -208,6 +286,26 @@ _PAGE = """<!doctype html><meta charset=utf-8><title>ScanMania calibration</titl
  li{margin:3px 0 3px 16px}
 </style>
 <h1>SCANMANIA // CALIBRATION</h1>
+<div class=card style=margin-bottom:16px>
+  <div class=t>Run</div>
+  <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+    <label>channels <span class=muted>(blank = all)</span><br>
+      <input id=chans placeholder="11,12,13" style="background:#0d1525;border:1px solid
+        var(--border);color:var(--text);padding:7px;border-radius:4px;font-family:inherit"></label>
+    <div>mazes<br>
+      <label><input type=checkbox class=mz value=maze_1 checked> maze_1</label>
+      <label><input type=checkbox class=mz value=maze_2 checked> maze_2</label>
+      <label><input type=checkbox class=mz value=maze_3 checked> maze_3</label></div>
+    <label><input type=checkbox id=nowrite checked> don't write beams.json</label>
+    <button id=go style="background:var(--accent);color:#000;border:0;padding:11px 26px;
+      border-radius:6px;font:700 14px 'Courier New',monospace;letter-spacing:2px;
+      cursor:pointer">START</button>
+    <button id=stop style="background:transparent;color:var(--err);border:1px solid
+      var(--err);padding:11px 20px;border-radius:6px;font:700 13px 'Courier New',monospace;
+      letter-spacing:2px;cursor:pointer;display:none">ABORT</button>
+  </div>
+  <div class=warn style=margin-top:10px>Lasers switch on. House lights off, container empty.</div>
+</div>
 <div class=row>
   <div class=card>
     <div class=t>Progress</div>
@@ -251,7 +349,9 @@ setInterval(()=>cams.forEach(c=>{
 }),1200);
 async function tick(){
   let s; try{ s=await (await fetch('/status')).json(); }catch(e){ return; }
-  phase.textContent=s.finished?'DONE':s.phase;
+  phase.textContent=s.aborting?'ABORTING':(s.busy?s.phase:(s.finished?'DONE':'IDLE'));
+  go.style.display=s.busy?'none':'';
+  stop.style.display=s.busy?'':'none';
   chan.textContent=s.channel?('channel '+s.channel):'';
   const pct=s.total?Math.round(100*s.done/s.total):0;
   bar.style.width=pct+'%';
@@ -282,6 +382,16 @@ async function tick(){
   issues.innerHTML=all.map(([c,t])=>`<li class=${c}>${t}</li>`).join('');
 }
 const ch_=document.getElementById('ch');
+go.onclick=async()=>{
+  const mazes=[...document.querySelectorAll('.mz:checked')].map(c=>c.value).join(',');
+  if(!mazes){alert('pick at least one maze');return;}
+  go.disabled=true;
+  const r=await (await fetch('/start',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({channels:chans.value,mazes:mazes,no_write:nowrite.checked})})).json();
+  if(!r.ok) alert('a run is already going');
+  setTimeout(()=>go.disabled=false,1500);
+};
+stop.onclick=()=>fetch('/abort',{method:'POST'});
 setInterval(tick,600); tick();
 </script>
 """
@@ -506,6 +616,7 @@ async def run_sweep(cfg, cams: Cameras, resolver, io, channels: list, args) -> d
     dark_dots = {cid: find_dots(f) for cid, f in dark.items()}
 
     for i, beam in enumerate(channels, 1):
+        UI.check_abort()
         g = gmap[beam.id]
         if g is None:
             log.error("channel %s: board '%s' not in hardware.yaml — skipped",
@@ -536,6 +647,7 @@ async def run_sweep(cfg, cams: Cameras, resolver, io, channels: list, args) -> d
     # the shapes light 46-53% of the floor each, so the same dot reads
     # differently in each. One baseline cannot serve all three.
     for maze in mazes:
+        UI.check_abort()
         lit_ids = cfg.watchlists[maze]
         lit_globals = [gmap[b] for b in lit_ids if gmap.get(b) is not None]
         log.info("MEASURE pass '%s': %d channels lit (%d dots expected)",
@@ -553,6 +665,7 @@ async def run_sweep(cfg, cams: Cameras, resolver, io, channels: list, args) -> d
         UI.set(maze_counts=results["_maze_counts"])
 
         for j, bid in enumerate(sorted(lit_ids), 1):
+            UI.check_abort()
             rec = results.get(bid)
             if not rec or not rec["dots"]:
                 continue
@@ -719,92 +832,125 @@ def write_beams(path: Path, results: dict, channels: list, cams: Cameras,
 
 # ---------------------------------------------------------------------------
 
-async def amain(args) -> int:
-    cfg = loader.load_all()
-    if args.ui_port:
-        UI.serve(args.ui_port)
-
-    # Only channels some maze actually lights. The rest are wired but unused,
-    # so they have no lighting condition to measure and nothing to calibrate.
+def _select_channels(cfg, args, channels_csv: str, mazes_csv: str) -> list:
+    """Channels for one run: an explicit list, else everything those mazes light."""
+    if channels_csv:
+        want = {c.strip() for c in channels_csv.split(",") if c.strip()}
+        return [b for b in cfg.beams.beams if b.id in want]
     used: set[str] = set()
-    for m in args.mazes.split(","):
+    for m in mazes_csv.split(","):
         used |= set(cfg.watchlists.get(m, ()))
+    if args.all_channels:
+        return list(cfg.beams.beams)
+    return [b for b in cfg.beams.beams if b.id in used]
 
-    channels = [b for b in cfg.beams.beams
-                if not args.channels or b.id in set(args.channels.split(","))]
-    if not args.channels and not args.all_channels:
-        skipped = [b.id for b in channels if b.id not in used]
-        channels = [b for b in channels if b.id in used]
-        if skipped:
-            log.info("skipping %d channel(s) no maze lights: %s "
-                     "(--all-channels to include them)",
-                     len(skipped), ", ".join(sorted(skipped)))
+
+async def one_run(cfg, cams, resolver, io, args, params: dict) -> None:
+    """A single sweep, driven by the parameters the page sent."""
+    run_args = argparse.Namespace(**vars(args))
+    run_args.mazes = params["mazes"]
+    run_args.channels = params["channels"]
+    channels = _select_channels(cfg, run_args, params["channels"], params["mazes"])
     if not channels:
-        log.error("no channels selected")
-        return 1
+        UI.set(phase="idle", errors=["no channels selected"], finished=True)
+        return
 
-    from iobackend.modbus import ModbusIOBackend
-    from iobackend.presets import PresetResolver
-    io = ModbusIOBackend(cfg.hardware)
-
-    # Preflight the boards on connect_all()'s return value, not board.status —
-    # status is initialised to "OK" and only becomes DISCONNECTED after a failed
-    # transaction, so checking it before any traffic always passes. Without this
-    # the sweep grinds through a Modbus timeout per write, 45 times, and the
-    # failure only surfaces as an empty result at the end.
-    connected = await io.connect_all()
-    dead = sorted(bid for bid, ok in connected.items() if not ok)
-    if dead:
-        log.error("relay board(s) unreachable: %s", ", ".join(dead))
-        log.error("power the boards and check config/hardware.yaml, then retry")
-        return 2
-
-    resolver = PresetResolver(cfg.mazes, cfg.hardware)
-
-    log.warning("This drives the relay boards. Lasers WILL switch on. "
-                "House lights must be off, and nobody should be in the container.")
-
-    cams = Cameras(cfg)
-    await cams.start()
-    sizes = {cid: (f.shape[1], f.shape[0])
-             for cid, f in (await cams.median_capture(1)).items()}
-    log.info("camera frame sizes: %s", sizes)
-
+    UI.set(phase="starting", errors=[], warnings=[], channels={}, maze_counts={},
+           finished=False, done=0, total=len(channels))
+    log.info("run: %d channel(s), mazes=%s, write=%s",
+             len(channels), params["mazes"], not params["no_write"])
     try:
-        results = await run_sweep(cfg, cams, resolver, io, channels, args)
+        results = await run_sweep(cfg, cams, resolver, io, channels, run_args)
     except AmbientTooBright as exc:
         log.error("%s", exc)
-        return 3
+        UI.set(phase="blocked", errors=[str(exc)], finished=True)
+        return
+    except SweepAborted as exc:
+        log.warning("%s", exc)
+        UI.set(phase="aborted", warnings=["run aborted — nothing written"],
+               finished=True)
+        return
     finally:
+        # Always leave the maze dark, however the run ended.
         await light_only(resolver, io, [])
-        await cams.stop()
 
     errors, warnings = validate(cfg, results, channels)
-    UI.set(errors=errors, warnings=warnings, finished=True, phase="done")
     for w in warnings:
         log.warning("  %s", w)
     for e in errors:
         log.error("  %s", e)
+    UI.set(errors=errors, warnings=warnings, finished=True, phase="done")
 
+    if params["no_write"]:
+        log.info("not writing (write is off for this run)")
+        return
     if errors and not args.force:
-        log.error("NOT writing beams.json — %d error(s). Use --force to override.",
-                  len(errors))
-        return 1
-    if args.no_write:
-        log.info("--no-write: not writing. %d channel(s) would have been updated.",
-                 len([c for c in channels if results.get(c.id)]))
-        return 0
+        log.error("NOT writing beams.json — %d error(s)", len(errors))
+        UI.set(phase="done — not written")
+        return
 
     path = Path(loader.CONFIG_DIR) / "beams.json"
+    sizes = {cid: (f.shape[1], f.shape[0])
+             for cid, f in (await cams.median_capture(1)).items()}
     backup = write_beams(path, results, channels, cams, sizes)
     log.info("wrote %s (backup: %s)", path, backup.name)
     try:
         loader.load_all()
-        log.info("reloaded successfully — config is valid")
+        UI.set(phase=f"written, backup {backup.name}")
     except Exception as exc:
         shutil.copy2(backup, path)
         log.error("written config does not load (%s) — restored the backup", exc)
-        return 1
+        UI.set(phase="write reverted", errors=[f"config would not load: {exc}"])
+
+
+async def amain(args) -> int:
+    cfg = loader.load_all()
+    UI.serve(args.ui_port)
+
+    log.warning("This drives the relay boards. Lasers WILL switch on. "
+                "House lights off, and nobody in the container.")
+
+    io = ModbusIOBackend(cfg.hardware)
+    connected = await io.connect_all()
+    dead = sorted(bid for bid, ok in connected.items() if not ok)
+    if dead:
+        log.error("relay board(s) unreachable: %s", ", ".join(dead))
+        return 2
+    resolver = PresetResolver(cfg.mazes, cfg.hardware)
+
+    cams = Cameras(cfg)
+    await cams.start()
+    await light_only(resolver, io, [])
+    UI.set(phase="idle")
+
+    # One-shot mode keeps the old behaviour for scripting; otherwise this is a
+    # small service: cameras and boards stay connected (the RTSP handshake costs
+    # ~10 s) and each run is triggered from the page. That matters when tuning —
+    # you can be at the maze with the lights off and start a run from a phone.
+    if args.now:
+        await one_run(cfg, cams, resolver, io, args,
+                      {"channels": args.channels, "mazes": args.mazes,
+                       "no_write": args.no_write})
+        await cams.stop()
+        return 0
+
+    log.info("ready — open http://<this-host>:%d and press START", args.ui_port)
+    try:
+        while True:
+            params = UI.take_start()
+            if params is None:
+                await asyncio.sleep(0.25)
+                continue
+            try:
+                await one_run(cfg, cams, resolver, io, args, params)
+            finally:
+                UI.finished()
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
+    finally:
+        await light_only(resolver, io, [])
+        await cams.stop()
+        UI.stop()
     return 0
 
 
@@ -832,6 +978,9 @@ def main() -> int:
                     help="sweep all 45 channels, not just those a maze lights")
     ap.add_argument("--write-refs", action="store_true",
                     help="save an all_on reference frame per camera to ref/")
+    ap.add_argument("--now", action="store_true",
+                    help="sweep immediately and exit, instead of waiting for "
+                         "START on the web page")
     ap.add_argument("--log-level", default="INFO",
                     choices=["DEBUG", "INFO", "WARNING"])
     args = ap.parse_args()

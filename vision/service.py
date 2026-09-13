@@ -96,6 +96,9 @@ class VisionService:
 
         # Stall is tracked per camera. Any stalled camera suppresses detection.
         self._stalled_cameras: set[str] = set()
+        # Cumulative per camera, so the admin page can show a flapping
+        # feed that currently happens to be up.
+        self._stall_counts: dict[str, int] = {}
         self._stall_threshold_ms = config.beams.detection.stall_threshold_ms
         self._last_emitted_stall: bool | None = None
 
@@ -138,6 +141,7 @@ class VisionService:
     def _mark_stall(self, camera_id: str) -> None:
         if camera_id not in self._stalled_cameras:
             self._stalled_cameras.add(camera_id)
+            self._stall_counts[camera_id] = self._stall_counts.get(camera_id, 0) + 1
             log.warning("Camera '%s' STALLED — suppressing detection", camera_id)
             self._metrics_emit("vision.stall", 1.0, {"camera_id": camera_id})
             self._sync_detector_stall()
@@ -282,15 +286,25 @@ class VisionService:
                   if s.last_frame_ns is not None]
         return max(values) if values else None
 
-    def camera_stats(self) -> dict[str, dict]:
-        return {
-            cid: {
-                "fps": round(s.fps, 1),
+    def camera_stats(self, camera_id: str | None = None):
+        """
+        Per-camera telemetry for the admin hardware page.
+
+        With a camera_id, returns that camera's dict — the shape
+        web/routes_admin.py expects. Without one, returns every camera keyed by
+        id, which is what the fakes and the tests use.
+        """
+        def one(cid: str) -> dict:
+            st = self._streams[cid]
+            return {
+                "fps": round(st.fps, 1),
                 "stalled": cid in self._stalled_cameras,
-                "last_frame_ns": s.last_frame_ns,
+                "stall_count": self._stall_counts.get(cid, 0),
+                "last_frame_ns": st.last_frame_ns,
             }
-            for cid, s in self._streams.items()
-        }
+        if camera_id is not None:
+            return one(camera_id) if camera_id in self._streams else {}
+        return {cid: one(cid) for cid in self._streams}
 
     def save_evidence(self, beam_id: str, run_id: str) -> str | None:
         """Save a thumbnail of the beam's ROI at the moment it broke."""

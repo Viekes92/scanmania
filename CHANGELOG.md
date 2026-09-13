@@ -7,6 +7,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **The four real cameras are wired in.** `config/hardware.yaml` had a single `cam_a`
+  pointing at a stale IP with the wrong password and a path served by a different
+  camera. Replaced with `cam_1`-`cam_4` on `.201`-`.204`, keyed by their MAC-derived
+  paths. `beams.json`'s `cameras` block still held `rtsp://172.16.0.30:554/substream`.
+
+- **`CameraStream` no longer depends on how OpenCV was built.** `cv2.VideoCapture` can
+  only open RTSP when the wheel bundles FFmpeg, and that differs per machine: the Mac
+  wheel reports `FFMPEG: NO` and fails in 0.0 s with `isOpened()` False — which looks
+  exactly like a network fault. It now falls back to an ffmpeg subprocess, the approach
+  `dot_calib.py` and `camshow.py` already proved. Either backend works, and neither
+  machine needs to care which it gets.
+
+### Fixed
+
+- **Nothing ever started the vision loop.** `GameRunner.run()` started
+  `inputs.run()` but never `vision.run()`, so the backend was constructed, handed to the
+  runner and left idle — `_vision_listener` waited on a queue nobody filled. No camera
+  was opened in the real service at all.
+
+- **`camera_stats()` did not match its caller.** `web/routes_admin.py` calls
+  `camera_stats(cam_id)` and reads `stall_count`; the implementation took no argument and
+  returned `stalled`. The admin Hardware page showed `fps: null` for every camera. Now
+  serves both shapes and tracks a cumulative stall count, so a feed that flaps but
+  happens to be up right now is still visible as a problem.
+
 ### Removed
 
 - **Cloud sync, entirely.** See [ADR 0008](docs/adr/0008-remove-cloud-sync.md). It was

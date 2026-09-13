@@ -2,9 +2,21 @@
   "_comment": "Source of truth for beam ROIs and detection thresholds.",
   "_addressing": "ID=row(1-9)+strip(1-5). 1=H-top-left,2=V-left,3=H-center,4=V-right,5=H-top-right.",
   "cameras": {
-    "cam_a": {
-      "url": "rtsp://172.16.0.30:554/substream",
-      "reference_frame": "ref/cam_a.png"
+    "cam_1": {
+      "url": "rtsp://scanmania:P%40ssw0rd123_@172.16.0.201:8554/9c756e2e94bb-0_m",
+      "reference_frame": "ref/cam_1.png"
+    },
+    "cam_2": {
+      "url": "rtsp://scanmania:P%40ssw0rd123_@172.16.0.202:8554/9c756e2e9aad-0_m",
+      "reference_frame": "ref/cam_2.png"
+    },
+    "cam_3": {
+      "url": "rtsp://scanmania:P%40ssw0rd123_@172.16.0.203:8554/9c756e2e91c0-0_m",
+      "reference_frame": "ref/cam_3.png"
+    },
+    "cam_4": {
+      "url": "rtsp://scanmania:P%40ssw0rd123_@172.16.0.204:8554/9c756e2e9121-0_m",
+      "reference_frame": "ref/cam_4.png"
     }
   },
   "beams": [
@@ -16,7 +28,7 @@
       "segment": 1,
       "relay_channel": 1,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -37,7 +49,7 @@
       "segment": 1,
       "relay_channel": 2,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -58,7 +70,7 @@
       "segment": 1,
       "relay_channel": 3,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -79,7 +91,7 @@
       "segment": 1,
       "relay_channel": 4,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -100,7 +112,7 @@
       "segment": 1,
       "relay_channel": 5,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -121,7 +133,7 @@
       "segment": 1,
       "relay_channel": 6,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -142,7 +154,7 @@
       "segment": 1,
       "relay_channel": 7,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -163,7 +175,7 @@
       "segment": 1,
       "relay_channel": 8,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -184,7 +196,7 @@
       "segment": 1,
       "relay_channel": 9,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -205,7 +217,7 @@
       "segment": 1,
       "relay_channel": 10,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -226,7 +238,7 @@
       "segment": 1,
       "relay_channel": 11,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -247,7 +259,7 @@
       "segment": 1,
       "relay_channel": 12,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -268,7 +280,7 @@
       "segment": 1,
       "relay_channel": 13,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -289,7 +301,7 @@
       "segment": 1,
       "relay_channel": 14,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -310,7 +322,7 @@
       "segment": 1,
       "relay_channel": 15,
       "board_id": "SM-NODE-1",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -331,7 +343,7 @@
       "segment": 2,
       "relay_channel": 1,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -352,7 +364,7 @@
       "segment": 2,
       "relay_channel": 2,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -373,7 +385,7 @@
       "segment": 2,
       "relay_channel": 3,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -394,7 +406,7 @@
       "segment": 2,
       "relay_channel": 4,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -415,7 +427,7 @@
       "segment": 2,
       "relay_channel": 5,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -436,7 +448,7 @@
       "segment": 2,
       "relay_channel": 6,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -457,7 +469,7 @@
       "segment": 2,
       "relay_channel": 7,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -478,7 +490,7 @@
       "segment": 2,
       "relay_channel": 8,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -499,7 +511,7 @@
       "segment": 2,
       "relay_channel": 9,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -520,7 +532,7 @@
       "segment": 2,
       "relay_channel": 10,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -541,7 +553,7 @@
       "segment": 2,
       "relay_channel": 11,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -562,7 +574,7 @@
       "segment": 2,
       "relay_channel": 12,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -583,7 +595,7 @@
       "segment": 2,
       "relay_channel": 13,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -604,7 +616,7 @@
       "segment": 2,
       "relay_channel": 14,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -625,7 +637,7 @@
       "segment": 2,
       "relay_channel": 15,
       "board_id": "SM-NODE-2",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -646,7 +658,7 @@
       "segment": 3,
       "relay_channel": 1,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -667,7 +679,7 @@
       "segment": 3,
       "relay_channel": 2,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -688,7 +700,7 @@
       "segment": 3,
       "relay_channel": 3,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -709,7 +721,7 @@
       "segment": 3,
       "relay_channel": 4,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -730,7 +742,7 @@
       "segment": 3,
       "relay_channel": 5,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -751,7 +763,7 @@
       "segment": 3,
       "relay_channel": 6,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -772,7 +784,7 @@
       "segment": 3,
       "relay_channel": 7,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -793,7 +805,7 @@
       "segment": 3,
       "relay_channel": 8,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -814,7 +826,7 @@
       "segment": 3,
       "relay_channel": 9,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -835,7 +847,7 @@
       "segment": 3,
       "relay_channel": 10,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -856,7 +868,7 @@
       "segment": 3,
       "relay_channel": 11,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -877,7 +889,7 @@
       "segment": 3,
       "relay_channel": 12,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -898,7 +910,7 @@
       "segment": 3,
       "relay_channel": 13,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -919,7 +931,7 @@
       "segment": 3,
       "relay_channel": 14,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -940,7 +952,7 @@
       "segment": 3,
       "relay_channel": 15,
       "board_id": "SM-NODE-3",
-      "camera": "cam_a",
+      "camera": "cam_1",
       "roi": {
         "cx": 0,
         "cy": 0,
@@ -961,5 +973,6 @@
     "global_break_rate_limit": 6,
     "flap_count_threshold": 5,
     "flap_window_s": 60
-  }
+  },
+  "_calibration": "UNCALIBRATED. Every entry has camera=cam_1, one placeholder roi at 0,0 and baseline 0. The sweep assigns each channel to the camera that sees it and replaces `roi` with a `dots` array of 5 entries \u2014 one relay channel drives 5 colinear lasers. Record capture_w/capture_h alongside: ROIs are frame pixels and a substream resolution change invalidates them."
 }

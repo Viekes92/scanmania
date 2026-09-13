@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import shutil
+import subprocess
 import time
 from typing import Callable
 
@@ -26,6 +29,72 @@ log = logging.getLogger(__name__)
 _STALL_THRESHOLD_MS = 300   # frame gap above this → STALLED
 _DRIFT_THRESHOLD_PX = 2.0  # phase correlation shift above this → CAMERA_MOVED
 _FRAME_LOOP_SLEEP_S = 0.001  # asyncio yield between blocking reads
+
+
+# ---------------------------------------------------------------------------
+# Frame source selection
+#
+# cv2.VideoCapture can only open an RTSP URL when the OpenCV wheel was built
+# with FFmpeg. That is a build-time coin flip and it differs between the two
+# machines this runs on: the Mac wheel reports FFMPEG: NO and fails in 0.0 s
+# with isOpened() False, which looks exactly like a network fault. The Linux
+# wheel on the NUC bundles FFmpeg, but the NUC has no ffmpeg binary installed.
+#
+# Supporting both covers both machines, and neither needs to know which.
+# ---------------------------------------------------------------------------
+
+def _cv2_has_ffmpeg() -> bool:
+    m = re.search(r"FFMPEG:\s*(\w+)", cv2.getBuildInformation())
+    return bool(m) and m.group(1).upper() == "YES"
+
+
+class _FfmpegReader:
+    """
+    Decode RTSP through an ffmpeg subprocess into raw BGR frames.
+
+    Same output contract as cv2.VideoCapture: read() -> (ok, frame). Used when
+    the OpenCV build cannot open RTSP itself.
+    """
+
+    def __init__(self, url: str) -> None:
+        self._w, self._h = self._probe_size(url)
+        self._frame_bytes = self._w * self._h * 3
+        self._proc = subprocess.Popen(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error",
+             "-rtsp_transport", "tcp",
+             "-fflags", "nobuffer", "-flags", "low_delay", "-avioflags", "direct",
+             "-i", url, "-an", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+
+    @staticmethod
+    def _probe_size(url: str) -> tuple[int, int]:
+        """The raw pipe carries no header, so ffprobe has to supply W/H."""
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", url],
+            capture_output=True, text=True, timeout=15,
+        )
+        if out.returncode != 0 or "x" not in out.stdout:
+            raise RuntimeError(f"ffprobe could not read '{url}': {out.stderr.strip()}")
+        w, h = out.stdout.strip().split("x")[:2]
+        return int(w), int(h)
+
+    def isOpened(self) -> bool:          # noqa: N802 - mirrors the cv2 API
+        return self._proc.poll() is None
+
+    def read(self):
+        buf = self._proc.stdout.read(self._frame_bytes)
+        if not buf or len(buf) < self._frame_bytes:
+            return False, None
+        return True, np.frombuffer(buf, np.uint8).reshape(self._h, self._w, 3)
+
+    def release(self) -> None:
+        try:
+            self._proc.kill()
+            self._proc.wait(timeout=2)
+        except Exception:
+            pass
 
 
 class CameraStream:
@@ -80,15 +149,27 @@ class CameraStream:
                 self._cap = None
             await asyncio.sleep(2.0)
 
+    def _open_capture(self):
+        """Open the stream with whichever backend this machine can actually use."""
+        if _cv2_has_ffmpeg():
+            return cv2.VideoCapture(self._config.url)
+        if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+            raise RuntimeError(
+                "this OpenCV build has FFMPEG: NO and no ffmpeg/ffprobe binary was "
+                "found, so there is no way to open an RTSP stream. Install ffmpeg, "
+                "or install an OpenCV wheel built with FFmpeg."
+            )
+        log.info("CameraStream '%s': cv2 has no FFmpeg — using an ffmpeg subprocess",
+                 self._config.id)
+        return _FfmpegReader(self._config.url)
+
     async def _open_and_read(self) -> None:
         loop = asyncio.get_running_loop()
         log.info("CameraStream '%s': opening %s", self._config.id, self._config.url)
 
-        cap = await loop.run_in_executor(
-            None, lambda: cv2.VideoCapture(self._config.url)
-        )
+        cap = await loop.run_in_executor(None, self._open_capture)
         if not cap.isOpened():
-            raise RuntimeError(f"cv2.VideoCapture failed to open '{self._config.url}'")
+            raise RuntimeError(f"failed to open '{self._config.url}'")
 
         self._cap = cap
         self._stalled = False

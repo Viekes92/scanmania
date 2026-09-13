@@ -29,11 +29,37 @@ relay_boards:
     timeout_ms: 200
     note: "segment 3 — rows 7–9 (15 strips, ch 16 spare)"
 
+# Four ceiling-facing Ajax cameras, RTSP on port 8554, h264 @ 25 fps.
+#
+# The trailing MAC-derived path is the STABLE identity of a camera; the IP is
+# not — these are DHCP and have moved between addresses mid-session. If a stream
+# stops opening, run `python3 tools/camshow.py 1 --probe` to re-derive which
+# address serves which path, and correct the IPs here.
+#
+# The '@' in the password must stay percent-encoded as %40, or the URL splits at
+# the wrong place and the host parses as "ssw0rd123_".
+#
+# Substream resolution is changeable from the camera UI and has been seen at
+# both 1024x576 and 1920x1080. ROIs in beams.json are frame pixels, so a
+# resolution change silently invalidates every one of them — capture_w/capture_h
+# on each beam record what they were measured at.
 cameras:
-  - id: cam_a
-    url: "rtsp://scanmania:Passw0rd_@172.16.0.201:8554/9c756e2e9121-0_m"
-    reference_frame: "ref/cam_a.png"
-    note: "ceiling-facing, covers full grid"
+  - id: cam_1
+    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.201:8554/9c756e2e94bb-0_m"
+    reference_frame: "ref/cam_1.png"
+    note: "ceiling-facing"
+  - id: cam_2
+    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.202:8554/9c756e2e9aad-0_m"
+    reference_frame: "ref/cam_2.png"
+    note: "ceiling-facing"
+  - id: cam_3
+    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.203:8554/9c756e2e91c0-0_m"
+    reference_frame: "ref/cam_3.png"
+    note: "ceiling-facing"
+  - id: cam_4
+    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.204:8554/9c756e2e9121-0_m"
+    reference_frame: "ref/cam_4.png"
+    note: "ceiling-facing"
 
 network:
   subnet: "172.16.0.0/24"

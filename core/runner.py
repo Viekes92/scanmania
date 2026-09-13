@@ -154,6 +154,12 @@ class GameRunner:
         if hasattr(self.inputs, "run"):
             asyncio.create_task(self.inputs.run(), name="inputs_poll")
 
+        # Same for vision. Without this nothing ever opened a camera: the
+        # backend was constructed, handed to the runner, and then left idle,
+        # so _vision_listener sat on a queue no one was filling.
+        if hasattr(self.vision, "run"):
+            asyncio.create_task(self.vision.run(), name="vision_run")
+
         # Start background tasks.
         tasks = [
             asyncio.create_task(self._inputs_listener(), name="inputs_listener"),

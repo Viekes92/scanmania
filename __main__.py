@@ -187,7 +187,7 @@ def create_backends(args: argparse.Namespace, cfg):
         import core.metrics as _m
         backends["vision"] = VisionService(cfg, metrics_emit=_m.emit)
         log.info(
-            "Vision backend: VisionService (%d RTSP camera(s), MJPEG on :8081)",
+            "Vision backend: VisionService (%d RTSP camera(s))",
             len(cfg.hardware.cameras),
         )
 

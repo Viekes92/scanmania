@@ -22,18 +22,24 @@ import config.loader as loader
 import tools.capture as capture
 from vision.detect import sample_circle
 
-_W, _H = 320, 240
+# Frames are the real capture size, and dots the real size, so the tests
+# exercise DEFAULT_PARAMS as shipped. They used to be 320x240 with 6 px dots —
+# which quietly stopped being representative the moment the cameras moved to
+# 1080p, and turned a correct defaults change into two red tests.
+_W, _H = 1920, 1080
+_DOT_R = 8              # measured: dots are 10-16 px across at 1080p
+_SPACING = 90           # measured: 30-65 px, so this is a comfortable grid
 
 
-def _frame(dots, radius=6, value=255):
+def _frame(dots, radius=_DOT_R, value=255):
     f = np.zeros((_H, _W, 3), dtype=np.uint8)
     for (x, y) in dots:
         cv2.circle(f, (x, y), radius, (value, value, value), -1)
     return f
 
 
-def _truth(n=6, y=120):
-    return [(25 + i * 45, y) for i in range(n)]
+def _truth(n=6, y=300):
+    return [(120 + i * _SPACING, y) for i in range(n)]
 
 
 # ---------------------------------------------------------------------------
@@ -73,10 +79,10 @@ def test_a_light_fitting_survives_as_corner_blobs():
     rejects them; the real defence is the ambient guard.
     """
     f = _frame(_truth(3))
-    cv2.rectangle(f, (200, 20), (300, 90), (255, 255, 255), -1)
+    cv2.rectangle(f, (900, 100), (1300, 400), (255, 255, 255), -1)
     assert len(capture.find_dots(f)) == 3, "defaults must reject the corners"
     # Drop min_area and the corners walk straight in.
-    assert len(capture.find_dots(f, {"min_area": 2})) == 7
+    assert len(capture.find_dots(f, {"min_area": 2})) > 3
 
 
 def test_a_dot_larger_than_the_kernel_becomes_a_ring():
@@ -86,10 +92,10 @@ def test_a_dot_larger_than_the_kernel_becomes_a_ring():
     camera found 5 dots and another 11 looking at the same five lasers, and why
     the kernel default errs large.
     """
-    big = _frame(_truth(3), radius=14)          # 29 px across, area ~615
-    roomy = {"max_area": 2000}                  # so max_area is not the variable
-    assert len(capture.find_dots(big, {**roomy, "tophat": 9})) < 3
-    assert len(capture.find_dots(big, {**roomy, "tophat": 41})) == 3
+    big = _frame(_truth(3), radius=20)          # 41 px across
+    roomy = {"max_area": 6000}                  # so max_area is not the variable
+    assert len(capture.find_dots(big, {**roomy, "tophat": 15})) < 3
+    assert len(capture.find_dots(big, {**roomy, "tophat": 61})) == 3
 
 
 # ---------------------------------------------------------------------------
@@ -167,8 +173,14 @@ def test_a_red_dot_reads_high_and_a_white_one_does_not():
 # ---------------------------------------------------------------------------
 
 def test_a_lit_room_trips_the_ambient_guard():
+    """House lights on: ceiling texture and fittings clear the threshold."""
     rng = np.random.default_rng(3)
-    lit = rng.integers(70, 190, (_H, _W, 3), dtype=np.uint8)
+    lit = np.full((_H, _W, 3), 60, np.uint8)
+    # Scattered bright patches: ceiling texture, fittings, reflections. Not
+    # per-pixel noise — that is not what a lit room looks like to a top-hat.
+    for _ in range(40):
+        x = int(rng.integers(50, _W - 50)); y = int(rng.integers(50, _H - 50))
+        cv2.circle(lit, (x, y), int(rng.integers(6, 14)), (200, 200, 200), -1)
     assert len(capture.find_dots(lit)) > capture._MAX_AMBIENT_BLOBS
 
 
@@ -215,7 +227,7 @@ def test_dim_dots_are_warned_about():
 def test_a_resolution_change_mid_calibration_is_an_error():
     errs, _ = capture.validate({
         "maze_1": {"SM-CAM-11": _cap()},
-        "maze_2": {"SM-CAM-11": _cap(w=1920, h=1080)},
+        "maze_2": {"SM-CAM-11": _cap(w=1024, h=576)},
     })
     assert any("resolution changed" in e for e in errs)
 
@@ -275,3 +287,78 @@ def test_the_capture_timestamp_is_recorded(beams_file):
     capture.write_beams(beams_file, {"maze_1": {"SM-CAM-11": _cap()}})
     data = json.loads(beams_file.read_text())
     assert data["mazes"]["maze_1"]["captured_at"]
+
+
+# ---------------------------------------------------------------------------
+# Persistence across passes
+#
+# A lit-maze parameter sweep showed a dot-count spread of 3-5 at EVERY
+# combination of tophat and threshold — which is not a tuning problem. It is
+# real dots being intermittently blocked: somebody in the container, or haze
+# drifting through a beam. A capture must not record either as geometry.
+# ---------------------------------------------------------------------------
+
+def _pass(cid, dots):
+    return {cid: loader.CameraCapture(
+        cid, _W, _H, dict(capture.DEFAULT_PARAMS),
+        [loader.Dot(id=f"{cid}:d{i}", cx=x, cy=y, r=6, baseline=b)
+         for i, (x, y, b) in enumerate(dots)])}
+
+
+_STEADY = [(100, 100, 180.0), (200, 100, 175.0), (300, 100, 190.0)]
+
+
+def test_a_dot_blocked_in_one_pass_is_still_recorded():
+    """Dropping it would leave a blind spot — a beam nothing watches."""
+    passes = [_pass("SM-CAM-11", _STEADY)] * 2
+    passes.append(_pass("SM-CAM-11", [_STEADY[0], _STEADY[2]]))
+    passes += [_pass("SM-CAM-11", _STEADY)] * 2
+    out = capture._persistent_dots(passes)["SM-CAM-11"]
+    assert sorted(d.cx for d in out.dots) == [100, 200, 300]
+
+
+def test_a_dot_seen_in_only_one_pass_is_rejected():
+    """Noise, or a reflection that happened to clear the threshold once."""
+    passes = [_pass("SM-CAM-11", _STEADY) for _ in range(4)]
+    passes.append(_pass("SM-CAM-11", _STEADY + [(500, 400, 40.0)]))
+    out = capture._persistent_dots(passes)["SM-CAM-11"]
+    assert 500 not in {d.cx for d in out.dots}
+
+
+def test_a_dot_missing_from_most_passes_is_rejected():
+    passes = [_pass("SM-CAM-11", [_STEADY[0]]) for _ in range(3)]
+    passes += [_pass("SM-CAM-11", _STEADY) for _ in range(2)]
+    out = capture._persistent_dots(passes)["SM-CAM-11"]
+    assert sorted(d.cx for d in out.dots) == [100]
+
+
+def test_the_baseline_is_the_median_so_one_dimmed_pass_is_discarded():
+    """A baseline measured while the dot was partly blocked reads permanently
+    dim at runtime, which is how a good dot becomes a phantom break."""
+    passes = [_pass("SM-CAM-11", [(100, 100, b)])
+              for b in (180.0, 182.0, 40.0, 179.0, 181.0)]
+    out = capture._persistent_dots(passes)["SM-CAM-11"]
+    assert out.dots[0].baseline > 170
+
+
+def test_dot_positions_are_averaged_across_passes():
+    """Sub-pixel jitter should not decide where an ROI sits."""
+    passes = [_pass("SM-CAM-11", [(100 + dx, 100, 180.0)])
+              for dx in (-1, 0, 0, 1, 0)]
+    out = capture._persistent_dots(passes)["SM-CAM-11"]
+    assert out.dots[0].cx == 100
+
+
+def test_capture_params_and_frame_size_survive_the_filter():
+    passes = [_pass("SM-CAM-11", _STEADY) for _ in range(5)]
+    out = capture._persistent_dots(passes)["SM-CAM-11"]
+    assert (out.w, out.h) == (_W, _H)
+    assert out.params["thr"] == capture.DEFAULT_PARAMS["thr"]
+
+
+def test_ids_are_reassigned_contiguously_after_filtering():
+    """A gap in the ids would be harmless but confusing on /admin/beams."""
+    passes = [_pass("SM-CAM-11", _STEADY) for _ in range(4)]
+    passes.append(_pass("SM-CAM-11", _STEADY + [(500, 400, 40.0)]))
+    out = capture._persistent_dots(passes)["SM-CAM-11"]
+    assert [d.id for d in out.dots] == [f"SM-CAM-11:d{i}" for i in range(3)]

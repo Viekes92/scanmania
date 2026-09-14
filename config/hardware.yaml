@@ -30,7 +30,14 @@ relay_boards:
     note: "segment 3 — rows 7–9 (15 strips, ch 16 spare)"
 
 # Eight ceiling-facing Ajax cameras, RTSP on port 8554, h264 @ 25 fps,
-# substream 1024x576.
+# MAIN stream 1920x1080, VBR capped at 4096 kbps.
+#
+# The path suffix -0_m is the MAIN stream; -0_s is the sub. Main was configured
+# down to 1024x576, which put a laser dot at only 4-5 px radius — measurably the
+# cause of dots detecting intermittently, since the ones that flickered were
+# exactly the 4 px ones. Bitrate was raised with the resolution: a dot is a
+# small high-frequency feature and that is the first thing a starved h264
+# encoder throws away.
 #
 # Naming is SM-CAM-<side><n>: side 1 is the left row of the container, side 2
 # the right. Full ceiling coverage, so every dot is close to some camera — that
@@ -57,52 +64,52 @@ cameras:
   - id: SM-CAM-11
     url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.211:8554/9c756e2e94bb-0_m"
     reference_frame: "ref/SM-CAM-11.png"
-    w: 1024
-    h: 576
+    w: 1920
+    h: 1080
     note: "ceiling-facing, left side"
   - id: SM-CAM-12
     url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.212:8554/9c756e2e91a2-0_m"
     reference_frame: "ref/SM-CAM-12.png"
-    w: 1024
-    h: 576
+    w: 1920
+    h: 1080
     note: "ceiling-facing, left side"
   - id: SM-CAM-13
     url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.213:8554/9c756e2e91c0-0_m"
     reference_frame: "ref/SM-CAM-13.png"
-    w: 1024
-    h: 576
+    w: 1920
+    h: 1080
     note: "ceiling-facing, left side"
   - id: SM-CAM-14
     url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.214:8554/9c756e2e94d7-0_m"
     reference_frame: "ref/SM-CAM-14.png"
-    w: 1024
-    h: 576
+    w: 1920
+    h: 1080
     note: "ceiling-facing, left side"
 
   # ---- right side ----
   - id: SM-CAM-21
     url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.221:8554/9c756e2e9205-0_m"
     reference_frame: "ref/SM-CAM-21.png"
-    w: 1024
-    h: 576
+    w: 1920
+    h: 1080
     note: "ceiling-facing, right side"
   - id: SM-CAM-22
     url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.222:8554/9c756e2e9aad-0_m"
     reference_frame: "ref/SM-CAM-22.png"
-    w: 1024
-    h: 576
+    w: 1920
+    h: 1080
     note: "ceiling-facing, right side"
   - id: SM-CAM-23
     url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.223:8554/9c756e2e94ab-0_m"
     reference_frame: "ref/SM-CAM-23.png"
-    w: 1024
-    h: 576
+    w: 1920
+    h: 1080
     note: "ceiling-facing, right side"
   - id: SM-CAM-24
     url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.224:8554/9c756e2e9121-0_m"
     reference_frame: "ref/SM-CAM-24.png"
-    w: 1024
-    h: 576
+    w: 1920
+    h: 1080
     note: "ceiling-facing, right side"
 
 network:

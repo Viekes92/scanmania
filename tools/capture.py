@@ -42,6 +42,7 @@ the container; lasers warm.
 from __future__ import annotations
 
 import argparse
+import collections
 import asyncio
 import json
 import logging
@@ -53,6 +54,7 @@ import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 import cv2
 import numpy as np
@@ -87,7 +89,7 @@ class AmbientTooBright(RuntimeError):
 # arcs and one dot is counted three times.
 # ---------------------------------------------------------------------------
 
-# A STARTING POINT for a 1024x576 substream, not an answer. Every one of these
+# A STARTING POINT for a 1920x1080 main stream, not an answer. Every one of these
 # is a slider on the page, and the right value differs per camera — that is the
 # whole reason params are stored per camera.
 #
@@ -98,7 +100,10 @@ class AmbientTooBright(RuntimeError):
 #                        into arcs, and one dot is counted three times or lost
 #   max_area too large -> a reflection sneaks in, visible on the preview
 #   max_area too small -> the brightest near dots are silently discarded
-# Tighten them on the page against a lit maze. Do not tighten them blind.
+# Tighten them on the page against a lit maze. Do not tighten them blind — and
+# prefer the per-camera "apply measured" button, which derives the kernel from
+# the dot size and spacing this camera actually sees. Both scale with resolution
+# and with distance to the ceiling, so no single default fits eight cameras.
 #
 # max_area does NOT reject a light fitting. Anything larger than the kernel has
 # its interior removed by the top-hat, so a bright rectangle survives as four
@@ -107,15 +112,35 @@ class AmbientTooBright(RuntimeError):
 # defence is the ambient guard: house lights off.
 DEFAULT_PARAMS = {
     "thr": 25,          # absolute threshold on the top-hat signal, 0-255
-    "tophat": 15,       # structuring element, px. Bigger than a dot, smaller
-                        # than the gap between two dots
-    "min_area": 8,      # px. Below this it is sensor noise — or the CORNER of
+    "tophat": 21,       # structuring element, px. Bigger than a dot, smaller
+                        # than the gap between two dots. Measured at 1920x1080:
+                        # dots are 10-16 px across, spacing 30-65 px
+    "min_area": 40,     # px. Measured at 1080p: a dot is ~200 px of area and a
+                        # light-fitting corner artefact ~12, so 40 clears both
+                        # by 5x. Below this it is sensor noise — or the CORNER of
                         # something large. See the note below
-    "max_area": 400,    # px. Above this it is a reflection or a light fitting
+    "max_area": 900,    # px. Above this it is a reflection or a light fitting
 }
 
 _MEDIAN_FRAMES = 7      # frames to median per capture; kills sensor noise
+_PREVIEW_MEDIAN = 5     # frames to median per preview pass; ~200 ms at 25 fps
 _PREVIEW_HZ = 2.0
+# How many preview passes to report the dot-count spread over. A count that
+# swings across this window is not tuned, however good the middle value looks.
+_COUNT_WINDOW = 10
+
+# A capture takes several medians spread over a few seconds and keeps only dots
+# that persist. Somebody standing in a beam, or haze drifting through it,
+# removes real dots from a single pass — and a dot whose baseline was measured
+# while it was blocked reads permanently dark at runtime.
+_CAPTURE_PASSES = 5
+_CAPTURE_PASS_GAP_S = 0.6       # ~3 s total; long enough to outlast a person moving
+# 3 of 5, not 4. Somebody walking through blocks a dot for about two passes,
+# and dropping it there leaves a blind spot — a beam nothing watches — which is
+# worse than keeping a marginal dot, because a bad baseline at least shows up as
+# a dim or zero reading in validate(). A single-pass ghost is still rejected.
+_CAPTURE_MIN_HITS = 3           # of _CAPTURE_PASSES
+_MATCH_TOL = 4                  # px; the cameras do not move during a capture
 
 # With every laser off, a correctly exposed ceiling camera sees near-nothing.
 # More blobs than this means something else is lighting the scene.
@@ -168,6 +193,50 @@ def stages(frame: np.ndarray, params: dict | None = None) -> dict:
             "signal_peak": int(sig.max()) if sig.size else 0}
 
 
+def suggest_params(dots: list[tuple[int, int, int]]) -> dict:
+    """
+    Recommend a top-hat kernel and min_area from what the camera is seeing.
+
+    The kernel has one hard requirement: LARGER than a dot, SMALLER than the gap
+    between two dots. Both scale with resolution and with how far the camera is
+    from the ceiling, so the right value differs per camera and changes whenever
+    the stream resolution does — which is exactly the tuning nobody wants to do
+    eight times by eye.
+
+    Measures the median dot diameter and the median nearest-neighbour distance,
+    and picks a kernel between them. Returns {} when there is not enough to go
+    on, rather than guessing.
+    """
+    if len(dots) < 6:
+        return {}
+    diam = 2 * float(np.median([r for _, _, r in dots]))
+
+    pts = np.array([(x, y) for x, y, _ in dots], dtype=np.float32)
+    d2 = ((pts[:, None, :] - pts[None, :, :]) ** 2).sum(-1)
+    np.fill_diagonal(d2, np.inf)
+    spacing = float(np.median(np.sqrt(d2.min(axis=1))))
+
+    if spacing <= diam:
+        # Dots are touching or merged; no kernel separates them. Say so rather
+        # than recommend something that cannot work.
+        return {"note": "dots overlap — no kernel can separate them"}
+
+    # Comfortably clear of the dot, comfortably inside the spacing.
+    k = int(round(diam * 1.6))
+    k = max(k, int(diam) + 4)
+    k = min(k, int(spacing * 0.8))
+    k = max(3, k | 1)                      # getStructuringElement wants odd
+
+    area = float(np.median([np.pi * max(r - 2, 1) ** 2 for _, _, r in dots]))
+    return {
+        "tophat": k,
+        "min_area": max(4, int(area * 0.35)),
+        "max_area": int(area * 6),
+        "dot_px": round(diam, 1),
+        "spacing_px": round(spacing, 1),
+    }
+
+
 def find_dots(frame: np.ndarray, params: dict | None = None) -> list[tuple[int, int, int]]:
     """Return [(cx, cy, r)] for every dot-like blob. See the recipe above."""
     return stages(frame, params)["dots"]
@@ -198,6 +267,7 @@ class _UI:
         }
         self._params: dict[str, dict] = {}       # camera_id -> params
         self._frames: dict[str, bytes] = {}
+        self._count_hist: dict[str, collections.deque] = {}
         self._light_req: str | None = None
         self._capture_req: str | None = None
         self._save_req: bool = False
@@ -245,10 +315,26 @@ class _UI:
                     v = int(p[key])
                 except (TypeError, ValueError):
                     continue
-                if v > 0:
+                if v > 0 and cur[key] != v:
                     cur[key] = v
+                    # Drop the spread history: it describes the previous
+                    # setting, and carrying it over makes a good new value look
+                    # unstable for the next five seconds.
+                    self._count_hist.pop(camera_id, None)
 
     # -- requests from the page -----------------------------------------
+
+    def apply_suggested(self, camera_id: str) -> None:
+        """Adopt the measured suggestion for one camera."""
+        with self._lock:
+            sug = (self._state.get("diag", {}).get(camera_id) or {}).get("suggest") or {}
+            cur = self._params.setdefault(camera_id, dict(DEFAULT_PARAMS))
+            for key in ("tophat", "min_area", "max_area"):
+                if isinstance(sug.get(key), int) and sug[key] > 0:
+                    cur[key] = sug[key]
+            self._count_hist.pop(camera_id, None)
+        log.info("%s: applied suggested params %s", camera_id,
+                 {k: v for k, v in sug.items() if k in ("tophat", "min_area", "max_area")})
 
     def request_light(self, maze: str) -> None:
         with self._lock:
@@ -296,9 +382,17 @@ class _UI:
             small = sum(1 for r in st["rejected"] if r[4] == "small")
             large = sum(1 for r in st["rejected"] if r[4] == "large")
             areas = [int(round(np.pi * (r - 2) ** 2)) for _, _, r in st["dots"]]
+            hist = self._count_hist.setdefault(cid, collections.deque(maxlen=_COUNT_WINDOW))
+            hist.append(len(st["dots"]))
             diag[cid] = {
                 "peak": st["signal_peak"],
                 "too_small": small, "too_large": large,
+                # The spread over the last _COUNT_WINDOW passes. A count that
+                # swings is not tuned, however good the middle value looks —
+                # every dot near the threshold will drop in and out of the real
+                # capture too.
+                "lo": min(hist), "hi": max(hist),
+                "suggest": suggest_params(st["dots"]),
                 # The median dot area is the number that tells you whether the
                 # top-hat kernel is in the right range: it has to be comfortably
                 # wider than a dot.
@@ -351,41 +445,53 @@ class _UI:
             def log_message(self, *a):        # quiet; the tool logs its own
                 pass
 
-            def _send(self, code, body, ctype="application/json"):
+            def _send(self, code, body, ctype="application/json", extra=None):
                 self.send_response(code)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(body)))
+                for k, v in (extra or {}).items():
+                    self.send_header(k, v)
                 self.end_headers()
                 self.wfile.write(body)
 
             def do_GET(self):
-                if self.path == "/":
+                # Split the query string off FIRST. The page cache-busts every
+                # frame request (/frame/SM-CAM-13.jpg?1789415532579), so
+                # matching on the raw path made every preview 404 — the id came
+                # out as "SM-CAM-13.jpg?1789415532579" because removesuffix
+                # found no ".jpg" at the end any more.
+                path = urlparse(self.path).path
+                if path == "/":
                     return self._send(200, _PAGE.encode(), "text/html; charset=utf-8")
-                if self.path == "/status":
+                if path == "/status":
                     return self._send(200, json.dumps(ui.snapshot()).encode())
-                if self.path.startswith("/frame/"):
-                    cid = self.path[len("/frame/"):].removesuffix(".jpg")
+                if path.startswith("/frame/"):
+                    cid = unquote(path[len("/frame/"):]).removesuffix(".jpg")
                     jpg = ui.frame(cid)
                     if jpg is None:
                         return self._send(404, b"{}")
-                    return self._send(200, jpg, "image/jpeg")
+                    return self._send(200, jpg, "image/jpeg",
+                                      extra={"Cache-Control": "no-store"})
                 self._send(404, b"{}")
 
             def do_POST(self):
+                path_ = urlparse(self.path).path
                 n = int(self.headers.get("Content-Length") or 0)
                 try:
                     body = json.loads(self.rfile.read(n) or b"{}")
                 except json.JSONDecodeError:
                     return self._send(400, b'{"ok":false}')
-                if self.path == "/light":
+                if path_ == "/light":
                     ui.request_light(str(body.get("maze") or ""))
-                elif self.path == "/capture":
+                elif path_ == "/capture":
                     ui.request_capture(str(body.get("maze") or ""))
-                elif self.path == "/save":
+                elif path_ == "/save":
                     ui.request_save()
-                elif self.path == "/params":
+                elif path_ == "/params":
                     ui.set_params(str(body.get("camera") or ""), body)
-                elif self.path == "/view":
+                elif path_ == "/apply_suggested":
+                    ui.apply_suggested(str(body.get("camera") or ""))
+                elif path_ == "/view":
                     ui.set_view(str(body.get("view") or "overlay"))
                 else:
                     return self._send(404, b'{"ok":false}')
@@ -415,7 +521,18 @@ _PAGE = """<!doctype html><meta charset=utf-8><title>ScanMania calibration</titl
  button.go{background:#1d4e2a;border-color:#2f7a42}
  button.save{background:#1d3a5e;border-color:#2f5f9a}
  button.off{background:#4e1d1d;border-color:#7a2f2f}
- .cams{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px}
+ /* One column per position along the container, one row per side — so the
+    two cameras that face each other (11 above 21) sit in the same column. */
+ .cams{display:grid;gap:12px;align-items:start}
+ .cam{border:1px solid #333;border-radius:8px;padding:8px;background:#181818}
+ .rowlabel{grid-column:1/-1;font-size:11px;letter-spacing:.14em;color:#777;
+           text-transform:uppercase;margin:6px 0 -4px}
+ @media (max-width:1100px){
+   /* Too narrow to keep four columns legible; fall back to flow and drop the
+      facing-pair alignment rather than shrink every tile into uselessness. */
+   .cams{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))!important}
+   .cam{grid-column:auto!important;grid-row:auto!important}
+ }
  .cam{border:1px solid #333;border-radius:8px;padding:8px;background:#181818}
  .cam h2{font-size:13px;margin:0 0 6px;display:flex;justify-content:space-between}
  .n{color:#6c6;font-variant-numeric:tabular-nums}
@@ -433,6 +550,11 @@ _PAGE = """<!doctype html><meta charset=utf-8><title>ScanMania calibration</titl
             padding:1px 6px;margin-right:6px;color:#bbb}
  .diag{font-size:11px;color:#777;margin-top:4px;font-family:ui-monospace,monospace}
  .diag b{color:#aaa;font-weight:600}
+ .diag b.good{color:#6c6}
+ .diag b.okish{color:#cc6}
+ .diag b.bad{color:#e66}
+ button.sug{margin-top:6px;width:100%;padding:6px;font-size:11px;
+            background:#14301f;border-color:#2f7a42;color:#9d9}
  .warn{color:#e88}
  table{border-collapse:collapse;font-size:12px;margin-top:6px}
  td,th{border:1px solid #333;padding:3px 8px;text-align:left}
@@ -486,8 +608,26 @@ function send(cam){
     body:JSON.stringify(b)});
 }
 
+/* SM-CAM-<side><pos>: side 1 is the left row of the container, side 2 the
+   right, pos runs along its length. Lay out pos as columns and side as rows so
+   a facing pair is vertically adjacent. Placement is explicit rather than flow
+   order, so a camera dropping out leaves a gap instead of shifting the rest. */
+function slot(cid){
+  const t=cid.trim().slice(-2);           // "11" -> side 1, pos 1
+  const side=+t[0], pos=+t[1];
+  return (side>0 && pos>0) ? {side:side, pos:pos} : null;
+}
+
 function build(cams,params){
   const wrap=document.getElementById('cams'); wrap.innerHTML='';
+  const slots=cams.map(slot);
+  const placed=slots.every(Boolean);
+  if(placed){
+    const cols=Math.max(...slots.map(s=>s.pos));
+    wrap.style.gridTemplateColumns='repeat('+cols+',minmax(0,1fr))';
+  }else{
+    wrap.style.gridTemplateColumns='repeat(auto-fit,minmax(340px,1fr))';
+  }
   cams.forEach(cid=>{
     const p=params[cid]||{};
     const d=document.createElement('div'); d.className='cam';
@@ -500,13 +640,21 @@ function build(cams,params){
         +' value="'+(p[k]||lo)+'">'
         +'<span id="'+cid+'_'+k+'_v">'+(p[k]||lo)+'</span>';
     });
-    d.innerHTML=h+'</div><div class=diag id="'+cid+'_diag"></div>';
+    d.innerHTML=h+'</div><div class=diag id="'+cid+'_diag"></div>'
+               +'<button class=sug id="'+cid+'_sug" hidden></button>';
+    const sl=slot(cid);
+    if(placed && sl){ d.style.gridColumn=sl.pos; d.style.gridRow=sl.side; }
     wrap.appendChild(d);
     KEYS.forEach(([k])=>{
       const el=document.getElementById(cid+'_'+k);
       el.oninput=()=>{document.getElementById(cid+'_'+k+'_v').textContent=el.value;};
       el.onchange=()=>send(cid);
     });
+    document.getElementById(cid+'_sug').onclick=()=>{
+      fetch('/apply_suggested',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({camera:cid})}).then(()=>{built=false;});
+    };
   });
   built=true;
 }
@@ -533,15 +681,37 @@ async function tick(){
     const n=document.getElementById(cid+'_n');
     if(n) n.textContent=(s.counts&&s.counts[cid]!=null)?s.counts[cid]+' dots':'–';
     const img=document.getElementById(cid+'_img');
-    if(img) img.src='/frame/'+cid+'.jpg?'+Date.now();
+    if(img) img.src='/frame/'+encodeURIComponent(cid)+'.jpg?'+Date.now();
     const dv=document.getElementById(cid+'_diag'), d=(s.diag||{})[cid];
     if(dv&&d){
       // peak is the top-hat signal maximum. Near zero means no dot is reaching
       // the sensor, and no slider on this page will fix that.
-      let t='peak <b>'+d.peak+'</b>  median area <b>'+d.median_area+'</b>';
-      if(d.too_small) t+='  · <b>'+d.too_small+'</b> under min';
-      if(d.too_large) t+='  · <b>'+d.too_large+'</b> over max';
+      // Range first: it is the number that says whether this camera is tuned.
+      const spread=(d.hi!=null && d.lo!=null) ? (d.hi-d.lo) : 0;
+      let t='';
+      if(d.hi!=null){
+        const cls = spread===0 ? 'good' : (spread<=2 ? 'okish' : 'bad');
+        t += 'range <b class='+cls+'>'+d.lo+'\u2013'+d.hi+'</b>  ';
+      }
+      t+='peak <b>'+d.peak+'</b>  median area <b>'+d.median_area+'</b>';
+      if(d.too_small) t+='  \u00b7 <b>'+d.too_small+'</b> under min';
+      if(d.too_large) t+='  \u00b7 <b>'+d.too_large+'</b> over max';
+      const sg=d.suggest||{};
+      if(sg.dot_px) t+='<br>dot <b>'+sg.dot_px+'px</b> spacing <b>'+sg.spacing_px+'px</b>';
+      if(sg.note)   t+='<br><b class=bad>'+sg.note+'</b>';
       dv.innerHTML=t;
+      // Offer the measured kernel only when it disagrees with what is set —
+      // the kernel must exceed a dot's diameter and stay inside the spacing,
+      // and both change with resolution and camera distance.
+      const btn=document.getElementById(cid+'_sug');
+      const curTop=+document.getElementById(cid+'_tophat').value;
+      if(btn){
+        if(sg.tophat && sg.tophat!==curTop){
+          btn.hidden=false;
+          btn.textContent='apply measured: top-hat '+sg.tophat
+                        +', area '+sg.min_area+'\u2013'+sg.max_area;
+        } else { btn.hidden=true; }
+      }
     }
   });
 
@@ -568,6 +738,7 @@ class Cameras:
 
     def __init__(self, cfg) -> None:
         self._latest: dict[str, np.ndarray] = {}
+        self._recent: dict[str, collections.deque] = {}
         self._streams = {
             c.id: CameraStream(camera_config=c,
                                on_frame=self._on_frame,
@@ -579,6 +750,16 @@ class Cameras:
 
     def _on_frame(self, frame, ts_ns, camera_id) -> None:
         self._latest[camera_id] = frame
+        # A short rolling history so the PREVIEW can median like the capture
+        # does. A single live frame makes every marginal blob flicker across the
+        # threshold, so the count you tune against jitters and does not match
+        # what a capture will actually record. Five frames at 25 fps is 200 ms —
+        # enough to kill sensor noise and haze shimmer, short enough that a
+        # slider change still shows up immediately.
+        hist = self._recent.get(camera_id)
+        if hist is None:
+            hist = self._recent[camera_id] = collections.deque(maxlen=_PREVIEW_MEDIAN)
+        hist.append(frame)
 
     @property
     def ids(self) -> list[str]:
@@ -608,12 +789,17 @@ class Cameras:
         The preview is how you confirm the house lights are off and how you tune,
         so it must run before anything is captured, not only during a capture.
         """
+        loop = asyncio.get_running_loop()
         while True:
             await asyncio.sleep(1.0 / hz)
-            latest = {cid: f for cid, f in self._latest.items() if f is not None}
-            if latest:
-                await asyncio.get_running_loop().run_in_executor(
-                    None, UI.publish_frames, latest)
+            stacks = {cid: list(h) for cid, h in self._recent.items() if h}
+            if not stacks:
+                continue
+            # Median off the event loop, and on the DEFAULT executor — the
+            # camera pool is busy with blocking RTSP reads.
+            frames = await loop.run_in_executor(None, self._median, stacks)
+            if frames:
+                await loop.run_in_executor(None, UI.publish_frames, frames)
 
     async def median_capture(self, n: int = _MEDIAN_FRAMES) -> dict[str, np.ndarray]:
         """
@@ -681,6 +867,65 @@ async def check_ambient(cams: Cameras) -> int:
     return worst
 
 
+def _persistent_dots(
+    per_pass: list[dict[str, loader.CameraCapture]],
+) -> dict[str, loader.CameraCapture]:
+    """
+    Keep dots that appear in at least _CAPTURE_MIN_HITS passes.
+
+    Dots are matched between passes by position: the cameras do not move during
+    a capture, so the same dot lands within a couple of pixels each time.
+    A kept dot takes the MEDIAN of its baselines across the passes it was seen
+    in, which also throws out a pass where it was partly dimmed.
+    """
+    out: dict[str, loader.CameraCapture] = {}
+    if not per_pass:
+        return out
+
+    for cid in per_pass[0]:
+        clusters: list[dict] = []
+        for cap in (p[cid] for p in per_pass if cid in p):
+            for dot in cap.dots:
+                for cl in clusters:
+                    if abs(cl["cx"] - dot.cx) <= _MATCH_TOL and \
+                       abs(cl["cy"] - dot.cy) <= _MATCH_TOL:
+                        cl["hits"] += 1
+                        cl["xs"].append(dot.cx)
+                        cl["ys"].append(dot.cy)
+                        cl["rs"].append(dot.r)
+                        cl["bs"].append(dot.baseline)
+                        break
+                else:
+                    clusters.append({"cx": dot.cx, "cy": dot.cy, "hits": 1,
+                                     "xs": [dot.cx], "ys": [dot.cy],
+                                     "rs": [dot.r], "bs": [dot.baseline]})
+
+        kept = [c for c in clusters if c["hits"] >= _CAPTURE_MIN_HITS]
+        dropped = len(clusters) - len(kept)
+        base = per_pass[0][cid]
+        dots = []
+        for i, c in enumerate(sorted(kept, key=lambda c: (c["cx"], c["cy"]))):
+            dots.append(loader.Dot(
+                id=f"{cid}:d{i}",
+                cx=int(round(float(np.median(c["xs"])))),
+                cy=int(round(float(np.median(c["ys"])))),
+                r=int(round(float(np.median(c["rs"])))),
+                baseline=round(float(np.median(c["bs"])), 3),
+            ))
+        if dropped:
+            total = len(dots) + dropped
+            share = dropped / total if total else 0
+            # A few is normal. A lot means the scene was not still, and the
+            # whole capture is suspect — not just the dots that were dropped.
+            (log.warning if share > 0.1 else log.info)(
+                "%s: kept %d dot(s), dropped %d unstable (%.0f%%)%s",
+                cid, len(dots), dropped, share * 100,
+                "  ** was someone in the container? **" if share > 0.1 else "")
+        out[cid] = loader.CameraCapture(camera=cid, w=base.w, h=base.h,
+                                        params=dict(base.params), dots=dots)
+    return out
+
+
 def capture_from_frames(frames: dict[str, np.ndarray],
                         params: dict[str, dict],
                         expect: dict[str, tuple[int, int]] | None = None,
@@ -719,8 +964,31 @@ def capture_from_frames(frames: dict[str, np.ndarray],
 async def capture_maze(cams: Cameras, maze: str,
                        expect: dict[str, tuple[int, int]] | None = None,
                        ) -> dict[str, loader.CameraCapture]:
-    frames = await cams.median_capture()
-    caps = capture_from_frames(frames, UI.all_params(), expect)
+    """
+    Capture a maze from SEVERAL passes spread over a few seconds, keeping only
+    dots that show up in most of them.
+
+    A single median is not enough. A dot can be genuinely absent from one pass —
+    somebody standing in the beam, or a thicker patch of haze dimming it — and
+    no threshold setting distinguishes that from a dot that is not there at all.
+    A sweep over the whole parameter space on a lit maze showed a count spread
+    of 3-5 at every single combination, which is what transient occlusion looks
+    like: real dots, intermittently blocked.
+
+    Recording those as ROIs would be the worst outcome — a dot whose baseline
+    was measured while it was blocked reads permanently dark, so it either busts
+    every player or, more likely, sits in the mass-dark suppression and switches
+    detection off. Requiring persistence across passes rejects them.
+    """
+    passes: list[dict[str, np.ndarray]] = []
+    for i in range(_CAPTURE_PASSES):
+        passes.append(await cams.median_capture())
+        if i < _CAPTURE_PASSES - 1:
+            await asyncio.sleep(_CAPTURE_PASS_GAP_S)
+
+    per_pass = [capture_from_frames(f, UI.all_params(), expect) for f in passes]
+    caps = _persistent_dots(per_pass)
+    frames = passes[-1]
     for cid, cap in caps.items():
         mean = (sum(d.baseline for d in cap.dots) / len(cap.dots)) if cap.dots else 0.0
         log.info("%s / %s: %d dots, mean baseline %.1f, frame %dx%d",

@@ -404,7 +404,7 @@ async def async_main(args: argparse.Namespace) -> int:
     # (power cut, OOM kill) lost every run back to the last button press.
     snap_min = getattr(cfg.game, "snapshot_interval_min", 60)
     if snap_min > 0:
-        import tempfile, sys as _sys
+        import tempfile
         from persist.backup import rolling_snapshot_loop
         snap_dir = (
             os.path.join(tempfile.gettempdir(), "scanmania-backups")
@@ -471,7 +471,7 @@ async def async_main(args: argparse.Namespace) -> int:
 
     # Export a snapshot before exit (best-effort)
     try:
-        import tempfile, sys as _sys
+        import tempfile
         from persist.backup import export_snapshot
         backup_dir = (
             os.path.join(tempfile.gettempdir(), "scanmania-backups")

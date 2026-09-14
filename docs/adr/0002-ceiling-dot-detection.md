@@ -1,7 +1,11 @@
 # ADR 0002: Ceiling-dot detection, not beam-line sampling
 
-**Status:** Accepted
+**Status:** Accepted — partially superseded by [ADR 0009](0009-per-maze-dot-capture.md)
 **Date:** 2024-01-15
+
+> The detection method below stands unchanged. What ADR 0009 replaced is the
+> bookkeeping around it: ROIs are captured per maze per camera, not per relay
+> channel, and the per-channel fault rule is now a count.
 
 ## Context
 
@@ -48,10 +52,10 @@ calibration. No advantage over photoelectric.
 - Camera must not move. Lock it down. Thread-lock the mount. Boot-time drift check is mandatory.
 - Work on the red channel isolated — suppresses white highlights from work lights, phone flashes,
   and displays while preserving the laser dots.
-- 1280×720 @ 25–30 fps is sufficient. One decode, two consumers: detection and the MJPEG stream
+- Under 720p is sufficient; the cameras run 1024×576 @ 25 fps. One decode, two consumers: detection and the MJPEG stream
   for the outdoor display (`vision/mjpeg.py`). Never open the same RTSP stream twice.
 - `config/beams.json` is the only source of truth for ROI positions and thresholds. The 45 beam
-  ROIs for the 9×5 grid are authored with `tools/pick_rois.py` and verified on the
+  ROIs are captured with `tools/capture.py` (ADR 0009) and verified on the
   `/admin/beams` live overlay page.
 - Evidence thumbnails (JPEG crop of the triggering ROI plus two preceding frames) saved per
   break. When a player disputes a bust, you look at the picture.

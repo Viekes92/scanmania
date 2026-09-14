@@ -687,6 +687,7 @@
       };
 
       ws.onmessage = (evt) => {
+        __noteMessage();
         let msg;
         try { msg = JSON.parse(evt.data); } catch { return; }
         applyState(msg);
@@ -708,6 +709,23 @@
     }
 
     connect();
+  
+    /* -----------------------------------------------------------------------
+       Stale-data watchdog
+
+       onclose is not enough. If the server's broadcaster task dies, or the path
+       half-opens, every socket stays "healthy" and the screen freezes silently
+       on its last frame — in front of a player, for as long as nobody notices.
+       Track time since the last message and force a reconnect when it lapses.
+    ----------------------------------------------------------------------- */
+    let __lastMsgAt = Date.now();
+    function __noteMessage() { __lastMsgAt = Date.now(); }
+    setInterval(() => {
+      // The server broadcasts at 10 Hz; 3 s of silence is not a slow frame.
+      if (Date.now() - __lastMsgAt > 3000) {
+        try { if (ws && ws.readyState === WebSocket.OPEN) ws.close(); } catch (e) {}
+      }
+    }, 1000);
   </script>
 </body>
 </html>

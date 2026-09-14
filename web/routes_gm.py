@@ -26,9 +26,6 @@ class DetectionModeBody(BaseModel):
     mode: str = Field(..., pattern=r"^(auto|assisted|manual)$")
 
 
-class MaskBeamBody(BaseModel):
-    beam_id: str
-    masked: bool
 
 
 class MasterModeBody(BaseModel):
@@ -94,12 +91,4 @@ def register_routes(
         """In 'assisted' mode: veto the pending break — resume the run."""
         return _dispatch("veto_break")
 
-    @router.post("/api/gm/mask-beam")
-    async def gm_mask_beam(body: MaskBeamBody):
-        """Toggle the masked flag on a single beam. Persisted to beams.json."""
-        return _dispatch("mask_beam", {"beam_id": body.beam_id, "masked": body.masked})
 
-    @router.post("/api/gm/master-mode")
-    async def gm_master_mode(body: MasterModeBody):
-        """Engage or disengage master mode (direct hardware control)."""
-        return _dispatch("master_mode", {"engage": body.engage})

@@ -20,6 +20,7 @@ import argparse
 import asyncio
 import logging
 import os
+import sys as _sys
 import signal
 import sys
 from pathlib import Path
@@ -243,6 +244,14 @@ async def async_main(args: argparse.Namespace) -> int:
     #  PHASE 1 — Config & Database
     # ================================================================
     config_dir = resolve_config_dir(args)
+    # Sweep temp files left by an interrupted config write. They are harmless
+    # on their own, but deploy.sh does `git add config` and would commit them.
+    for stale in list(config_dir.glob("*.json.new")) + list(config_dir.glob("*.tmp")):
+        try:
+            stale.unlink()
+            log.warning("Removed stale config temp file %s (interrupted write?)", stale)
+        except OSError:
+            pass
     log.info("Loading config from %s", config_dir)
 
     _ensure_admin_password()
@@ -263,14 +272,32 @@ async def async_main(args: argparse.Namespace) -> int:
 
     if args.fake_all:
         db_path = ":memory:"
-    elif os.path.isdir("/var/lib/scanmania"):
-        db_path = "/var/lib/scanmania/scanmania.db"
+    elif _sys.platform != "darwin":
+        # Create it rather than fall back. A missing directory (fresh box,
+        # unmounted volume, botched deploy) silently relocated the DB to a
+        # gitignored file inside the repo that no backup path covers and the
+        # next deploy overwrites — an evening of runs recorded somewhere nobody
+        # would ever look, with only an INFO line to say so.
+        try:
+            os.makedirs("/var/lib/scanmania", exist_ok=True)
+            db_path = "/var/lib/scanmania/scanmania.db"
+        except OSError as exc:
+            log.critical("Cannot create /var/lib/scanmania (%s). Refusing to "
+                         "start rather than write runs somewhere unbacked.", exc)
+            raise
     else:
         db_path = str(Path(__file__).resolve().parent / "scanmania.db")
     log.info("Database: %s", db_path)
     from persist.db import Database
     db = Database(db_path)
     await db.init()
+    # Settle any run the last process left open. Invariant 7 still holds — the
+    # run is never resumed, only recorded honestly instead of sitting
+    # "in_progress" forever.
+    try:
+        await db.close_orphaned_runs()
+    except Exception as exc:
+        log.warning("could not close orphaned runs: %s", exc)
 
     # ================================================================
     #  PHASE 2 — Hardware connections
@@ -343,6 +370,8 @@ async def async_main(args: argparse.Namespace) -> int:
 
     from core.runner import GameRunner
     runner = GameRunner(cfg, backends["io"], backends["inputs"], backends["vision"], db, hub=hub)
+    # The runner drives everything off on shutdown; it needs the hazer to do it.
+    runner.hazer = hazer
     tasks.append(asyncio.create_task(runner.run(), name="runner"))
 
     if hazer:
@@ -430,6 +459,15 @@ async def async_main(args: argparse.Namespace) -> int:
     for task, result in zip(tasks, results):
         if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
             log.error("Task %s raised: %s", task.get_name(), result)
+
+    # Everything off before we exit. runner.run() already does this on its own
+    # exit paths; this covers the case where it never started, or died before
+    # reaching them. Relay coils latch, so "the process is gone" is not the same
+    # as "the lasers are off".
+    try:
+        await asyncio.wait_for(runner.blackout(), timeout=5.0)
+    except Exception as e:
+        log.error("Shutdown blackout failed (%s) — LASERS MAY STILL BE LIT", e)
 
     # Export a snapshot before exit (best-effort)
     try:

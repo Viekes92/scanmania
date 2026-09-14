@@ -11,6 +11,7 @@ Invariant: saves the triggering frame plus the two immediately preceding frames.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 import os
 from collections import deque
 from pathlib import Path
@@ -22,6 +23,11 @@ import numpy as np
 from config.loader import BeamROI
 
 log = logging.getLogger(__name__)
+
+
+def _stamp() -> str:
+    """UTC wall clock, for filenames that sort chronologically across reboots."""
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
 
 _RING_BUFFER_SIZE = 10   # keep last 10 frames
 _SAVE_FRAME_COUNT = 3    # triggering frame + 2 preceding
@@ -43,15 +49,41 @@ class EvidenceCapture:
 
     def __init__(self, output_dir: str = "data/evidence") -> None:
         self._output_dir = Path(output_dir)
-        self._frame_buffer: deque[_Frame] = deque(maxlen=_RING_BUFFER_SIZE)
+        # camera_id -> its own ring. See push_frame.
+
+        self._buffers: dict[str, deque[_Frame]] = {}
 
     # ------------------------------------------------------------------
     # Frame ingestion
     # ------------------------------------------------------------------
 
-    def push_frame(self, frame: np.ndarray, timestamp_ns: int) -> None:
-        """Add a decoded frame to the ring buffer. Called for every frame."""
-        self._frame_buffer.append(_Frame(frame=frame, timestamp_ns=timestamp_ns))
+    def push_frame(self, frame: np.ndarray, timestamp_ns: int,
+                   camera_id: str = "") -> None:
+        """
+        Add a decoded frame to that camera's ring buffer.
+
+        One shared buffer received ~200 frames/s from 8 interleaved cameras, so
+        it held about 50 ms of history and consecutive entries came from
+        different cameras — the "triggering frame plus 2 preceding" contract was
+        never met, and a crop would come from whichever camera happened to be
+        adjacent. One ring per camera fixes both.
+        """
+        buf = self._buffers.get(camera_id)
+        if buf is None:
+            buf = self._buffers[camera_id] = deque(maxlen=_RING_BUFFER_SIZE)
+        buf.append(_Frame(frame=frame, timestamp_ns=timestamp_ns))
+
+    @property
+    def _frame_buffer(self) -> deque:
+        """Legacy single-buffer view: the newest camera to deliver a frame."""
+        if not self._buffers:
+            return deque()
+        return max(self._buffers.values(),
+                   key=lambda b: b[-1].timestamp_ns if b else 0)
+
+    def frames_for(self, camera_id: str) -> list:
+        """The ring for one camera, oldest first."""
+        return list(self._buffers.get(camera_id) or ())
 
     # ------------------------------------------------------------------
     # Evidence save
@@ -92,7 +124,15 @@ class EvidenceCapture:
         for i, fr in enumerate(to_save):
             crop = self._crop_roi(fr.frame, roi)
             label = "trigger" if i == len(to_save) - 1 else f"prior_{len(to_save) - 1 - i}"
-            filename = f"{beam_id}_{fr.timestamp_ns}_{label}.jpg"
+            # Dot ids carry a colon (cam_3:d17). Legal in a POSIX filename and a
+            # trap everywhere else — Windows, SMB, and any URL that is not
+            # percent-encoded. Flatten it here, once.
+            safe = beam_id.replace(":", "_").replace("/", "_")
+            # Prefix with wall-clock UTC. timestamp_ns is monotonic — time since
+            # BOOT — so with the container power-cycled nightly, day 2's first
+            # bust got roughly the same number as day 1's and silently
+            # overwrote yesterday's proof, exactly when someone disputes it.
+            filename = f"{_stamp()}_{safe}_{fr.timestamp_ns}_{label}.jpg"
             path = out_dir / filename
             ok = cv2.imwrite(str(path), crop, [cv2.IMWRITE_JPEG_QUALITY, 90])
             if ok:

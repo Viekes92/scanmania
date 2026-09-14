@@ -122,6 +122,24 @@ class HazerController:
 
     async def run(self) -> None:
         log.info("Hazer keepalive started")
-        while True:
+        try:
+            while True:
+                self._send()
+                await asyncio.sleep(2.0)
+        finally:
+            # Art-Net nodes hold the last DMX frame they received, and the node
+            # is separately powered — so just stopping the keepalive leaves the
+            # hazer pumping in an unattended container indefinitely. Send one
+            # zeroed frame on the way out.
+            self.blackout()
+
+    def blackout(self) -> None:
+        """Zero fan and haze, and send it now. Safe to call from a finally."""
+        self._fan = 0
+        self._haze = 0
+        self._enabled = False
+        try:
             self._send()
-            await asyncio.sleep(2.0)
+            log.info("Hazer: blackout frame sent")
+        except Exception as exc:                       # never block shutdown
+            log.warning("Hazer: blackout frame failed: %s", exc)

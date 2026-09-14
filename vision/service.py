@@ -3,7 +3,7 @@ vision/service.py — owns the real vision pipeline and presents it to the runne
 
 Input:  AppConfig (hardware.cameras + beams), RTSP frames from CameraStream
 Output: async event tuples ("break"|"clear"|"stall", ...) consumed by
-        core/runner.py::_vision_listener; MJPEG frames on :8081
+        core/runner.py::_vision_listener
 Invariant: mirrors vision/fake.py's interface exactly — run(), events(), arm(),
            disarm(), is_armed(), fps(), is_stalled(), last_frame_ns(). The
            runner must not care which one it holds.
@@ -24,18 +24,6 @@ from vision.camera import CameraStream
 from vision.detect import DotDetector
 from vision.evidence import EvidenceCapture
 
-# vision/mjpeg.py imports aiohttp, which is declared in neither requirements.txt
-# nor pyproject.toml. Nothing ever noticed, because MjpegServer was never
-# instantiated. Keep it optional so detection does not depend on a decision that
-# has not been made yet: either add aiohttp, or serve MJPEG from the FastAPI app
-# that is already running and drop both the dependency and the second port.
-try:
-    from vision.mjpeg import MjpegServer
-    _MJPEG_AVAILABLE = True
-except ImportError as _exc:  # pragma: no cover - depends on the environment
-    MjpegServer = None  # type: ignore[assignment]
-    _MJPEG_AVAILABLE = False
-    _MJPEG_IMPORT_ERROR = _exc
 
 log = logging.getLogger(__name__)
 
@@ -47,14 +35,18 @@ _WATCHDOG_INTERVAL_S = 0.1
 class VisionService:
     """
     Constructs and connects CameraStream, DotDetector, BaselineManager,
-    EvidenceCapture and MjpegServer.
+    EvidenceCapture.
 
     Nothing did this before. Each piece existed and was individually plausible,
     but no object owned them, so `from vision.camera import VisionService` in
     __main__.py raised ImportError and the whole real-camera path was dead.
 
-    One decode, two consumers: each frame goes to the detector and to the MJPEG
-    server. See docs/adr/0002.
+    One decode: each frame goes to the detector and the evidence ring. The
+    MJPEG server that used to be the second consumer was removed — it was never
+    fed (push_frame had no caller), depended on an undeclared aiohttp, and
+    listened on a port the outdoor display hammered every 15 s for nothing.
+    The outdoor display's camera is the back cam, a separate non-detection
+    source: see plan.md section 18.
     """
 
     def __init__(self, config: AppConfig, metrics_emit: Any = None) -> None:
@@ -73,17 +65,13 @@ class VisionService:
             on_break=self._on_break,
             on_clear=self._on_clear,
             metrics_emit=metrics_emit,
+            on_sample=self._baselines.update_ema,
+            on_fault=self._on_detector_fault,
         )
-        for beam_id, value in self._baselines.all_baselines().items():
-            self._detector.set_baseline(beam_id, value)
+        # Baselines are seeded per maze, in set_maze(). Nothing is watched until
+        # a preset is applied, so there is nothing to seed here.
 
         self._evidence = EvidenceCapture()
-        self._mjpeg = MjpegServer() if _MJPEG_AVAILABLE else None
-        if self._mjpeg is None:
-            log.warning(
-                "MJPEG server unavailable (%s) — /display/out keeps its black "
-                "background. Detection is unaffected.", _MJPEG_IMPORT_ERROR,
-            )
 
         self._streams: dict[str, CameraStream] = {}
         for cam in config.hardware.cameras:
@@ -101,6 +89,7 @@ class VisionService:
         self._stall_counts: dict[str, int] = {}
         self._stall_threshold_ms = config.beams.detection.stall_threshold_ms
         self._last_emitted_stall: bool | None = None
+        self._fault_reason: str | None = None
 
     # ------------------------------------------------------------------
     # Camera callbacks — these run on the event loop thread
@@ -112,16 +101,15 @@ class VisionService:
             # Frames are flowing again. The watchdog clears the flag.
             self._clear_stall(camera_id)
 
-        self._evidence.push_frame(frame, timestamp_ns)
+        self._evidence.push_frame(frame, timestamp_ns, camera_id)
         # Route by camera: a beam's ROI is only meaningful in its own
         # camera's frame. Without this, four cameras sample every beam four
         # times, three of them against coordinates that mean nothing.
         self._detector.process_frame(frame, timestamp_ns, camera_id)
-        # Ceiling frames deliberately do NOT go to MJPEG. cam_1-4 point straight
-        # up at the dots — that view is meaningless to the crowd outside.
-        # /display/out gets its own camera (the back cam at 172.16.0.205, aimed
-        # at the play area), which is not a detection camera and must not be
-        # fed to the detector either. See plan.md section 18.
+        # Ceiling frames are never shown to the crowd: SM-CAM-* point straight
+        # up at the dots, which is meaningless outside. /display/out gets the
+        # back cam (172.16.0.205, aimed at the play area) — not a detection
+        # camera, and it must not be fed to the detector either. plan.md §18.
 
     def _on_camera_stall(self, camera_id: str) -> None:
         """CameraStream noticed a gap between two frames it did receive."""
@@ -198,22 +186,21 @@ class VisionService:
     # ------------------------------------------------------------------
 
     async def run(self) -> None:
-        """Run every camera, the MJPEG server and the stall watchdog."""
+        """Run every camera and the stall watchdog."""
         self._loop = asyncio.get_running_loop()
         if not self._streams:
-            log.error("VisionService: no cameras configured — nothing to do")
-            return
+            # Raise, never return. A clean return let the supervisor believe
+            # this subsystem was fine while nothing was ever decoded.
+            raise RuntimeError(
+                "VisionService: no cameras configured — check hardware.yaml")
 
         tasks = [
             asyncio.create_task(s.run(), name=f"camera_{cid}")
             for cid, s in self._streams.items()
         ]
-        if self._mjpeg is not None:
-            tasks.append(asyncio.create_task(self._mjpeg.run(), name="mjpeg"))
         tasks.append(asyncio.create_task(self._watchdog(), name="vision_watchdog"))
 
-        log.info("VisionService started: %d camera(s), MJPEG %s",
-                 len(self._streams), "on :8081" if self._mjpeg else "disabled")
+        log.info("VisionService started: %d camera(s)", len(self._streams))
 
         # Same shape as GameRunner.run(): a dead camera must surface, not be
         # silently orphaned while the rest keeps pretending to work.
@@ -263,15 +250,95 @@ class VisionService:
     def is_armed(self) -> bool:
         return self._detector.is_armed
 
-    def set_watchlist(self, channel_ids, settle_ms: int = 250,
-                      preset: str | None = None) -> None:
+    def set_maze(self, preset: str | None, settle_ms: int = 250) -> None:
         """
-        Point detection at the channels the current maze shape has lit.
+        Point detection at the dots captured while this maze was lit.
 
-        Called on every preset change. See DotDetector.set_watchlist — this is
-        what stops a shape change from reading as a mass beam break.
+        Called on every preset change. See DotDetector.set_maze — this is what
+        stops a shape change from reading as a mass beam break.
         """
-        self._detector.set_watchlist(channel_ids, settle_ms, preset)
+        self._detector.set_maze(preset, settle_ms)
+        self._baselines.set_maze(preset)
+        if preset:
+            # Carry forward whatever ATTRACT has learned since the capture.
+            self._detector.apply_baselines(self._baselines.for_maze(preset))
+
+    def _on_detector_fault(self, reason: str, ts_ns: int) -> None:
+        """
+        A detector-level fault (mass-dark, resolution mismatch).
+
+        This callback was never passed, so the condition reached one log line
+        and stopped — no FSM event, no entry in runner.faults(), nothing on the
+        admin dashboard. It now becomes a stall, which is the existing safe
+        degradation: suppress and drop to manual rather than bust anyone.
+        """
+        log.error("vision fault: %s", reason)
+        self._fault_reason = reason
+        if self._last_emitted_stall is not True:
+            self._last_emitted_stall = True
+            self._queue.put_nowait(("stall", True, [reason]))
+
+    def reload(self, config) -> None:
+        """
+        Re-read detection config without a restart.
+
+        Everything below was cached at construction, so editing beams.json
+        through the admin panel — including pasting in a fresh calibration —
+        returned ok and changed nothing until the service restarted. Camera URLs
+        still need a restart; that is reported, not silently ignored.
+        """
+        old_urls = {c.id: c.url for c in self._config.hardware.cameras}
+        new_urls = {c.id: c.url for c in config.hardware.cameras}
+        self._config = config
+        self._stall_threshold_ms = config.beams.detection.stall_threshold_ms
+        self._baselines = BaselineManager(config.beams)
+        self._detector = DotDetector(
+            beams_config=config.beams,
+            on_break=self._on_break,
+            on_clear=self._on_clear,
+            metrics_emit=self._metrics_emit,
+            on_sample=self._baselines.update_ema,
+            on_fault=self._on_detector_fault,
+        )
+        self._fault_reason = None
+        log.info("VisionService reloaded: %d maze capture(s)",
+                 len(config.beams.mazes))
+        if old_urls != new_urls:
+            log.warning("camera URLs changed — a RESTART is required for that "
+                        "to take effect; detection config was reloaded")
+
+    def clear_masks(self) -> int:
+        """Unmask every auto-masked dot. Returns how many were cleared."""
+        return self._detector.clear_masks()
+
+    def set_masked(self, dot_id: str, masked: bool = True) -> bool:
+        """Mask one dot from the admin page. False if it is not being watched."""
+        return self._detector.mask_dot(dot_id, masked)
+
+    def detector_stats(self) -> dict:
+        """
+        Watched / dark / masked per camera, plus real camera liveness.
+
+        Liveness was missing entirely: nothing read is_stalled() or fps(), and
+        the GM's camera LED was set once at page load and never updated, so
+        every camera being dead looked identical to every camera being healthy.
+        """
+        st = self._detector.stats()
+        now = time.monotonic_ns()
+        cams = st.setdefault("cameras", {})
+        for cid, stream in self._streams.items():
+            entry = cams.setdefault(
+                cid, {"watched": 0, "blind": 0, "dark": 0, "masked": 0})
+            last = stream.last_frame_ns
+            entry["stalled"] = cid in self._stalled_cameras or last is None
+            entry["fps"] = round(stream.fps, 1)
+            entry["age_ms"] = None if last is None else int((now - last) / 1e6)
+        st["stalled"] = bool(self._stalled_cameras)
+        st["cameras_live"] = sum(
+            1 for c in cams.values() if not c.get("stalled", True))
+        st["cameras_total"] = len(self._streams)
+        st["fault"] = self._fault_reason
+        return st
 
     # ------------------------------------------------------------------
     # Telemetry — read by the admin hardware page

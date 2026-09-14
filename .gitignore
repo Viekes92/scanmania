@@ -32,3 +32,12 @@ secrets.env
 # Arduino build
 inputs/firmware/opta/build/
 scanmania.db*
+
+# Calibration artefacts. tools/capture.py writes a timestamped backup and a
+# .new temp file beside beams.json; deploy.sh does `git add config`, so these
+# were being committed and pushed on every deploy, and a kill mid-write left a
+# stray .new behind that the next deploy swept into the repo.
+config/*.bak
+config/*.json.*.bak
+config/*.json.new
+config/*.tmp

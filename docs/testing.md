@@ -15,15 +15,26 @@ The pure-logic core is well covered. Every I/O boundary is not.
 | `core/stopwatch.py` | yes | `test_stopwatch.py` |
 | `core/runner.py` | side-effect dispatch | `test_runner.py` |
 | `iobackend/presets.py` + `reconcile.py` | desired-state drift | `test_reconcile.py` |
-| `vision/` | **no tests** | — |
-| `web/` | **no tests** | — |
+| `vision/detect.py` + `baseline.py` | yes — count rule, maze swap, suppression, baselines | `test_maze_dots.py` |
+| `vision/service.py` | stall handling only | `test_vision_service.py` |
+| `tools/capture.py` | dot finding, validation, the write | `test_capture.py` |
+| audit regressions | run integrity, config clamps, day boundary, rate limit, name sanitisation | `test_audit_fixes.py` |
+| `vision/camera.py`, `evidence.py`, `mjpeg.py` | **no tests** | — |
+| `web/ratelimit.py` + name sanitisation | yes | `test_audit_fixes.py` |
+| `web/` routes | **no tests** | — |
 | `inputs/` | **no tests** | — |
 | `iobackend/modbus.py` | **no tests** | — |
-| `config/loader.py` | **no tests** | — |
+| `config/loader.py` | round-trip of the maze captures only | `test_capture.py` |
 | `persist/db.py` | **no tests** | — |
 | `__main__.py` | **no tests** | — |
 
-That is roughly 4,800 untested lines, and it is every place the system talks to
+The detection tests run against synthetic frames, not cameras. They prove the
+decision logic — that a maze change is not a break, that a handful of dark dots
+busts and dozens does not, that an uncalibrated preset watches nothing. They
+prove nothing about whether a real camera can see a real dot. Only a capture
+on-site does that.
+
+Everything below the line above is still every place the system talks to
 hardware or the network.
 
 ## The fakes are stubs, not drivers

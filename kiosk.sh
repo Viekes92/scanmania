@@ -97,4 +97,26 @@ echo "Launching:"
 launch in "$MODE_IN" 0 "$SERVER/display/in"
 [ -n "${MODE_OUT:-}" ] && launch out "$MODE_OUT" "$W_IN" "$SERVER/display/out"
 
-wait
+# Supervise each window individually.
+#
+# A bare `wait` blocks until EVERY job exits, so a Chromium that got OOM-killed
+# on day 40 left one panel black permanently while the script sat waiting on the
+# other — and systemd never restarted anything, because nothing had exited.
+# `wait -n` returns on the FIRST exit, so a dead window is noticed and relaunched.
+declare -A RESTARTS=()
+while true; do
+    wait -n || true
+    sleep 2
+    for name in in out; do
+        [ "$name" = "out" ] && [ -z "${MODE_OUT:-}" ] && continue
+        if ! pgrep -f "scanmania-kiosk-$name" >/dev/null 2>&1; then
+            RESTARTS[$name]=$(( ${RESTARTS[$name]:-0} + 1 ))
+            echo "$(date -Is) $name window gone — relaunch #${RESTARTS[$name]}"
+            if [ "$name" = "in" ]; then
+                launch in "$MODE_IN" 0 "$SERVER/display/in"
+            else
+                launch out "$MODE_OUT" "$W_IN" "$SERVER/display/out"
+            fi
+        fi
+    done
+done

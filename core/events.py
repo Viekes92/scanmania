@@ -161,13 +161,17 @@ class PreflightPass:
 @dataclass(frozen=True)
 class PreflightFail:
     """
-    Emitted by: vision/ when any beam reads below break_ratio during the ARM blink.
+    Emitted by: core/runner.py's preflight check, before the count-in.
     Consumed by: FSM in ARM state.
-    Drives ARM → FAULT with the offending beam named.
+    Drives ARM → FAULT with the reason named.
     Fields:
-        beam_id: the beam that failed (e.g. "b07"). Displayed on GM console.
+        beam_id: legacy field — the dot or beam that failed, when one is known.
+        reason:  why preflight failed, shown to the operator. Preflight now
+                 checks board health, camera stalls and whether the lit maze has
+                 any calibrated dots, so the cause is usually not a single beam.
     """
-    beam_id: str
+    beam_id: str = ""
+    reason: str = ""
     type: str = field(default="PreflightFail", init=False)
 
 

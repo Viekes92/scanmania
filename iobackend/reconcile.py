@@ -84,6 +84,19 @@ class ReconcileLoop:
             log.debug("reconcile: board '%s' read_coils returned None", board_id)
             return
 
+        # Re-read desired AFTER the await. apply_preset sets _desired and then
+        # writes the boards one at a time, so a read landing inside that window
+        # compared a brand-new desired against a board that had not been written
+        # yet — a guaranteed mismatch on every preset change, which meant a
+        # warning and a redundant full-board write several times a second during
+        # a show, and a permanently unhealthy-looking admin page. It also let
+        # the reconciler revert a preset it had raced.
+        still_desired = resolver.desired_state().get(board_id)
+        if still_desired != desired:
+            log.debug("reconcile: board '%s' desired changed mid-check — skipping",
+                      board_id)
+            return
+
         if actual != desired:
             diff = [
                 f"ch{i+1}(want={desired[i]},got={actual[i]})"

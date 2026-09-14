@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import re
 import shutil
 import subprocess
@@ -25,6 +27,32 @@ import numpy as np
 from config.loader import CameraConfig
 
 log = logging.getLogger(__name__)
+
+# Cameras get their own threads. See _open_and_read for why this must never be
+# the default executor.
+_CAMERA_POOL: ThreadPoolExecutor | None = None
+_CAMERA_POOL_LOCK = threading.Lock()
+
+_OPEN_TIMEOUT_S = 20.0      # RTSP connect + ffprobe; generous, but bounded
+_READ_TIMEOUT_S = 5.0       # well past a 25 fps frame interval
+_RECONNECT_MIN_S = 2.0
+_RECONNECT_MAX_S = 30.0
+
+
+def _camera_pool() -> ThreadPoolExecutor:
+    """One shared pool for every camera, sized to the camera count."""
+    global _CAMERA_POOL
+    with _CAMERA_POOL_LOCK:
+        if _CAMERA_POOL is None:
+            _CAMERA_POOL = ThreadPoolExecutor(
+                max_workers=_CAMERA_POOL_SIZE, thread_name_prefix="cam"
+            )
+        return _CAMERA_POOL
+
+
+# Two per camera: one parked in a blocking read that timed out, one for its
+# replacement. Without the headroom a timed-out read would starve its own retry.
+_CAMERA_POOL_SIZE = 24
 
 _STALL_THRESHOLD_MS = 300   # frame gap above this → STALLED
 _DRIFT_THRESHOLD_PX = 2.0  # phase correlation shift above this → CAMERA_MOVED
@@ -134,20 +162,41 @@ class CameraStream:
         """
         Decode RTSP stream, deliver each frame to on_frame, and detect stalls.
 
-        Runs until cancelled. Reconnects automatically on failure.
+        Runs until cancelled. Reconnects with capped backoff on failure.
         """
         log.info("CameraStream '%s': starting, url=%s", self._config.id, self._config.url)
-        while True:
+        backoff = _RECONNECT_MIN_S
+        try:
+            while True:
+                try:
+                    await self._open_and_read()
+                    backoff = _RECONNECT_MIN_S
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    log.warning("CameraStream '%s': stream error (%s), "
+                                "reconnecting in %.0f s",
+                                self._config.id, exc, backoff)
+                self._release()
+                await asyncio.sleep(backoff)
+                # Capped backoff. Eight cameras retrying flat-out every 2 s
+                # after a switch reboot is a connect storm that also occupies a
+                # reader thread per attempt.
+                backoff = min(backoff * 2, _RECONNECT_MAX_S)
+        finally:
+            # A cancelled task used to jump straight past the release, orphaning
+            # an ffmpeg subprocess that kept its RTSP session — which is what
+            # made the NEXT run fail to connect.
+            self._release()
+
+    def _release(self) -> None:
+        cap, self._cap = self._cap, None
+        if cap is not None:
             try:
-                await self._open_and_read()
-            except asyncio.CancelledError:
-                raise
+                cap.release()
             except Exception as exc:
-                log.warning("CameraStream '%s': stream error (%s), reconnecting in 2 s", self._config.id, exc)
-            if self._cap is not None:
-                self._cap.release()
-                self._cap = None
-            await asyncio.sleep(2.0)
+                log.debug("CameraStream '%s': release failed: %s",
+                          self._config.id, exc)
 
     def _open_capture(self):
         """Open the stream with whichever backend this machine can actually use."""
@@ -167,8 +216,22 @@ class CameraStream:
         loop = asyncio.get_running_loop()
         log.info("CameraStream '%s': opening %s", self._config.id, self._config.url)
 
-        cap = await loop.run_in_executor(None, self._open_capture)
+        # Own executor, never the default one. Eight cameras each holding a
+        # worker in a blocking read exactly fills the default pool on a 4-core
+        # box, and everything else in the process shares it: every Modbus coil
+        # write, and the 20 Hz Opta poll that carries the stop button. Modbus
+        # times out while merely QUEUED and marks boards DEGRADED, so camera
+        # traffic could take the maze and the stop button down without a single
+        # network fault.
+        pool = _camera_pool()
+
+        cap = await asyncio.wait_for(
+            loop.run_in_executor(pool, self._open_capture), timeout=_OPEN_TIMEOUT_S
+        )
         if not cap.isOpened():
+            # Assign before the check, or this capture leaks: run()'s release
+            # only ever saw the PREVIOUS value.
+            self._cap = cap
             raise RuntimeError(f"failed to open '{self._config.url}'")
 
         self._cap = cap
@@ -176,7 +239,13 @@ class CameraStream:
         log.info("CameraStream '%s': connected", self._config.id)
 
         while True:
-            ret, frame = await loop.run_in_executor(None, cap.read)
+            # A camera that freezes with its TCP session open blocks cap.read()
+            # forever: no exception, so the reconnect below is never reached and
+            # the worker is gone for the life of the process. The deadline turns
+            # that into an ordinary reconnect.
+            ret, frame = await asyncio.wait_for(
+                loop.run_in_executor(pool, cap.read), timeout=_READ_TIMEOUT_S
+            )
             if not ret or frame is None:
                 raise RuntimeError("cap.read() returned False — stream ended or dropped")
 

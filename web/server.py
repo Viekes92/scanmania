@@ -10,6 +10,7 @@ Invariant: pure WebSocket consumers — a dead client never blocks or affects th
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
@@ -22,6 +23,10 @@ from fastapi.staticfiles import StaticFiles
 from persist.db import Database
 
 log = logging.getLogger(__name__)
+
+# A client that cannot absorb a state frame in this long is not keeping up at
+# 10 Hz anyway. Dropping it costs a reconnect; waiting for it costs the game.
+_SEND_TIMEOUT_S = 0.25
 
 _STATIC_ROOT = Path(__file__).parent / "static"
 
@@ -51,19 +56,42 @@ class WebSocketHub:
         log.debug("WS client disconnected; total=%d", len(self._clients))
 
     async def broadcast(self, message: dict) -> None:
-        """Broadcast to all connected clients. Silently drop stale connections."""
+        """
+        Broadcast to all connected clients. Drop stale AND stalled connections.
+
+        This used to await each client in turn with no timeout, and only an
+        *exception* evicted anyone. A client that simply stops reading — an iPad
+        asleep, a display on saturated wifi — fills its TCP window and blocks
+        the await for the kernel retransmit timeout, minutes. Because this is
+        awaited from BroadcastState inside the single event drain, that froze
+        the whole game: the stop button, beam breaks and GM BUST all sat
+        unprocessed in the queue, and the stopwatch recorded whenever the socket
+        finally unwedged rather than when the player finished.
+
+        Now: one shared serialisation, all sends concurrent, each with a hard
+        deadline. A client that cannot keep up is dropped, not waited for.
+        Invariant 6 — the game path never awaits the network — needs this.
+        """
         if not self._clients:
             return
-        dead: set[WebSocket] = set()
-        for ws in list(self._clients):
+        # Serialise once, not once per client.
+        payload = json.dumps(message, default=str)
+
+        async def send(ws: WebSocket) -> bool:
             try:
-                await ws.send_json(message)
+                await asyncio.wait_for(ws.send_text(payload), timeout=_SEND_TIMEOUT_S)
+                return True
             except Exception:
-                dead.add(ws)
+                return False
+
+        clients = list(self._clients)
+        results = await asyncio.gather(*(send(ws) for ws in clients),
+                                       return_exceptions=True)
+        dead = {ws for ws, ok in zip(clients, results) if ok is not True}
         for ws in dead:
             self._clients.discard(ws)
         if dead:
-            log.debug("Removed %d dead WS clients", len(dead))
+            log.info("Dropped %d unresponsive WS client(s)", len(dead))
 
     @property
     def client_count(self) -> int:

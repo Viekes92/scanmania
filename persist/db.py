@@ -10,8 +10,9 @@ Invariant: WAL mode always enabled. Never rotate 'runs' table. Events rotate at 
 from __future__ import annotations
 
 import json
+import os
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiosqlite
@@ -88,6 +89,9 @@ CREATE TABLE IF NOT EXISTS config_audit (
 
 CREATE INDEX IF NOT EXISTS idx_runs_started_at   ON runs(started_at);
 CREATE INDEX IF NOT EXISTS idx_runs_outcome       ON runs(outcome);
+-- Covers the leaderboard: filter by outcome, order by time, without a temp
+-- B-tree sort of every clean run ever on the one shared connection.
+CREATE INDEX IF NOT EXISTS idx_runs_leaderboard   ON runs(outcome, elapsed_ms);
 CREATE INDEX IF NOT EXISTS idx_events_run_id      ON events(run_id);
 CREATE INDEX IF NOT EXISTS idx_events_ts_wall     ON events(ts_wall);
 CREATE INDEX IF NOT EXISTS idx_beam_hits_run_id   ON beam_hits(run_id);
@@ -100,6 +104,27 @@ _SCHEMA_VERSION = 3
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# The operating day. "Daily" used to mean UTC midnight, which in CEST wiped the
+# public board at 02:00 local — mid-session on a late slot — and moves to 01:00
+# after the 25 Oct 2026 DST change, inside the tour window.
+DAY_START_HOUR = int(os.environ.get("SCANMANIA_DAY_START_HOUR", "9"))
+
+
+def day_bounds(now: datetime | None = None) -> tuple[str, str]:
+    """
+    ISO bounds of the current operating day, in the same UTC form runs are
+    stamped with. The day rolls over at DAY_START_HOUR local time, so a session
+    running past midnight stays on one leaderboard.
+    """
+    now = now or datetime.now().astimezone()
+    start_local = now.replace(hour=DAY_START_HOUR, minute=0, second=0, microsecond=0)
+    if now < start_local:
+        start_local -= timedelta(days=1)
+    end_local = start_local + timedelta(days=1)
+    return (start_local.astimezone(timezone.utc).isoformat(),
+            end_local.astimezone(timezone.utc).isoformat())
 
 
 class Database:
@@ -120,6 +145,19 @@ class Database:
         # WAL is set in DDL but we also assert it here for clarity.
         await self._conn.executescript(_DDL)
         await self._conn.commit()
+
+        # One quick check at open. Corruption otherwise surfaces deep inside a
+        # query at the worst moment, and systemd just restart-loops on it with
+        # no indication of the cause.
+        try:
+            async with self._conn.execute("PRAGMA quick_check") as cur:
+                row = await cur.fetchone()
+            if row and row[0] != "ok":
+                log.error("DATABASE INTEGRITY CHECK FAILED (%s) — restore a "
+                          "snapshot from /var/backups/scanmania", row[0])
+        except Exception as exc:
+            log.error("Database integrity check could not run: %s", exc)
+
         await self._run_migrations()
         log.info("Database initialised at %s", self._db_path)
 
@@ -148,6 +186,14 @@ class Database:
         async with self._db.execute("SELECT version FROM _schema_version") as cur:
             row = await cur.fetchone()
         current = row[0] if row else 0
+        if current > _SCHEMA_VERSION:
+            # An old binary against a newer DB — e.g. after a rollback deploy.
+            # Refuse rather than run against a schema this code does not know.
+            raise RuntimeError(
+                f"database schema is v{current} but this build understands "
+                f"v{_SCHEMA_VERSION}. Refusing to start — restore a matching "
+                f"snapshot, or deploy the newer build."
+            )
         if current < _SCHEMA_VERSION:
             if current < 2:
                 # v2: remember the pre-void outcome so unvoid can restore it.
@@ -379,17 +425,23 @@ class Database:
         Return clean runs sorted ascending by elapsed_ms.
 
         scope values:
-          daily      — started_at >= today UTC midnight
+          daily      — the current operating day (see day_bounds)
           activation — all time (alias for 'all')
           all        — all time
+
+        One row per PLAYER, not per run: without the GROUP BY, one keen punter
+        doing ten clean runs filled every row of the public outdoor display.
         """
         where_clauses = ["r.outcome = 'clean'", "r.elapsed_ms IS NOT NULL"]
         params: list[Any] = []
 
         if scope == "daily":
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            where_clauses.append("r.started_at >= ?")
-            params.append(today)
+            start, end = day_bounds()
+            # Bounded on BOTH sides. With only a lower bound, a session recorded
+            # while the clock was wrong (dead CMOS battery, blocked NTP) pinned
+            # junk times to the daily board permanently.
+            where_clauses.append("r.started_at >= ? AND r.started_at < ?")
+            params.extend([start, end])
 
         where_sql = " AND ".join(where_clauses)
         query = f"""
@@ -399,12 +451,64 @@ class Database:
             FROM runs r
             LEFT JOIN players p ON p.id = r.player_id
             WHERE {where_sql}
-            ORDER BY r.elapsed_ms ASC
+              AND r.elapsed_ms = (
+                    SELECT MIN(r2.elapsed_ms) FROM runs r2
+                    WHERE r2.player_id = r.player_id
+                      AND r2.outcome = 'clean' AND r2.elapsed_ms IS NOT NULL
+                  )
+            GROUP BY r.player_id
+            ORDER BY r.elapsed_ms ASC, r.started_at ASC
             LIMIT ?
         """
         params.append(limit)
 
         async with self._db.execute(query, params) as cur:
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def close_orphaned_runs(self) -> int:
+        """
+        Mark runs left 'in_progress' by a crash or power cut as aborted.
+
+        Invariant 7 says never RESUME a run, and that still holds — this only
+        settles the record. Called once at startup, so a row written at GO that
+        never reached SaveRun tells the truth instead of sitting in-progress
+        forever.
+        """
+        async with self._db.execute(
+            "UPDATE runs SET outcome = 'aborted', "
+            "voided_reason = COALESCE(voided_reason, 'process restarted mid-run') "
+            "WHERE outcome = 'in_progress'"
+        ) as cur:
+            count = cur.rowcount
+        await self._db.commit()
+        if count:
+            log.warning("Closed %d run(s) left in progress by a restart", count)
+        return count
+
+    async def get_day_export(self, day_start: str | None = None,
+                             day_end: str | None = None) -> list[dict]:
+        """
+        Every run of one operating day, joined to its player's details.
+
+        This is the end-of-day export: one row per run, in the order they
+        happened, including busted and aborted runs. Voided runs are included
+        and flagged rather than dropped — an export that silently omits rows is
+        worse than one that explains them.
+        """
+        if day_start is None or day_end is None:
+            day_start, day_end = day_bounds()
+        query = """
+            SELECT r.id, r.player_id, r.started_at, r.elapsed_ms, r.outcome,
+                   r.segment_reached, r.detection_mode, r.busting_beam_id,
+                   r.voided_reason, r.pre_void_outcome,
+                   p.nickname AS player_nickname, p.extra_json
+            FROM runs r
+            LEFT JOIN players p ON p.id = r.player_id
+            WHERE r.started_at >= ? AND r.started_at < ?
+            ORDER BY r.started_at ASC
+        """
+        async with self._db.execute(query, (day_start, day_end)) as cur:
             rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
@@ -441,17 +545,61 @@ class Database:
             rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    async def rotate_old_events(self) -> int:
-        """Delete events older than 30 days. Returns count deleted."""
-        from datetime import timedelta
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    async def rotate_old_events(self, days: int = 30) -> int:
+        """
+        Delete events older than `days`. Returns count deleted.
+
+        The module docstring has always claimed "Events rotate at 30 days";
+        nothing called this, which was harmless only while nothing wrote events
+        either. Now that the flight recorder is wired, this is what keeps the
+        table from growing for the whole tour.
+        """
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         async with self._db.execute(
             "DELETE FROM events WHERE ts_wall < ?", (cutoff,)
         ) as cur:
             count = cur.rowcount
         await self._db.commit()
         if count:
-            log.info("Rotated %d old events (>30 days)", count)
+            log.info("Rotated %d old events (>%d days)", count, days)
+        return count
+
+    async def purge_old_players(self, days: int) -> int:
+        """
+        Forget personal details for players with no run inside `days`.
+
+        Sign-in collects surname, email and date of birth from members of the
+        public. Nothing ever removed them, and there was no deletion path at
+        all. The player row and its nickname stay so the leaderboard still
+        reads, but extra_json is emptied.
+        """
+        if days <= 0:
+            return 0
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        async with self._db.execute(
+            """
+            UPDATE players SET extra_json = NULL
+            WHERE extra_json IS NOT NULL
+              AND id NOT IN (SELECT DISTINCT player_id FROM runs
+                             WHERE player_id IS NOT NULL AND started_at >= ?)
+            """,
+            (cutoff,),
+        ) as cur:
+            count = cur.rowcount
+        await self._db.commit()
+        if count:
+            log.info("Purged personal details for %d player(s) older than %d days",
+                     count, days)
+        return count
+
+    async def rotate_config_audit(self, keep: int = 2000) -> int:
+        """Keep only the most recent `keep` audit rows."""
+        async with self._db.execute(
+            "DELETE FROM config_audit WHERE id NOT IN "
+            "(SELECT id FROM config_audit ORDER BY id DESC LIMIT ?)", (keep,)
+        ) as cur:
+            count = cur.rowcount
+        await self._db.commit()
         return count
 
     # ------------------------------------------------------------------

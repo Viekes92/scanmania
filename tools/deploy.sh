@@ -33,12 +33,30 @@ dirty_other="$(git status --porcelain -- . ':(exclude)config' | head -20)"
     die "uncommitted changes outside config/ — commit or stash them first"
 }
 
+# Check we can actually fast-forward BEFORE committing anything locally.
+# This used to commit local config first and then push. When the push was
+# rejected — bad venue wifi, or any upstream commit landing between deploys —
+# it died with the local commit already made, so every later deploy failed
+# --ff-only and the box was un-deployable until someone rebased by hand.
+say "Fetching"
+git fetch -q origin main || die "could not reach origin — check the network"
+remote="$(git rev-parse origin/main)"
+local_head="$(git rev-parse HEAD)"
+if [ "$local_head" != "$remote" ] && ! git merge-base --is-ancestor "$local_head" "$remote"; then
+    die "this box has diverged from origin/main — resolve by hand before deploying"
+fi
+
 if ! git diff --quiet -- config || [ -n "$(git ls-files --others --exclude-standard config)" ]; then
     echo "Live config changed on this box — committing before pull:"
     git --no-pager diff --stat -- config
     git add config
     git commit -q -m "config: live tuning from $(hostname)"
-    git push -q origin HEAD:main || die "could not push local config; resolve by hand"
+    if ! git push -q origin HEAD:main; then
+        # Undo the local commit so the box is left exactly as it was found,
+        # rather than diverged and permanently un-deployable.
+        git reset -q --soft "$local_head"
+        die "could not push local config; nothing was changed — retry when the network is back"
+    fi
     echo "Pushed."
 else
     echo "Clean."
@@ -49,8 +67,24 @@ fi
 say "Backing up the database"
 if [ -f "$DB" ]; then
     backup="$DB.bak-$(date +%Y%m%dT%H%M%S)"
-    cp -a "$DB" "$backup"
+    # sqlite3 .backup, not cp. The service is still running and the DB is in WAL
+    # mode, so cp misses everything committed since the last checkpoint and can
+    # tear a page mid-write — and this is the artefact you restore from when an
+    # irreversible migration goes wrong.
+    if command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$DB" ".backup '$backup'" || die "database backup failed"
+    else
+        "$VENV/bin/python" - "$DB" "$backup" <<'PYBACKUP' || die "database backup failed"
+import sqlite3, sys
+src, dst = sys.argv[1], sys.argv[2]
+with sqlite3.connect(src) as s, sqlite3.connect(dst) as d:
+    s.backup(d)
+PYBACKUP
+    fi
     echo "$backup"
+    # Keep the last 10. Nothing pruned these, so they accumulated on the same
+    # partition as the live database, forever.
+    ls -1t "$DB".bak-* 2>/dev/null | tail -n +11 | xargs -r rm -f
 else
     echo "No database at $DB yet — skipping."
 fi
@@ -70,7 +104,20 @@ fi
 # --- 4. Dependencies ---------------------------------------------------------
 if [ "$before" != "$after" ] && ! git diff --quiet "$before" "$after" -- requirements.txt; then
     say "requirements.txt changed — installing"
-    "$VENV/bin/pip" install -q -r requirements.txt
+    if ! "$VENV/bin/pip" install -q -r requirements.txt; then
+        # Roll the checkout back. Otherwise new code sits on disk with old deps,
+        # the running process keeps working all evening, and the failure only
+        # appears at the next power cycle — twelve hours and one venue away
+        # from its cause.
+        git reset -q --hard "$before"
+        die "pip install failed — rolled back to $before, nothing restarted"
+    fi
+    # Prove the process can still import before we restart it.
+    "$VENV/bin/python" -c "import scanmania" 2>/dev/null || \
+        "$VENV/bin/python" -c "import fastapi, cv2, numpy" || {
+            git reset -q --hard "$before"
+            die "dependencies are broken after install — rolled back to $before"
+        }
 else
     echo "requirements.txt unchanged."
 fi

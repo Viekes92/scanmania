@@ -23,9 +23,14 @@ from persist.db import Database
 
 log = logging.getLogger(__name__)
 
+# Retention. Events are forensics — long enough to settle a dispute weeks later.
+# PII is contact detail for a prize draw; it should not outlive the activation.
+_EVENT_RETENTION_DAYS = int(os.environ.get("SCANMANIA_EVENT_RETENTION_DAYS", "30"))
+_PII_RETENTION_DAYS = int(os.environ.get("SCANMANIA_PII_RETENTION_DAYS", "90"))
+
 
 def _timestamp_str() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
 
 
 async def export_snapshot(
@@ -83,7 +88,7 @@ async def export_leaderboard_csv(
             writer.writerow(
                 {
                     "rank": i,
-                    "nickname": row.get("nickname", ""),
+                    "nickname": row.get("player_nickname", ""),
                     "elapsed_ms": elapsed_ms,
                     "elapsed_s": round(elapsed_ms / 1000, 3),
                     "started_at": row.get("started_at", ""),
@@ -116,11 +121,30 @@ async def rolling_snapshot_loop(
         keep,
         output_dir,
     )
+    first = True
     while True:
-        await asyncio.sleep(interval_min * 60)
+        # Snapshot immediately on start, then on the interval. Sleeping first
+        # meant a service restarting more often than the interval — a crash
+        # loop, or an operator restarting after config edits — produced no
+        # snapshots at all, so after a power cut the newest could be a day old.
+        if not first:
+            await asyncio.sleep(interval_min * 60)
+        first = False
         try:
+            # Prune BEFORE writing, not after. Pruning only ran on success, so
+            # once the partition filled, VACUUM INTO raised ENOSPC forever and
+            # the loop could never free the space it needed to recover.
+            await asyncio.to_thread(_prune_snapshots, output_dir, keep)
             path = await export_snapshot(db, output_dir)
-            _prune_snapshots(output_dir, keep)
+            # Retention runs on the same schedule. All three of these existed and
+            # had no callers, so the documented 30-day event rotation never ran
+            # and player PII accumulated for the whole tour with no purge path.
+            try:
+                await db.rotate_old_events(_EVENT_RETENTION_DAYS)
+                await db.purge_old_players(_PII_RETENTION_DAYS)
+                await db.rotate_config_audit()
+            except Exception as exc:
+                log.warning("retention pass failed: %s", exc)
             log.info("Rolling snapshot complete: %s", path)
         except asyncio.CancelledError:
             raise
@@ -131,7 +155,10 @@ async def rolling_snapshot_loop(
 def _prune_snapshots(output_dir: str, keep: int) -> None:
     """Delete oldest snapshots beyond the keep limit."""
     pattern = str(Path(output_dir) / "scanmania_*.db")
-    files = sorted(glob.glob(pattern))  # ISO timestamps sort lexicographically
+    # By mtime, not filename. A session recorded with the clock set ahead leaves
+    # a future-named file that sorts last forever, permanently occupying a keep
+    # slot while genuinely newer snapshots are deleted.
+    files = sorted(glob.glob(pattern), key=os.path.getmtime)
     excess = files[: max(0, len(files) - keep)]
     for path in excess:
         try:

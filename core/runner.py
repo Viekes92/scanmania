@@ -37,6 +37,7 @@ from core.events import (
     CountInRequested, GmBust, GmAbort, GmVoid, GmForceReset, GmCancel,
     GmConfirmBreak, GmVetoBreak, MasterModeEngage, MasterModeExit,
     DetectionModeChanged,
+    VisionStalled,
 )
 from core.fsm import FSMContext, transition
 from core.stopwatch import Stopwatch, server_clock_message
@@ -44,6 +45,11 @@ from iobackend.reconcile import ReconcileLoop
 import core.metrics as metrics
 
 log = logging.getLogger(__name__)
+
+# The NUC boots faster than the PoE switch, so the relay boards are routinely
+# unreachable for the first few seconds of a venue power-up.
+_SELF_TEST_ATTEMPTS = 6
+_SELF_TEST_RETRY_S = 5.0
 
 
 class MasterModeRequired(RuntimeError):
@@ -105,6 +111,18 @@ class GameRunner:
         self._countdown_total: int = 0
         # monotonic_ns at which the ramp reaches GO, or None outside COUNTDOWN.
         self._countdown_go_ns: int | None = None
+        self._max_run_deadline_ns: int | None = None
+        self._current_preset: str | None = None
+        self._event_writes: set[asyncio.Task] = set()
+        self._db_fault: str | None = None
+        # Nothing ever called metrics.configure(), so _sink stayed None and
+        # every emit() returned immediately — relay.mismatch, vision.stall,
+        # vision.mass_dark, break.detected have never recorded a value. Log
+        # them: on an unattended tour this is the difference between "we saw
+        # the relays degrading in week 2" and "it stopped working on a Saturday".
+        metrics.configure(self._metric_sink)
+        self._assisted_task: asyncio.Task | None = None
+        self._registered_timeout_task: asyncio.Task | None = None
         self._countdown_start_ns: int = 0
         self._last_outcome: str | None = None
         # Invariant 4's safety backstop. Started in run(); exposed so the admin
@@ -151,14 +169,21 @@ class GameRunner:
         await self._run_self_test()
 
         # Start the inputs backend poll loop if it has one (ModbusInputs.run())
+        # Seed the leaderboard before the first broadcast. It started as [] and
+        # was only ever refreshed on save/void, and the outdoor display's
+        # `if (msg.leaderboard)` is true for an empty array — so the public board
+        # went blank after every restart until someone finished a run.
+        await self._refresh_leaderboard()
+
+        extra_tasks: list[asyncio.Task] = []
         if hasattr(self.inputs, "run"):
-            asyncio.create_task(self.inputs.run(), name="inputs_poll")
+            extra_tasks.append(asyncio.create_task(self.inputs.run(), name="inputs_poll"))
 
         # Same for vision. Without this nothing ever opened a camera: the
         # backend was constructed, handed to the runner, and then left idle,
         # so _vision_listener sat on a queue no one was filling.
         if hasattr(self.vision, "run"):
-            asyncio.create_task(self.vision.run(), name="vision_run")
+            extra_tasks.append(asyncio.create_task(self.vision.run(), name="vision_run"))
 
         # Start background tasks.
         tasks = [
@@ -167,6 +192,12 @@ class GameRunner:
             asyncio.create_task(self._clock_broadcaster(), name="clock_broadcaster"),
             asyncio.create_task(self._event_drain(), name="event_drain"),
             asyncio.create_task(self._hardware_poller(), name="hardware_poller"),
+            # Supervised, not fire-and-forget. These used to be created with no
+            # reference kept and left out of the wait() set below, so a dead
+            # vision pipeline or a dead input poller left the process running
+            # and looking healthy — and VisionService.run() RETURNS (no
+            # exception) when no cameras are configured.
+            *extra_tasks,
         ]
 
         # Invariant 4: re-assert coils that drift from the desired state. Reads
@@ -193,6 +224,7 @@ class GameRunner:
             log.info("GameRunner cancelled")
             for t in tasks:
                 t.cancel()
+            await self.blackout()
             raise
 
         failed = [t for t in done if not t.cancelled() and t.exception() is not None]
@@ -202,12 +234,127 @@ class GameRunner:
             )
         for t in pending:
             t.cancel()
+        await self.blackout()
 
         # Re-raise so __main__ ends the process and systemd restarts it clean.
         # Invariant 7 makes that safe: the runner never resumes a run.
         if failed:
             raise failed[0].exception()  # type: ignore[misc]
         log.warning("GameRunner: all subsystem tasks exited without error")
+
+    @staticmethod
+    def _metric_sink(name: str, value: float, tags: dict) -> None:
+        """Default sink: structured lines in the journal, greppable per metric."""
+        if tags:
+            bits = " ".join(f"{k}={v}" for k, v in sorted(tags.items()))
+            log.info("METRIC %s=%.4g %s", name, value, bits)
+        else:
+            log.info("METRIC %s=%.4g", name, value)
+
+    def _leaderboard_scope(self) -> str:
+        """The configured scope. It was hardcoded 'daily' at both call sites, so
+        setting `scope: activation` for a multi-day venue did nothing."""
+        lb = getattr(getattr(self.config, "game", None), "leaderboard", None)
+        return getattr(lb, "scope", "daily") or "daily"
+
+    def _leaderboard_limit(self) -> int:
+        lb = getattr(getattr(self.config, "game", None), "leaderboard", None)
+        return int(getattr(lb, "max_entries", 20) or 20)
+
+    async def _refresh_leaderboard(self) -> None:
+        """Refresh the cached leaderboard. Never raises."""
+        if self.db is None:
+            return
+        try:
+            self._cached_leaderboard = await self.db.get_leaderboard(
+                scope=self._leaderboard_scope(), limit=self._leaderboard_limit()
+            )
+        except Exception as exc:
+            log.warning("leaderboard refresh failed: %s", exc)
+
+    def _record_event(self, event: Any, old_state: str, new_state: str) -> None:
+        """Queue one event row. Never raises, never blocks the FSM."""
+        try:
+            payload = {"from": old_state, "to": new_state}
+            for field in ("beam_id", "reason", "mode", "nickname"):
+                v = getattr(event, field, None)
+                if v is not None:
+                    payload[field] = str(v)[:200]
+            task = asyncio.create_task(
+                self.db.insert_event(
+                    run_id=self.context.run_id,
+                    ts_mono_ns=time.monotonic_ns(),
+                    type=type(event).__name__,
+                    source="fsm",
+                    payload=payload,
+                ),
+                name="record_event",
+            )
+            # Keep a reference so the loop does not garbage-collect it, and
+            # retrieve the exception so a DB failure is logged rather than
+            # surfacing as "Task exception was never retrieved" at GC time.
+            self._event_writes.add(task)
+            task.add_done_callback(self._event_write_done)
+        except Exception as exc:
+            log.debug("event recording skipped: %s", exc)
+
+    def _event_write_done(self, task: asyncio.Task) -> None:
+        self._event_writes.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            log.warning("event write failed: %r", task.exception())
+
+    async def _open_run_row(self) -> None:
+        """Insert the in-progress run row. Best effort; never blocks the game."""
+        if self.db is None or not self.context.run_id:
+            return
+        try:
+            await self.db.insert_run({
+                "id": self.context.run_id,
+                "player_id": self.context.player_id,
+                "started_at": self._run_started_at_iso,
+                "ended_at": None,
+                "elapsed_ms": None,
+                # A run that never reaches SaveRun keeps this outcome, which is
+                # exactly what "the process died mid-run" should look like.
+                "outcome": "in_progress",
+                "detection_mode": self.context.detection_mode,
+                "busting_beam_id": None,
+                "segment_reached": self.context.segment,
+                "voided_reason": None,
+                "pre_void_outcome": None,
+            })
+        except Exception as exc:
+            self._db_fault = f"could not open run row: {exc}"
+            log.error("could not write the in-progress run row: %s", exc)
+
+    async def blackout(self) -> None:
+        """
+        Everything off: lasers dark, hazer zeroed.
+
+        Relay coils LATCH, and the boards are separately powered. Stopping the
+        service used to leave whatever preset was last written energised in an
+        unattended container with the reconciler dead — including via the
+        recalibration runbook, which tells the operator to stop the service.
+
+        Best effort and never raises: this runs on the shutdown path, and a
+        board that has already gone away must not stop the process from exiting.
+        Bounded, so an unreachable board cannot hold shutdown past
+        TimeoutStopSec.
+
+        When house-light control lands, raise them here too.
+        """
+        if self._resolver is not None and self.io is not None:
+            try:
+                await asyncio.wait_for(
+                    self._resolver.apply_all_off(self.io), timeout=3.0
+                )
+                log.info("blackout: all coils off")
+            except Exception as exc:
+                log.error("blackout: could not drive coils off (%s) — "
+                          "LASERS MAY STILL BE LIT", exc)
+        hazer = getattr(self, "hazer", None)
+        if hazer is not None and hasattr(hazer, "blackout"):
+            hazer.blackout()
 
     # ------------------------------------------------------------------
     # Event dispatch
@@ -226,12 +373,37 @@ class GameRunner:
 
         log.debug("FSM %s --[%s]--> %s", old_state, type(event).__name__, new_state)
 
+        # Flight recorder. insert_event() had zero callers, so every disputed
+        # bust opened a run detail showing an empty timeline — which reads as
+        # "nothing happened during this run", not "logging was never wired up".
+        # Fire and forget: the game path must never wait on the DB (invariant 6).
+        if self.db is not None and self.context.run_id:
+            self._record_event(event, old_state, new_state)
+
         await self._execute_side_effects(side_effects, old_state, new_state)
 
         # Entering SELF_TEST (e.g. after exiting MASTER): re-run the probe
         if new_state == "SELF_TEST" and old_state != "SELF_TEST" and old_state != "BOOT":
             self._cancel_task("_self_test_task")
             self._self_test_task = asyncio.create_task(self._run_self_test(), name="self_test")
+
+        # Entering REGISTERED: start an inactivity timeout. Without one, a
+        # player who signs in and wanders off leaves the container dark (the
+        # attract show was stopped) with their name on the outdoor display,
+        # until a GM notices and taps cancel.
+        if new_state == "REGISTERED" and old_state != "REGISTERED":
+            self._cancel_task("_registered_timeout_task")
+            reg_ms = getattr(getattr(self.config, "game", None),
+                             "registered_timeout_ms", 180_000) if self.config else 180_000
+            self._registered_timeout_task = asyncio.create_task(
+                self._timeout_after(reg_ms, GmCancel()), name="registered_timeout"
+            )
+        if new_state != "REGISTERED":
+            self._cancel_task("_registered_timeout_task")
+
+        # Clear the assisted decision deadline once the decision landed.
+        if new_state not in RUN_STATES or not self.context.pending_break:
+            self._cancel_task("_assisted_task")
 
         # Entering ARM: start inactivity timeout
         if new_state == "ARM" and old_state != "ARM":
@@ -285,7 +457,9 @@ class GameRunner:
         Clears run context so the next player starts fresh.
         """
         # Cancel all outstanding timers
-        for attr in ("_arm_timeout_task", "_result_timeout_task", "_max_run_task", "_count_in_task", "_show_task", "_self_test_task"):
+        for attr in ("_arm_timeout_task", "_result_timeout_task", "_max_run_task",
+                     "_count_in_task", "_show_task", "_self_test_task",
+                     "_assisted_task", "_registered_timeout_task"):
             self._cancel_task(attr)
         self.context.run_id = None
         self.context.player_id = None
@@ -299,6 +473,7 @@ class GameRunner:
         self._countdown_step = 0
         self._countdown_total = 0
         self._countdown_go_ns = None
+        self._max_run_deadline_ns = None
 
         old_state = self.state
         new_state, side_effects = transition(self.state, _AttractTick(), self.context)
@@ -347,35 +522,35 @@ class GameRunner:
         self._cancel_task("_show_task")
         self._show_name = None
         self._cancel_task("_count_in_task")
+        # Before the write, not after. The settle window starts when set_maze is
+        # called, so calling it afterwards left the new shape physically lit
+        # while the detector still held the old dot set — and a slow board could
+        # stretch that past the hysteresis window and bust a player for the maze
+        # changing shape at a checkpoint.
+        self._apply_maze(effect.preset_name)
         if self._resolver and self.io:
             try:
                 await self._resolver.apply_preset(effect.preset_name, self.io)
             except KeyError:
                 log.warning("ApplyPreset: unknown preset '%s' — skipping", effect.preset_name)
-        self._apply_watchlist(effect.preset_name)
 
-    def _apply_watchlist(self, preset_name: str) -> None:
+    def _apply_maze(self, preset_name: str) -> None:
+        self._current_preset = preset_name
         """
-        Point vision at the channels this preset lights.
+        Point vision at the dots captured while this preset was lit.
 
         This is the whole answer to "is that a broken beam or a maze change".
-        The watch-list moves with the maze, so a dot going dark because its
-        relay opened is simply not being looked at. Channels lit in both the old
-        and new shape keep their state, so a real break during the switch is
-        still caught — at ~80% shape overlap that is most of the maze.
+        The dot set moves with the maze, so a dot going dark because its relay
+        opened is simply not being looked at any more.
+
+        A preset with no capture watches nothing. That is deliberate: without a
+        capture there is no baseline to compare against, so every reading would
+        be a guess, and a guess ends someone's run (invariant 5).
         """
-        if self.vision is None or not hasattr(self.vision, "set_watchlist"):
+        if self.vision is None or not hasattr(self.vision, "set_maze"):
             return
-        watchlists = getattr(self.config, "watchlists", None) or {}
-        ids = watchlists.get(preset_name)
-        if ids is None:
-            # Unknown preset (or a show step): watch everything rather than
-            # silently going blind. Detection stays conservative either way.
-            log.debug("No watch-list for preset '%s' — watching all channels", preset_name)
-            self.vision.set_watchlist(None)
-            return
-        settle_ms = getattr(self.config.game, "preset_settle_ms", 250)
-        self.vision.set_watchlist(ids, settle_ms, preset_name)
+        settle_ms = getattr(self.config.game, "preset_settle_ms", 250) if self.config else 250
+        self.vision.set_maze(preset_name, settle_ms)
 
     async def _handle_play_show(self, effect: PlayShow) -> None:
         """Start an animated show (sequence of presets with timing)."""
@@ -419,6 +594,14 @@ class GameRunner:
                     preset_name = step.get("preset") if isinstance(step, dict) else getattr(step, "preset", None)
                     hold_ms = step.get("hold_ms", 300) if isinstance(step, dict) else getattr(step, "hold_ms", 300)
                     if preset_name and self._resolver and self.io:
+                        # Shows drive presets straight through the resolver, so
+                        # without this the detector keeps watching whatever maze
+                        # was last APPLIED while the show flashes something else.
+                        # With the rolling EMA live, every blackout frame of the
+                        # attract show was being folded into that maze's
+                        # baselines — editing a show's hold_ms silently retuned
+                        # detection sensitivity.
+                        self._apply_maze(preset_name)
                         try:
                             await self._resolver.apply_preset(preset_name, self.io)
                         except KeyError:
@@ -436,22 +619,60 @@ class GameRunner:
             log.info("Run started: run_id=%s", self.context.run_id)
             self.stopwatch.start()
             self._run_started_at_iso = datetime.now(timezone.utc).isoformat()
+            # Write the row pessimistically at GO — CLAUDE.md invariant 7.
+            # Nothing existed until SaveRun at the END, so a crash or a power
+            # cut mid-run left no trace of the run at all, and the flight
+            # recorder could not attach events to a run that had no row yet.
+            # SaveRun upserts over this.
+            await self._open_run_row()
         else:
             # Veto case: resume from halted elapsed
             self.stopwatch.resume()
             log.info("Stopwatch resumed from %d ms", self.stopwatch.elapsed_ms())
         log.info("[SideEffect] StartStopwatch")
-        # Start/restart max-run timer (cancel existing to avoid doubles after veto)
+        # Max-run is an ABSOLUTE deadline anchored at the first start, not a
+        # fresh countdown per call. Every assisted veto used to re-arm the full
+        # budget, so three false positives bought a player 9 minutes and the
+        # queue stalled behind them.
         self._cancel_task("_max_run_task")
         max_run_ms = getattr(getattr(self.config, "game", None), "max_run_ms", 120_000) if self.config else 120_000
+        if self._max_run_deadline_ns is None:
+            self._max_run_deadline_ns = time.monotonic_ns() + max_run_ms * 1_000_000
+        remaining_ms = max(
+            0, (self._max_run_deadline_ns - time.monotonic_ns()) // 1_000_000
+        )
         self._max_run_task = asyncio.create_task(
-            self._timeout_after(max_run_ms, MaxRunExceeded()), name="max_run_timer"
+            self._timeout_after(remaining_ms, MaxRunExceeded()), name="max_run_timer"
         )
 
     async def _handle_stop_stopwatch(self, effect: StopStopwatch) -> None:
         """Stop the stopwatch and freeze elapsed."""
         log.info("[SideEffect] StopStopwatch → %d ms", self.stopwatch.elapsed_ms())
         self.stopwatch.stop()
+        # An assisted halt stays in a RUN state with the stopwatch frozen and
+        # every timer cancelled, so if the GM never taps CONFIRM or VETO the
+        # game hangs with nothing to recover it. Give the decision a deadline.
+        if self.context.pending_break and self.state in RUN_STATES:
+            self._cancel_task("_assisted_task")
+            timeout_ms = getattr(getattr(self.config, "game", None),
+                                 "assisted_timeout_ms", 60_000) if self.config else 60_000
+            # ABORT, not bust and not veto.
+            #
+            # Auto-veto can loop: it clears pending_break and re-arms detection,
+            # so a player still standing in the beam re-triggers within ~120 ms
+            # and the game never escapes. Auto-bust terminates cleanly but
+            # convicts a player nobody actually looked at, which is exactly what
+            # invariant 5 exists to prevent — and detection is not calibrated.
+            #
+            # Abort says what really happened: nobody adjudicated, so the run
+            # does not count. No leaderboard entry, no verdict, and the player
+            # runs again.
+            self._assisted_task = asyncio.create_task(
+                self._timeout_after(timeout_ms, GmAbort()),
+                name="assisted_timeout",
+            )
+            log.info("Assisted decision deadline: %d ms → run will ABORT "
+                     "if the GM does not decide", timeout_ms)
         # Cancel run timers
         self._cancel_task("_max_run_task")
         self._cancel_task("_arm_timeout_task")
@@ -564,10 +785,50 @@ class GameRunner:
         await self.put_event(RampComplete())
 
     async def _handle_beam_preflight_check(self, effect: BeamPreflightCheck) -> None:
-        """Trigger the silent preflight check; emit PreflightPass immediately for fake mode."""
+        """
+        The gate between "the maze is actually working" and GO.
+
+        This used to emit PreflightPass unconditionally, so PreflightFail could
+        never be reached from anywhere and the system would happily arm a run
+        with unreachable relay boards, stalled cameras and zero calibrated dots.
+
+        It checks what it can cheaply: boards answering, vision not stalled, and
+        the lit maze actually having dots to watch. In manual detection mode the
+        vision checks are skipped — the operator is the detector.
+        """
         log.info("[SideEffect] BeamPreflightCheck")
-        # Phase 2 (real vision): capture baseline blink here.
-        # For now, immediately signal pass so the game can proceed.
+        problems: list[str] = []
+
+        if hasattr(self.io, "all_boards"):
+            dead = [b.board_id for b in self.io.all_boards() if b.status != "OK"]
+            if dead:
+                problems.append(f"relay board(s) {', '.join(dead)} not OK")
+
+        if self.context.detection_mode != "manual":
+            stats = {}
+            if self.vision is not None and hasattr(self.vision, "detector_stats"):
+                try:
+                    stats = self.vision.detector_stats() or {}
+                except Exception as exc:
+                    problems.append(f"vision stats unavailable ({exc})")
+            if stats:
+                if not stats.get("total"):
+                    problems.append(
+                        f"maze '{stats.get('maze')}' has no calibrated dots — "
+                        f"run tools/capture.py")
+                if stats.get("blind"):
+                    problems.append(f"{stats['blind']} dot(s) have no baseline")
+                if stats.get("stalled"):
+                    problems.append("a camera is stalled")
+                if stats.get("fault"):
+                    problems.append(str(stats["fault"]))
+
+        if problems:
+            reason = "; ".join(problems)
+            log.error("Preflight FAILED: %s", reason)
+            metrics.emit("preflight.failed", 1.0, {"reason": reason})
+            await self.put_event(PreflightFail(reason=reason))
+            return
         await self.put_event(PreflightPass())
 
     async def _handle_ready_blink(self, effect: ReadyBlink) -> None:
@@ -615,7 +876,8 @@ class GameRunner:
             )
             # Refresh leaderboard cache and compute rank
             try:
-                self._cached_leaderboard = await self.db.get_leaderboard(scope="daily", limit=20)
+                self._cached_leaderboard = await self.db.get_leaderboard(
+                    scope=self._leaderboard_scope(), limit=self._leaderboard_limit())
                 # Compute rank for this run
                 self._last_rank = None
                 if effect.outcome == "clean":
@@ -625,8 +887,13 @@ class GameRunner:
                             break
             except Exception:
                 pass
-        except Exception:
+        except Exception as exc:
+            # A lost run used to be completely silent: _last_outcome was already
+            # set, so the GM console and both displays still showed the result,
+            # and faults() had no DB entry at all. It was discovered days later
+            # when someone asked why the record was not on the board.
             log.exception("SaveRun: DB insert failed")
+            self._db_fault = f"run not saved: {exc}"
 
     async def _handle_void_run(self, effect: VoidRun) -> None:
         """
@@ -648,7 +915,8 @@ class GameRunner:
             return
         # Drop the voided run from the cached leaderboard.
         try:
-            self._cached_leaderboard = await self.db.get_leaderboard(scope="daily", limit=20)
+            self._cached_leaderboard = await self.db.get_leaderboard(
+                    scope=self._leaderboard_scope(), limit=self._leaderboard_limit())
             self._last_rank = None
         except Exception:
             log.exception("VoidRun: leaderboard refresh failed")
@@ -768,6 +1036,19 @@ class GameRunner:
                  len(new_config.beams.beams),
                  len(new_config.mazes.presets))
 
+        # Vision caches thresholds, baselines and the whole dot set at
+        # construction, so without this a reloaded beams.json — including a
+        # fresh calibration — reported success and changed nothing until the
+        # service restarted.
+        if self.vision is not None and hasattr(self.vision, "reload"):
+            try:
+                self.vision.reload(new_config)
+                # Re-point at the maze that is actually lit right now.
+                if self._current_preset:
+                    self._apply_maze(self._current_preset)
+            except Exception as exc:
+                log.error("vision reload failed: %s", exc)
+
         if self._show_name and self._show_task and not self._show_task.done():
             name = self._show_name
             log.info("Re-arming show '%s' against the reloaded config", name)
@@ -784,13 +1065,50 @@ class GameRunner:
             status = st.get("status")
             if status and status != "OK":
                 out.append({"subsystem": board_id, "message": f"relay board {status}"})
-        if not getattr(self.inputs, "is_connected", True):
+        # Default False, not True. With True, renaming or dropping is_connected
+        # would silently report the Opta as fine — and two lines away the WS
+        # message defaults the same attribute to False, so they disagreed.
+        if not getattr(self.inputs, "is_connected", False):
             out.append({"subsystem": "inputs", "message": "Opta not connected"})
-        if self.context.detection_mode != "auto":
+
+        # Only an INVOLUNTARY downgrade is a fault. 'assisted' is the shipping
+        # default, so flagging it meant the fault list was never empty and the
+        # deploy health check printed a fault on every single deploy — which
+        # trains operators to ignore the list.
+        if self.context.detection_mode == "manual":
             out.append({
                 "subsystem": "vision",
-                "message": f"detection mode is {self.context.detection_mode}",
+                "message": "detection dropped to manual — vision is not policing runs",
             })
+
+        # The conditions that actually end an event, none of which were reported.
+        vision = self.vision
+        if vision is not None and hasattr(vision, "detector_stats"):
+            try:
+                vs = vision.detector_stats() or {}
+            except Exception as exc:
+                out.append({"subsystem": "vision",
+                            "message": f"vision stats unavailable: {exc}"})
+                vs = {}
+            if vs:
+                if not vs.get("total"):
+                    out.append({"subsystem": "vision",
+                                "message": f"maze '{vs.get('maze')}' has no "
+                                           f"calibrated dots — detection is blind"})
+                if vs.get("blind"):
+                    out.append({"subsystem": "vision",
+                                "message": f"{vs['blind']} dot(s) have no baseline"})
+                total_cams = vs.get("cameras_total") or 0
+                live = vs.get("cameras_live") or 0
+                if total_cams and live < total_cams:
+                    out.append({"subsystem": "vision",
+                                "message": f"{total_cams - live} of {total_cams} "
+                                           f"camera(s) not delivering frames"})
+                if vs.get("fault"):
+                    out.append({"subsystem": "vision", "message": str(vs["fault"])})
+
+        if self._db_fault:
+            out.append({"subsystem": "db", "message": self._db_fault})
         if self.context.beams_masked:
             out.append({
                 "subsystem": "beams",
@@ -921,23 +1239,37 @@ class GameRunner:
     # Self-test
     # ------------------------------------------------------------------
 
-    async def _run_self_test(self) -> None:
-        """Probe relay boards and emit SelfTestPass or SelfTestFail."""
-        passed = True
-        if hasattr(self.io, "all_boards"):
-            for board in self.io.all_boards():
-                coils = await board.read_coils()
-                if coils is not None:
-                    log.info("Self-test: %s OK", board.board_id)
-                else:
-                    log.error("Self-test: %s FAILED", board.board_id)
-                    passed = False
-        if passed:
-            await self.dispatch(SelfTestPass())
-        else:
-            from core.events import SelfTestFail
-            failed = [b.board_id for b in self.io.all_boards() if b.status != "OK"]
-            await self.dispatch(SelfTestFail(reason=f"Boards failed: {', '.join(failed)}"))
+    async def _run_self_test(self, attempts: int = _SELF_TEST_ATTEMPTS) -> None:
+        """
+        Probe relay boards, retrying before giving up.
+
+        A single miss used to latch FAULT, and only GmForceReset escapes FAULT.
+        The NUC boots faster than the PoE switch, so every morning the boards
+        were briefly unreachable and the box sat wedged with a green systemd
+        unit until someone found the iPad.
+        """
+        failed: list[str] = []
+        for attempt in range(1, attempts + 1):
+            failed = []
+            if hasattr(self.io, "all_boards"):
+                for board in self.io.all_boards():
+                    coils = await board.read_coils()
+                    if coils is not None:
+                        log.info("Self-test: %s OK", board.board_id)
+                    else:
+                        log.error("Self-test: %s FAILED", board.board_id)
+                        failed.append(board.board_id)
+            if not failed:
+                await self.dispatch(SelfTestPass())
+                return
+            if attempt < attempts:
+                log.warning("Self-test: %s unreachable (attempt %d/%d) — "
+                            "retrying in %.0f s",
+                            ", ".join(failed), attempt, attempts, _SELF_TEST_RETRY_S)
+                await asyncio.sleep(_SELF_TEST_RETRY_S)
+
+        from core.events import SelfTestFail
+        await self.dispatch(SelfTestFail(reason=f"Boards failed: {', '.join(failed)}"))
 
     # ------------------------------------------------------------------
     # Timer helpers
@@ -1072,6 +1404,14 @@ class GameRunner:
             "server_mono_now_ns": sw["server_mono_now_ns"],
             "segment": self.context.segment,
             "beams_masked": list(self.context.beams_masked),
+            # Watched / dark / masked per camera. This replaced a strip of 45
+            # channel pills: detection watches ~175 individual dots now, and 175
+            # pills is not something anyone reads on an iPad mid-run. A count
+            # per camera answers the only live question — is vision seeing what
+            # it should.
+            "vision": (self.vision.detector_stats()
+                       if self.vision is not None
+                       and hasattr(self.vision, "detector_stats") else None),
             "pending_break": self.context.pending_break,
             "countdown_step": self._countdown_step,
             "countdown_total": self._countdown_total,

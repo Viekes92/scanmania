@@ -234,6 +234,14 @@ class ModbusBoard:
                     )
 
             except asyncio.TimeoutError:
+                # wait_for cancels the future, not the thread. The
+                # abandoned worker is still inside recv() on this socket
+                # while the lock is released for the next caller, so two
+                # threads end up interleaving on one TCP stream — and RTU
+                # has no transaction id, so a crossed response CRCs clean
+                # and is accepted as the wrong transaction. Burn the
+                # socket rather than share it.
+                self._close_socket()
                 return self._record_failure("write_coils: timeout")
             except Exception as exc:
                 return self._record_failure(f"write_coils error: {exc}")
@@ -283,6 +291,9 @@ class ModbusBoard:
                     return None
 
             except asyncio.TimeoutError:
+                # Same reasoning as write_coils: the abandoned thread is still
+                # on this socket, so it must not be reused.
+                self._close_socket()
                 self._record_failure("read_coils: timeout")
                 return None
             except Exception as exc:
@@ -319,6 +330,14 @@ class ModbusBoard:
                     )
 
             except asyncio.TimeoutError:
+                # wait_for cancels the future, not the thread. The
+                # abandoned worker is still inside recv() on this socket
+                # while the lock is released for the next caller, so two
+                # threads end up interleaving on one TCP stream — and RTU
+                # has no transaction id, so a crossed response CRCs clean
+                # and is accepted as the wrong transaction. Burn the
+                # socket rather than share it.
+                self._close_socket()
                 return self._record_failure("write_single_coil: timeout")
             except Exception as exc:
                 return self._record_failure(f"write_single_coil error: {exc}")
@@ -353,6 +372,14 @@ class ModbusBoard:
                     )
 
             except asyncio.TimeoutError:
+                # wait_for cancels the future, not the thread. The
+                # abandoned worker is still inside recv() on this socket
+                # while the lock is released for the next caller, so two
+                # threads end up interleaving on one TCP stream — and RTU
+                # has no transaction id, so a crossed response CRCs clean
+                # and is accepted as the wrong transaction. Burn the
+                # socket rather than share it.
+                self._close_socket()
                 return self._record_failure("all_coils: timeout")
             except Exception as exc:
                 return self._record_failure(f"all_coils error: {exc}")
@@ -394,6 +421,13 @@ class ModbusBoard:
                 log.error("ModbusBoard '%s' DEGRADED after %d failures",
                           self.board_id, self._consecutive_failures)
             self._status = "DEGRADED"
+            # Drop the socket so the next call reconnects. Without this a
+            # blackholed flow (switch power-cycled, no RST) keeps sendall
+            # succeeding into the kernel buffer while every recv times out, and
+            # _ensure_connected only checks `is not None` — so the board stayed
+            # dead for the kernel's retransmit timeout, about 15 minutes.
+            # SO_KEEPALIVE does not help: it never idles long enough to probe.
+            self._close_socket()
         return False
 
     def _record_success(self) -> None:

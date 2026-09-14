@@ -19,6 +19,7 @@ import io as _io
 import json
 import logging
 import os
+import re
 import secrets
 import time
 from datetime import datetime, timezone
@@ -26,11 +27,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from core.events import ARM, COUNTDOWN, RUN_STATES
+import persist.db as db_module
 from persist.db import Database
 from persist.backup import export_snapshot
 
@@ -41,7 +43,13 @@ from persist.backup import export_snapshot
 # through the whole run.
 _RELOAD_BLOCKED: frozenset[str] = frozenset({COUNTDOWN, ARM}) | RUN_STATES
 
+from web.ratelimit import allow, retry_after
+
 log = logging.getLogger(__name__)
+
+# Slow a brute-force to a crawl without locking out a fat-fingered operator.
+_LOGIN_LIMIT = 8
+_LOGIN_WINDOW_S = 60.0
 
 ENV_PASSWORD_KEY = "SCANMANIA_ADMIN_PASSWORD"
 
@@ -152,6 +160,29 @@ def _atomic_write(path: Path, content: str) -> None:
     except OSError:
         tmp.unlink(missing_ok=True)
         raise
+
+
+_SECRET_LINE = re.compile(
+    r"(?i)(rtsp://[^:\s]+:)([^@\s]+)(@)|((?:password|passwd|secret|token)\s*[:=]\s*)(\S+)"
+)
+
+
+def _audit_body(filename: str, content: str) -> str:
+    """
+    Redact credentials before a config file goes into the audit table.
+
+    The audit row stores the whole file, and every one of the 48 rolling DB
+    snapshots then contains it — so the camera RTSP passwords escaped a 0600
+    config file into 48 copies under /var/backups. Plaintext in the config
+    itself is a deliberate decision; multiplying it by 48 is not.
+    """
+    if not content:
+        return content
+    return _SECRET_LINE.sub(
+        lambda m: (m.group(1) + "***" + m.group(3)) if m.group(1)
+        else (m.group(4) + "***"),
+        content,
+    )
 
 
 def _csv_safe(value: Any) -> Any:
@@ -329,15 +360,33 @@ def register_routes(
     # ------------------------------------------------------------------
 
     @router.post("/api/admin/login")
-    async def admin_login(x_admin_password: str | None = Header(default=None)):
-        """Validate the admin password. Returns 200 on success, 403 on failure."""
+    async def admin_login(request: Request,
+                          x_admin_password: str | None = Header(default=None)):
+        """
+        Validate the admin password. 200 on success, 403 on failure.
+
+        Rate limited and logged. It was neither: unlimited unauthenticated
+        attempts from the venue wifi against one shared password over two
+        months, and a successful break-in left no trace because failures were
+        not recorded at all.
+        """
         if not _expected_hash():
             raise HTTPException(
                 status_code=503,
                 detail=f"{ENV_PASSWORD_KEY} is not set — admin API is disabled",
             )
+        client = request.client.host if request.client else "unknown"
+        if not allow("admin_login", client, _LOGIN_LIMIT, _LOGIN_WINDOW_S):
+            log.warning("admin login: rate limited %s", client)
+            raise HTTPException(
+                status_code=429, detail="Too many attempts.",
+                headers={"Retry-After": str(retry_after("admin_login", client,
+                                                        _LOGIN_WINDOW_S))},
+            )
         if not _password_ok(x_admin_password):
+            log.warning("admin login FAILED from %s", client)
             raise HTTPException(status_code=403, detail="Invalid password")
+        log.info("admin login OK from %s", client)
         return {"ok": True}
 
     @router.post("/api/admin/download-token", dependencies=[Depends(_require_admin)])
@@ -558,7 +607,15 @@ def register_routes(
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         try:
             from persist.backup import _prune_snapshots
-            await asyncio.to_thread(_prune_snapshots, backup_dir, 14)
+            # The SAME retention the rolling loop uses. This hardcoded 14 while
+            # the loop passes snapshot_keep (48), on the same directory with the
+            # same glob — so taking a manual snapshot, the most safety-conscious
+            # thing an operator can do, silently deleted 34 of them.
+            runner = _runner()
+            keep = 48
+            if runner is not None and getattr(runner, "config", None) is not None:
+                keep = getattr(runner.config.game, "snapshot_keep", 48)
+            await asyncio.to_thread(_prune_snapshots, backup_dir, keep)
         except Exception as exc:
             log.debug("Snapshot prune skipped: %s", exc)
         return FileResponse(
@@ -732,29 +789,169 @@ def register_routes(
                 b["masked_reason"] = "auto"
         return {"ok": True, "beams": beams, "auto_masked": sorted(auto_masked)}
 
+    @router.get("/api/admin/mazes")
+    async def admin_mazes():
+        """
+        Per-maze calibration summary: what each camera saw when that shape was
+        lit. This is what detection actually watches; the 45 entries under
+        /api/admin/beams are the relay wiring record and nothing reads them at
+        runtime.
+
+        Unauthenticated on purpose, like /api/admin/beams — the passwordless GM
+        console reads it too.
+        """
+        data = await _load_json(cfg_dir / "beams.json")
+        out = []
+        for name, maze in sorted((data.get("mazes") or {}).items()):
+            cams = []
+            for cid, cap in sorted((maze.get("cameras") or {}).items()):
+                dots = cap.get("dots") or []
+                lit = [d for d in dots if not d.get("masked")]
+                baselines = [d.get("baseline", 0.0) for d in lit]
+                cams.append({
+                    "camera": cid,
+                    "dots": len(dots),
+                    "masked": len(dots) - len(lit),
+                    "w": cap.get("w", 0), "h": cap.get("h", 0),
+                    "params": cap.get("params") or {},
+                    "mean_baseline": round(sum(baselines) / len(baselines), 1)
+                                     if baselines else 0.0,
+                    "min_baseline": round(min(baselines), 1) if baselines else 0.0,
+                })
+            out.append({
+                "maze": name,
+                "captured_at": maze.get("captured_at", ""),
+                "total": sum(c["dots"] for c in cams),
+                "cameras": cams,
+            })
+        return {"ok": True, "mazes": out}
+
+    @router.get(
+        "/api/admin/export/day.csv",
+        dependencies=[Depends(_require_download_token)],
+    )
+    async def admin_export_day(day: str | None = Query(default=None)):
+        """
+        End-of-day export: every run of one operating day, with player details.
+
+        Opened by browser navigation, so it authenticates with a single-use
+        download token like the other exports rather than a header.
+
+        `day` is an ISO date (YYYY-MM-DD) selecting a past operating day;
+        omitted means today. The operating day rolls over at
+        SCANMANIA_DAY_START_HOUR (default 06:00 local), so a session running
+        past midnight stays on one export.
+        """
+        if day:
+            try:
+                base = datetime.strptime(day, "%Y-%m-%d").astimezone()
+            except ValueError as exc:
+                raise HTTPException(status_code=400,
+                                    detail="day must be YYYY-MM-DD") from exc
+            start, end = db_module.day_bounds(
+                base.replace(hour=db_module.DAY_START_HOUR, minute=1))
+        else:
+            start, end = db_module.day_bounds()
+
+        rows = await db.get_day_export(start, end)
+
+        buf = _io.StringIO()
+        w = csv.writer(buf)
+        w.writerow([
+            "run_id", "player_id", "first_name", "surname", "email", "dob",
+            "gender", "started_at_local", "time_of_day", "elapsed_ms",
+            "elapsed", "busted", "outcome", "segment_reached",
+            "detection_mode", "busting_dot", "voided", "voided_reason",
+        ])
+        for r in rows:
+            try:
+                extra = json.loads(r.get("extra_json") or "{}")
+            except (ValueError, TypeError):
+                extra = {}
+            started = r.get("started_at") or ""
+            local = ""
+            tod = ""
+            if started:
+                try:
+                    dt = datetime.fromisoformat(started).astimezone()
+                    local, tod = dt.isoformat(timespec="seconds"), dt.strftime("%H:%M:%S")
+                except ValueError:
+                    local = started
+            ms = r.get("elapsed_ms")
+            outcome = r.get("outcome") or ""
+            # A voided run keeps its original outcome in pre_void_outcome, so
+            # "was this a bust" stays answerable after a void.
+            effective = r.get("pre_void_outcome") or outcome
+            w.writerow([_csv_safe(v) for v in [
+                r.get("id", ""),
+                r.get("player_id", ""),
+                r.get("player_nickname", ""),
+                extra.get("surname", ""),
+                extra.get("email", ""),
+                extra.get("dob", ""),
+                extra.get("gender", ""),
+                local,
+                tod,
+                "" if ms is None else ms,
+                "" if ms is None else f"{ms // 60000:d}:{(ms % 60000) / 1000:06.3f}",
+                "true" if effective == "busted" else "false",
+                outcome,
+                r.get("segment_reached", ""),
+                r.get("detection_mode", ""),
+                r.get("busting_beam_id") or "",
+                "true" if outcome == "voided" else "false",
+                r.get("voided_reason") or "",
+            ]])
+
+        stamp = datetime.fromisoformat(start).astimezone().strftime("%Y-%m-%d")
+        log.info("Day export: %d run(s) for %s", len(rows), stamp)
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition":
+                     f'attachment; filename="scanmania_runs_{stamp}.csv"'},
+        )
+
     @router.post("/api/admin/beams/{beam_id}/mask", dependencies=[Depends(_require_admin)])
     async def admin_beam_mask(beam_id: str, body: MaskBeamBody):
-        """Toggle the masked flag on a single beam in beams.json."""
+        """
+        Mask a single DOT, by its dot id (e.g. "SM-CAM-13:d17").
+
+        This used to write `masked` onto a channel entry in `beams[]` — the
+        array detection does not read — and then call set_masked() with a
+        channel id against a dot-keyed lookup, which always returned False, and
+        the return value was discarded. It reported success and changed nothing.
+        Masked dots live under mazes.<name>.cameras.<cam>.dots, which is the
+        only masked flag detection reads.
+        """
         path = cfg_dir / "beams.json"
+        stamp = datetime.now(timezone.utc).isoformat() if body.masked else None
         async with _CONFIG_LOCK:
             data = await _load_json(path)
-            beam = next(
-                (b for b in data.get("beams", []) if b.get("id") == beam_id), None
-            )
-            if not beam:
-                raise HTTPException(status_code=404, detail=f"Beam {beam_id!r} not found")
-            old_masked = beam.get("masked", False)
-            beam["masked"] = body.masked
-            beam["masked_at"] = (
-                datetime.now(timezone.utc).isoformat() if body.masked else None
-            )
-            beam["masked_reason"] = "admin" if body.masked else None
+            hits = 0
+            old_masked = False
+            for maze in (data.get("mazes") or {}).values():
+                for cam in (maze.get("cameras") or {}).values():
+                    for dot in cam.get("dots", []):
+                        if dot.get("id") == beam_id:
+                            old_masked = dot.get("masked", False)
+                            dot["masked"] = body.masked
+                            dot["masked_at"] = stamp
+                            dot["masked_reason"] = "admin" if body.masked else None
+                            hits += 1
+            if not hits:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Dot {beam_id!r} is not in any maze capture. Mask by "
+                           f"dot id (e.g. SM-CAM-13:d17), not channel id.",
+                )
             try:
                 await _write_config(path, json.dumps(data, indent=2))
             except OSError as exc:
                 raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-        # Push the change into the live system so masking takes effect now.
+        # Push into the live system so it takes effect now, not after a restart.
+        applied = False
         runner = _runner()
         if runner:
             if body.masked:
@@ -764,7 +961,7 @@ def register_routes(
             vision = getattr(runner, "vision", None)
             if vision is not None and hasattr(vision, "set_masked"):
                 try:
-                    vision.set_masked(beam_id, body.masked)
+                    applied = bool(vision.set_masked(beam_id, body.masked))
                 except Exception as exc:
                     log.warning("vision.set_masked(%s) failed: %s", beam_id, exc)
 
@@ -772,7 +969,11 @@ def register_routes(
             actor="admin", path=f"beams/{beam_id}/mask",
             before={"masked": old_masked}, after={"masked": body.masked},
         )
-        return {"ok": True, "beam_id": beam_id, "masked": body.masked}
+        return {"ok": True, "beam_id": beam_id, "masked": body.masked,
+                "captures_updated": hits,
+                # False means it was saved but is not in the maze currently lit,
+                # so it takes effect when that maze next comes up.
+                "applied_live": applied}
 
     @router.post("/api/admin/beams/unmask_all", dependencies=[Depends(_require_admin)])
     async def admin_beams_unmask_all():
@@ -780,6 +981,17 @@ def register_routes(
         path = cfg_dir / "beams.json"
         async with _CONFIG_LOCK:
             data = await _load_json(path)
+            cleared = 0
+            # Clear the dot masks — the ones detection actually reads. The
+            # channel entries are cleared too so nothing stale is left behind.
+            for maze in (data.get("mazes") or {}).values():
+                for cam in (maze.get("cameras") or {}).values():
+                    for dot in cam.get("dots", []):
+                        if dot.get("masked"):
+                            cleared += 1
+                        dot["masked"] = False
+                        dot["masked_at"] = None
+                        dot["masked_reason"] = None
             for b in data.get("beams", []):
                 b["masked"] = False
                 b["masked_at"] = None
@@ -789,21 +1001,28 @@ def register_routes(
             except OSError as exc:
                 raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+        live_cleared = 0
         runner = _runner()
         if runner:
             runner.context.beams_masked.clear()
             vision = getattr(runner, "vision", None)
             if vision is not None and hasattr(vision, "clear_masks"):
                 try:
-                    vision.clear_masks()
+                    live_cleared = int(vision.clear_masks() or 0)
                 except Exception as exc:
                     log.warning("vision.clear_masks() failed: %s", exc)
+            else:
+                # clear_masks did not exist on EITHER backend, so this branch
+                # was silently skipped and the route returned ok while every
+                # auto-masked dot stayed masked until a restart.
+                log.error("vision backend has no clear_masks() — masks NOT cleared")
 
         await db.insert_config_audit(
             actor="admin", path="beams/unmask_all",
             before={"note": "all beams"}, after={"masked": False},
         )
-        return {"ok": True, "unmasked": len(data.get("beams", []))}
+        # Report what was actually cleared, not the length of an unrelated list.
+        return {"ok": True, "unmasked": cleared + live_cleared}
 
     # ------------------------------------------------------------------
     # Presets
@@ -1192,8 +1411,8 @@ def register_routes(
         await db.insert_config_audit(
             actor="admin",
             path=f"config/{filename}",
-            before={"content": before},
-            after={"content": body.content},
+            before={"content": _audit_body(filename, before)},
+            after={"content": _audit_body(filename, body.content)},
         )
         log.info("Config %s written by admin (%d bytes)", filename, len(body.content))
         return {

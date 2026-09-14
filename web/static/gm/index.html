@@ -398,7 +398,13 @@
     }
 
     /* -----------------------------------------------------------------------
-       Live beam strip — one pill per beam
+       Vision strip — one card per camera
+
+       This was 45 pills, one per relay channel. Detection now watches ~175
+       individual dots, and 175 pills is not something anyone reads on an iPad
+       mid-run. A card per camera answers the live question: is vision seeing
+       what it should. Masking an individual dot lives on /admin/beams, where
+       you can see it on the frame.
     ----------------------------------------------------------------------- */
     #beamSection {
       padding: 10px 14px;
@@ -409,50 +415,46 @@
     #beamStrip {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 10px;
+      align-items: stretch;
     }
 
-    .beam-pill {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 14px;
-      border-radius: 999px;
-      font-size: 14px;
+    .cam-card {
+      flex: 1 1 130px;
+      min-width: 120px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      font-family: monospace;
+    }
+    .cam-card .cam-id {
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .cam-card .cam-n {
+      font-size: 22px;
       font-weight: 700;
-      font-family: 'Courier New', Courier, monospace;
-      cursor: default;
-      transition: filter 0.1s;
-      min-height: 48px;     /* minimum tap target */
-    }
-
-    .beam-pill.ok {
-      background: #001a00;
-      border: 1px solid var(--beam-ok);
       color: var(--beam-ok);
+      line-height: 1.2;
     }
-    .beam-pill.broken {
-      background: #060d1a;
-      border: 1px solid var(--beam-broken);
-      color: var(--beam-broken);
-      box-shadow: 0 0 8px rgba(255,0,51,0.35);
-    }
-    .beam-pill.masked {
-      background: #0a0a0a;
-      border: 1px solid #333;
-      color: #444;
-    }
+    .cam-card .cam-sub { font-size: 12px; color: var(--muted); }
+    .cam-card.dark  { border-color: var(--beam-broken);
+                      box-shadow: 0 0 8px rgba(255,0,51,0.35); }
+    .cam-card.dark  .cam-n { color: var(--beam-broken);
+                             animation: flash-red 0.5s infinite; }
+    .cam-card.blind { border-color: var(--beam-masked); }
+    .cam-card.blind .cam-n { color: var(--beam-masked); }
 
-    .beam-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      flex-shrink: 0;
+    #beamSummary {
+      font-family: monospace;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 8px;
     }
-
-    .beam-pill.ok     .beam-dot { background: var(--beam-ok); }
-    .beam-pill.broken .beam-dot { background: var(--beam-broken); animation: flash-red 0.5s infinite; }
-    .beam-pill.masked .beam-dot { background: var(--beam-masked); }
+    #beamSummary .bad { color: var(--beam-broken); }
 
     @keyframes flash-red {
       0%, 100% { opacity: 1; }
@@ -460,7 +462,7 @@
     }
 
     /* -----------------------------------------------------------------------
-       Health strip — relay boards, Pico, camera, cloud sync
+       Health strip — relay boards, Pico, camera, hazer
     ----------------------------------------------------------------------- */
     #healthSection {
       padding: 10px 14px;
@@ -530,6 +532,27 @@
       color: var(--accent-dim);
       margin-bottom: 10px;
     }
+
+    .lower-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    #btnExportDay {
+      background: #12202f;
+      color: #8fb7e0;
+      border: 1px solid #2f5f9a;
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      min-height: 40px;
+      cursor: pointer;
+    }
+    #btnExportDay:active { background: #1d3a5e; }
 
     #recentRuns {
       display: flex;
@@ -898,13 +921,13 @@
   </div>
 
   <!-- -----------------------------------------------------------------------
-       LIVE BEAM STRIP
+       LIVE VISION STRIP
   ----------------------------------------------------------------------- -->
   <div id="beamSection">
-    <div class="section-label">Beams</div>
+    <div class="section-label">Vision</div>
+    <div id="beamSummary">waiting for data…</div>
     <div id="beamStrip">
       <!-- Dynamically populated from WebSocket state -->
-      <span style="color: var(--muted); font-size: 13px; font-family: monospace;">Waiting for data…</span>
     </div>
   </div>
 
@@ -953,7 +976,10 @@
        LOWER SECTION — recent runs (below the fold, scrollable)
   ----------------------------------------------------------------------- -->
   <div id="lowerSection">
-    <div class="lower-label">Recent runs</div>
+    <div class="lower-label">
+      <span>Recent runs</span>
+      <button id="btnExportDay" title="Download today's runs as CSV">EXPORT DAY</button>
+    </div>
     <div id="recentRuns">
       <span style="color: var(--muted); font-size: 13px; font-family: monospace;">No runs yet.</span>
     </div>
@@ -1021,7 +1047,7 @@
   ----------------------------------------------------------------------- -->
   <div id="assistedOverlay">
     <div id="assistedTitle">BEAM BREAK DETECTED</div>
-    <div id="assistedBeam">Beam —</div>
+    <div id="assistedBeam">—</div>
     <img id="assistedThumb" src="" alt="Evidence thumbnail" style="display:none;">
     <div class="assisted-btns">
       <button id="btnVeto"    >CLEAR — RESUME</button>
@@ -1049,7 +1075,7 @@
          countdown_step: null | 0-7,
          countdown_total: null | int,
          player_nickname: "Joenne",
-         pending_break: null | "b03",
+         pending_break: null | "cam_3:d17",   // dot id, not a channel
          outcome: null | "clean" | "busted",
          beams_masked: [ "b03", "b07", … ],   // array of masked beam IDs
          boards: { "board_0": { status: "OK"|"ERR" }, … },
@@ -1204,10 +1230,18 @@
       // not apply, so no control ever moves under the operator's thumb. The
       // `disabled` attribute above is the only thing that changes.
 
-      // Issue 53: reset all tap-to-confirm buttons on state change
-      [btnBust, btnVoid, btnForceReset].forEach(btn => {
-        if (btn._tapReset) btn._tapReset();
-      });
+      // Reset tap-to-confirm buttons when the state ACTUALLY changes.
+      //
+      // This used to run on every frame. applyState() is called per broadcast,
+      // ~10 Hz, so a pending "TAP AGAIN" was cleared within 100 ms and the
+      // second tap only ever restarted the cycle. BUST, VOID and FORCE RESET
+      // were all unreachable from the console — the request never left the
+      // browser. Guarding on prevState is the whole fix.
+      if (state !== prevState) {
+        [btnBust, btnVoid, btnForceReset].forEach(btn => {
+          if (btn._tapReset) btn._tapReset();
+        });
+      }
 
       // Issue 17: close void overlay when leaving POST_RUN_STATES
       if (!POST_RUN_STATES.has(state)) closeVoidOverlay();
@@ -1297,16 +1331,21 @@
       // DMX node LED is driven by refreshHazer()'s poll, not the WS message.
       // Issue 51: camera LED left as "warn" (unknown) — do NOT hardcode "ok"
 
-      /* --- Beam strip --- */
-      // Issue 4: use cached beam list + beams_masked array from WS
-      renderBeamsFromMasked(maskedBeams);
+      /* --- Vision strip --- */
+      renderVision(msg.vision, maskedCount);
 
       /* --- Assisted overlay --- */
       if (msg.pending_break) {
-        assistedBeam.textContent = `Beam ${msg.pending_break}`;
+        // A dot id is "cam_3:d17" — the camera that saw it, then which dot.
+        // Split it so the operator reads the camera first: that is what tells
+        // them where in the container to look.
+        const parts = String(msg.pending_break).split(":");
+        assistedBeam.textContent = parts.length === 2
+          ? `${parts[0]} · dot ${parts[1]}` : msg.pending_break;
         /* Only load thumbnail when we have a valid run_id */
         if (msg.run_id) {
-          assistedThumb.src = `/api/evidence/${msg.run_id}/${msg.pending_break}`;
+          assistedThumb.src = `/api/evidence/${encodeURIComponent(msg.run_id)}`
+                            + `/${encodeURIComponent(msg.pending_break)}`;
           assistedThumb.style.display = "block";
         } else {
           assistedThumb.removeAttribute("src");
@@ -1335,67 +1374,68 @@
     }
 
     /* -----------------------------------------------------------------------
-       Beam strip rendering
-       Issue 4: cached beam list from /api/admin/beams, state from beams_masked
+       Vision strip rendering
+
+       Fed straight from the WS state's `vision` block: {maze, total, cameras:
+       {cam_id: {watched, dark, masked}}}. No fetch, no cached id list — the
+       server already knows which dots are being watched for the lit maze, and
+       that set changes every time the shape changes.
     ----------------------------------------------------------------------- */
-    // Cached list of all beam IDs fetched from the API
-    let allBeamIds = [];
+    const beamSummary = document.getElementById("beamSummary");
+    const camCards = new Map();
 
-    // Map: beam_id → rendered pill element (for efficient updates)
-    const beamPills = new Map();
-
-    // Issue 86: long-press (500ms) on beam pill toggles mask
-    function attachPillLongPress(pill, beamId) {
-      let pressTimer = null;
-      function startPress() {
-        pressTimer = setTimeout(() => {
-          pressTimer = null;
-          toggleBeamMask(beamId);
-        }, 500);
+    function renderVision(vision, maskedCount) {
+      if (!vision) {
+        beamSummary.textContent = "vision offline";
+        beamStrip.innerHTML = "";
+        camCards.clear();
+        return;
       }
-      function cancelPress() {
-        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+
+      const cams = vision.cameras || {};
+      const ids = Object.keys(cams).sort();
+      const totalDark = ids.reduce((n, c) => n + (cams[c].dark || 0), 0);
+
+      if (!vision.total) {
+        // No capture for this shape. Nothing is watched, on purpose — without a
+        // baseline every reading is a guess, and a guess ends someone's run.
+        beamSummary.innerHTML = vision.maze
+          ? `<span class="bad">${escHtml(vision.maze)} is not calibrated — nothing watched</span>`
+          : "no maze lit";
+      } else {
+        let txt = `${vision.total} dots watched`;
+        if (totalDark)    txt += ` · <span class="bad">${totalDark} dark</span>`;
+        if (maskedCount)  txt += ` · ${maskedCount} masked`;
+        if (vision.maze)  txt += ` · ${escHtml(vision.maze)}`;
+        beamSummary.innerHTML = txt;
       }
-      pill.addEventListener("mousedown",   startPress);
-      pill.addEventListener("touchstart",  startPress,  { passive: true });
-      pill.addEventListener("mouseup",     cancelPress);
-      pill.addEventListener("touchend",    cancelPress);
-      pill.addEventListener("mouseleave",  cancelPress);
-      pill.addEventListener("touchcancel", cancelPress);
-    }
 
-    function renderBeamsFromMasked(maskedBeams) {
-      if (!allBeamIds.length) return;  // wait until beam list is loaded
-
-      const maskedSet = new Set(maskedBeams);
-
-      // Clear the initial placeholder once we have pills
-      const placeholder = beamStrip.querySelector(":scope > span");
-      if (placeholder) placeholder.remove();
-
-      // Build or update pills
       const seen = new Set();
-      allBeamIds.forEach(id => {
-        seen.add(id);
-        let pill = beamPills.get(id);
-        if (!pill) {
-          pill = document.createElement("div");
-          pill.className = "beam-pill";
-          pill.dataset.beamId = id;
-          pill.innerHTML = `<div class="beam-dot"></div><span>${id}</span>`;
-          pill.style.cursor = "default";
-          beamStrip.appendChild(pill);
-          beamPills.set(id, pill);
-          attachPillLongPress(pill, id);
+      ids.forEach(cid => {
+        seen.add(cid);
+        let card = camCards.get(cid);
+        if (!card) {
+          card = document.createElement("div");
+          card.className = "cam-card";
+          card.innerHTML = `<div class="cam-id">${escHtml(cid)}</div>`
+                         + `<div class="cam-n"></div>`
+                         + `<div class="cam-sub"></div>`;
+          beamStrip.appendChild(card);
+          camCards.set(cid, card);
         }
-        const beamState = maskedSet.has(id) ? "masked" : "ok";
-        pill.className = `beam-pill ${beamState}`;
-        pill.title = `${id} — ${beamState} (long-press to toggle mask)`;
+        const c = cams[cid];
+        const dark = c.dark || 0;
+        card.className = "cam-card" + (dark ? " dark" : (c.watched ? "" : " blind"));
+        card.querySelector(".cam-n").textContent = c.watched;
+        card.querySelector(".cam-sub").textContent =
+          !c.watched ? "no dots"
+          : dark     ? `${dark} dark`
+          : c.masked ? `${c.masked} masked`
+          : "all lit";
       });
 
-      // Remove pills for beams that disappeared from config
-      for (const [id, pill] of beamPills) {
-        if (!seen.has(id)) { pill.remove(); beamPills.delete(id); }
+      for (const [cid, card] of camCards) {
+        if (!seen.has(cid)) { card.remove(); camCards.delete(cid); }
       }
     }
 
@@ -1690,16 +1730,6 @@
       });
     });
 
-    /* --- Beam mask toggle --- */
-    // Determine current masked state from the pill element, then send toggled value.
-    // The WS message carries beams_masked (array of beam IDs) and also reflects
-    // masked state via the beam's state field ("masked"). We read from the pill class.
-    async function toggleBeamMask(beamId) {
-      const pill = beamPills.get(beamId);
-      const currentlyMasked = pill ? pill.classList.contains("masked") : false;
-      await gmPost("mask-beam", { beam_id: beamId, masked: !currentlyMasked });
-    }
-
     /* -----------------------------------------------------------------------
        WebSocket
     ----------------------------------------------------------------------- */
@@ -1722,12 +1752,20 @@
       };
 
       ws.onmessage = (evt) => {
+        __noteMessage();
         let msg;
         try { msg = JSON.parse(evt.data); } catch { return; }
         applyState(msg);
       };
 
       ws.onclose = () => {
+        // Freeze the clock. Both displays already do this, with the comment
+        // "A frozen clock is honest. A running one is a lie." — the GM console
+        // did not, so an iPad that lost wifi mid-run kept extrapolating from
+        // performance.now() with no server left to correct it, and after an
+        // iPad sleep it showed hours.
+        swRunning = false;
+        stopInterpolation();
         wsDot.className = "ws-dot err";
         wsLabel.textContent = "reconnecting…";
         // Show "CONNECTION LOST" banner after 5 seconds of disconnect
@@ -1752,24 +1790,63 @@
     setLed(hCameraLed, "warn");
     setLed(hDmxLed,    "warn");
 
-    async function fetchBeamList() {
-      try {
-        const resp = await fetch("/api/admin/beams");
-        if (resp.ok) {
-          const data = await resp.json();
-          // Expect array of beam objects with an `id` field, or array of strings
-          const raw = Array.isArray(data) ? data : (data.beams || []);
-          allBeamIds = raw.map(b => (typeof b === "string" ? b : b.id)).filter(Boolean);
-          // Render initial strip with no masking
-          renderBeamsFromMasked([]);
-        }
-      } catch (err) {
-        console.warn("fetchBeamList failed:", err);
-      }
+    /* -----------------------------------------------------------------------
+       End-of-day export
+
+       The CSV carries surname, email and date of birth, so this is the one GM
+       action that asks for the admin password. Everything else on this console
+       is deliberately passwordless; handing out personal data on the venue wifi
+       is not. The password is hashed here and never stored — a token is minted
+       for the download and the hash is discarded.
+    ----------------------------------------------------------------------- */
+    async function sha256Hex(text) {
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(buf))
+        .map(b => b.toString(16).padStart(2, "0")).join("");
     }
 
-    fetchBeamList();
+    document.getElementById("btnExportDay").addEventListener("click", async () => {
+      const pw = window.prompt("Admin password — the export contains personal details");
+      if (!pw) return;
+      const btn = document.getElementById("btnExportDay");
+      const label = btn.textContent;
+      btn.textContent = "…";
+      btn.disabled = true;
+      try {
+        const hash = await sha256Hex(pw);
+        const resp = await fetch("/api/admin/download-token", {
+          method: "POST", headers: { "X-Admin-Password": hash },
+        });
+        if (!resp.ok) throw new Error(resp.status === 403 ? "wrong password"
+                                                         : `HTTP ${resp.status}`);
+        const { token } = await resp.json();
+        window.location = `/api/admin/export/day.csv?token=${encodeURIComponent(token)}`;
+      } catch (e) {
+        alert(`Export failed: ${e.message}`);
+      } finally {
+        btn.textContent = label;
+        btn.disabled = false;
+      }
+    });
+
     fetchRecentRuns();
+  
+    /* -----------------------------------------------------------------------
+       Stale-data watchdog
+
+       onclose is not enough. If the server's broadcaster task dies, or the path
+       half-opens, every socket stays "healthy" and the screen freezes silently
+       on its last frame — in front of a player, for as long as nobody notices.
+       Track time since the last message and force a reconnect when it lapses.
+    ----------------------------------------------------------------------- */
+    let __lastMsgAt = Date.now();
+    function __noteMessage() { __lastMsgAt = Date.now(); }
+    setInterval(() => {
+      // The server broadcasts at 10 Hz; 3 s of silence is not a slow frame.
+      if (Date.now() - __lastMsgAt > 3000) {
+        try { if (ws && ws.readyState === WebSocket.OPEN) ws.close(); } catch (e) {}
+      }
+    }, 1000);
   </script>
 </body>
 </html>

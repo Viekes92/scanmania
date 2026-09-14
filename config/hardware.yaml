@@ -29,37 +29,81 @@ relay_boards:
     timeout_ms: 200
     note: "segment 3 — rows 7–9 (15 strips, ch 16 spare)"
 
-# Four ceiling-facing Ajax cameras, RTSP on port 8554, h264 @ 25 fps.
+# Eight ceiling-facing Ajax cameras, RTSP on port 8554, h264 @ 25 fps,
+# substream 1024x576.
 #
-# The trailing MAC-derived path is the STABLE identity of a camera; the IP is
-# not — these are DHCP and have moved between addresses mid-session. If a stream
-# stops opening, run `python3 tools/camshow.py 1 --probe` to re-derive which
-# address serves which path, and correct the IPs here.
+# Naming is SM-CAM-<side><n>: side 1 is the left row of the container, side 2
+# the right. Full ceiling coverage, so every dot is close to some camera — that
+# is what makes per-camera tuning tractable. Detection params are per camera
+# (beams.json, mazes.<name>.cameras.<cam>.params) because the top-hat kernel has
+# to be larger than a dot and smaller than the dot spacing, and both scale with
+# distance to the ceiling.
+#
+# IPs are static: .21x on the left side, .22x on the right.
+#
+# The trailing MAC-derived path is the camera's identity — it is the one thing
+# that cannot be reconfigured from the camera UI. If a stream stops opening,
+# check the path before the address.
 #
 # The '@' in the password must stay percent-encoded as %40, or the URL splits at
 # the wrong place and the host parses as "ssw0rd123_".
 #
-# Substream resolution is changeable from the camera UI and has been seen at
-# both 1024x576 and 1920x1080. ROIs in beams.json are frame pixels, so a
-# resolution change silently invalidates every one of them — capture_w/capture_h
-# on each beam record what they were measured at.
+# w/h below is the substream resolution these cameras are SET to. ROIs in
+# beams.json are frame pixels, so changing it in a camera UI silently
+# invalidates every saved dot. tools/capture.py records what it actually
+# measured and errors if it disagrees with this.
 cameras:
-  - id: cam_1
-    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.201:8554/9c756e2e94bb-0_m"
-    reference_frame: "ref/cam_1.png"
-    note: "ceiling-facing"
-  - id: cam_2
-    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.202:8554/9c756e2e9aad-0_m"
-    reference_frame: "ref/cam_2.png"
-    note: "ceiling-facing"
-  - id: cam_3
-    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.203:8554/9c756e2e91c0-0_m"
-    reference_frame: "ref/cam_3.png"
-    note: "ceiling-facing"
-  - id: cam_4
-    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.204:8554/9c756e2e9121-0_m"
-    reference_frame: "ref/cam_4.png"
-    note: "ceiling-facing"
+  # ---- left side ----
+  - id: SM-CAM-11
+    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.211:8554/9c756e2e94bb-0_m"
+    reference_frame: "ref/SM-CAM-11.png"
+    w: 1024
+    h: 576
+    note: "ceiling-facing, left side"
+  - id: SM-CAM-12
+    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.212:8554/9c756e2e91a2-0_m"
+    reference_frame: "ref/SM-CAM-12.png"
+    w: 1024
+    h: 576
+    note: "ceiling-facing, left side"
+  - id: SM-CAM-13
+    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.213:8554/9c756e2e91c0-0_m"
+    reference_frame: "ref/SM-CAM-13.png"
+    w: 1024
+    h: 576
+    note: "ceiling-facing, left side"
+  - id: SM-CAM-14
+    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.214:8554/9c756e2e94d7-0_m"
+    reference_frame: "ref/SM-CAM-14.png"
+    w: 1024
+    h: 576
+    note: "ceiling-facing, left side"
+
+  # ---- right side ----
+  - id: SM-CAM-21
+    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.221:8554/9c756e2e9205-0_m"
+    reference_frame: "ref/SM-CAM-21.png"
+    w: 1024
+    h: 576
+    note: "ceiling-facing, right side"
+  - id: SM-CAM-22
+    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.222:8554/9c756e2e9aad-0_m"
+    reference_frame: "ref/SM-CAM-22.png"
+    w: 1024
+    h: 576
+    note: "ceiling-facing, right side"
+  - id: SM-CAM-23
+    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.223:8554/9c756e2e94ab-0_m"
+    reference_frame: "ref/SM-CAM-23.png"
+    w: 1024
+    h: 576
+    note: "ceiling-facing, right side"
+  - id: SM-CAM-24
+    url: "rtsp://scanmania:P%40ssw0rd123_@172.16.0.224:8554/9c756e2e9121-0_m"
+    reference_frame: "ref/SM-CAM-24.png"
+    w: 1024
+    h: 576
+    note: "ceiling-facing, right side"
 
 network:
   subnet: "172.16.0.0/24"

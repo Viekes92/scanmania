@@ -112,7 +112,7 @@ The consequence of respecting: **the camera must not move and must not auto-adju
 - Bolt the camera down, thread-lock the mount.
 - **Boot-time drift check:** compare a stored reference frame against the live frame (phase correlation or a few static feature points). If shift > 2 px, raise `CAMERA_MOVED` on the admin portal. Don't silently carry on with stale ROIs.
 - **Work on the red channel isolated:** `R - (G+B)/2`. Kills white highlights from work lights, phone flashes and the displays while keeping the dots.
-- **1280×720 @ 25–30 fps is plenty.** Configure a dedicated camera substream at that resolution. Don't pull 4K; it costs CPU and adds decode latency for no gain.
+- **Under 720p is plenty.** The eight cameras run a 1024×576 substream at 25 fps. Don't pull 4K; it costs CPU and adds decode latency for no gain. Eight at 576p is ~4.7 Mpx/frame total — less than four at 1080p.
 - A **narrow bandpass filter** matched to the laser wavelength (e.g. 650 nm ±10 nm, ~€30 threaded lens filter) is optional here but cheap insurance if ambient light ever becomes uncontrolled. Note it as a Phase 4 option, not a v1 requirement.
 
 ### 4.2 Algorithm
@@ -178,7 +178,7 @@ Hard cutoff inverts the risk profile: a missed break costs a player nothing, but
 v1 authors `beams.json` by hand. To make that survivable:
 
 - **`/admin/beams` overlay page (build in v1):** live frame with every ROI drawn on it, id labels, live ratio bars, and a colour per state. Read-only apart from `masked` and threshold sliders. This is enough to find and fix a bad beam without editing JSON on site.
-- **`tools/pick_rois.py` (build in v1):** grabs one frame, opens an OpenCV window, click a dot → prints a JSON stanza. Ten minutes of work, saves hours.
+- **`tools/pick_rois.py` (v1, removed):** clicked dots by hand to print JSON stanzas. Superseded by `tools/capture.py`, which finds them automatically and writes the file (ADR 0009).
 - **Full drag-and-drop calibration UI:** deferred to a later phase. Keep `beams.json` as the only source of truth so the UI, when it arrives, is just an editor over it.
 
 ### 4.6 One decode, two consumers
@@ -589,7 +589,7 @@ scanmania/
 │   └── static/{signin,gm,admin,display_in,display_out}/
 ├── tools/
 │   ├── ramp.py                 generate a count-in pulse list from a curve
-│   ├── pick_rois.py            click dots → JSON stanza
+│   ├── capture.py              light a maze → dots + baselines → beams.json
 │   ├── replay.py               run a recorded video through detection
 │   └── fake_run.py             drive a full run from the CLI
 ├── tests/
@@ -765,7 +765,7 @@ Sequenced by risk. The frontends are the easy part and building them first hides
 ### Phase 2 — Bench integration
 - [ ] `io/modbus.py` against one real board: presets, reconciliation. Unplug it mid-run and prove self-heal.
 - [ ] Pico firmware + `pico_link.py`, tested at **real cable length** for phantom triggers.
-- [ ] One camera, one cluster, haze, real ceiling dots. `tools/pick_rois.py`. Tune `break_ratio` and N.
+- [ ] One camera, one maze, haze, real ceiling dots. `tools/capture.py`. Tune `break_ratio` and N.
 - [ ] Evidence thumbnails, stall suppression, flap detector, auto-degrade to manual — all tested by deliberately breaking things.
 - [ ] Measure everything in §10.5; record actuals in `docs/protocols/modbus.md` and `docs/network.md`.
 - [ ] `docs/vision.md` written from what was actually learned.
@@ -928,7 +928,7 @@ Raised 2026-09-13.
 `/display/out` shows a live feed behind the stopwatch and leaderboard. That feed
 is **not** one of the detection cameras.
 
-`cam_1`-`cam_4` point straight up at the ceiling dots. Their view is a grid of
+`SM-CAM-11`-`14` and `SM-CAM-21`-`24` point straight up at the ceiling dots. Their view is a grid of
 bright spots on a flat surface — meaningless to a crowd on the street, and it
 would give away nothing about the game. The outdoor feed needs the **back cam at
 172.16.0.205**, aimed at the play area, showing a player actually running the
@@ -973,80 +973,81 @@ does gracefully.
 
 ## 19. Calibration: how it runs
 
-`tools/sweep.py`. Two passes, because they answer different questions.
+`tools/capture.py`. One pass per maze. See
+[ADR 0009](docs/adr/0009-per-maze-dot-capture.md) for why the two-pass channel
+sweep it replaced is gone.
 
-Calibration is scoped to the mazes, not to all 45 channels. Only 36 channels
-appear in any shape; the other 9 are wired but unused, so they have no lighting
-condition to measure. `--all-channels` includes them.
+**Light the maze. Tune each camera until its count looks right. Save what it
+saw.** That is the method. Nothing ties a dot to a relay channel, because the
+game does not need it: a dot going dark means a beam was broken, and which relay
+drives it changes nothing about ending the run.
 
-**LABEL** — one channel lit at a time from dark. Five bright spots on a
-near-black frame: unambiguous, no diffing, no bloom. This is where a dot gets
-its channel and its camera.
+Captures are per maze. Each shape lights 46-53% of the floor, so a dot with two
+lit neighbours in one shape and none in another reads a different baseline. One
+number cannot serve all three.
 
-**MEASURE** — runs **once per maze**, that maze lit, each of its channels
-blinked off in turn. The game never sees "a
-dot appears in darkness", it sees "a dot vanishes while ~180 others stay lit".
-This measures the lit baseline and the `dark_floor` — the residual when a dot's
-own channel is off but the rest of that maze is on. **Both are stored per maze**,
-because the shapes light 46-53% of the floor each and a dot with two lit
-neighbours in one shape and none in another reads meaningfully differently. One
-number cannot serve all three. A dot whose disappearance is
-masked by a neighbour's bloom passes LABEL and is a dead sensor in the maze;
-only the dark floor catches it.
+Detection params are per camera and stored with the dots they produced. The
+top-hat kernel has to be larger than a dot and smaller than the dot spacing, and
+both scale with distance to the ceiling — one global setting is why a real sweep
+found 5 dots on one camera and 11 on another looking at the same five lasers.
 
 ### Prerequisites, in order
 
 1. **House lights OFF.** Not optional. The cameras are exposed for bright dots
    on a dark ceiling. With the room lit, the top-hat picks up ceiling texture and
-   light fittings, LABEL records those as dots, and MEASURE then reads 0 for
-   every one — because ceiling texture is not red. The result is a calibration
-   that looks fully populated and detects nothing. The tool refuses to start if
-   any camera sees more than `_MAX_AMBIENT_BLOBS` with every laser off.
+   light fittings, the capture records those as dots, and each one then holds a
+   baseline that never changes — a calibration that looks fully populated and
+   detects nothing. The tool refuses to start if any camera sees more than
+   `_MAX_AMBIENT_BLOBS` with every laser off.
 2. **Camera settings locked** — manual exposure, manual white balance, IR-cut
    and night mode disabled, substream resolution pinned. One visit to a camera
-   UI after this invalidates every ROI measured before it.
+   UI after this invalidates every ROI measured before it. The capture stores
+   `w`/`h` per camera and `validate()` errors if they change mid-calibration.
 3. **Cameras physically fixed.** ROIs are frame pixels. A bumped camera is a
-   full recalibration.
+   full recalibration of every maze that camera contributes to.
 4. **Game service stopped.** `ReconcileLoop` re-asserts desired coil state every
-   500 ms and would re-light channels mid-step, corrupting the labelling with no
-   visible symptom.
+   500 ms and would re-light channels underneath you. Stop the kiosk first or
+   its `Wants=` drags the game straight back up:
+   `systemctl stop scanmania-kiosk scanmania`.
 5. **Nobody in the container.** A body occludes dots and changes the scene.
 6. **Lasers warm.** Diode brightness drifts for minutes after power-on.
+
+### Running it
+
+```
+systemctl stop scanmania-kiosk scanmania
+.venv/bin/python tools/capture.py          # page on :8090
+systemctl start scanmania scanmania-kiosk
+```
+
+The tool connects the cameras and relay boards, runs the ambient check, then
+waits. Per maze: **Light**, tune each camera's four sliders against the live
+preview with detected dots circled, **Capture**. Repeat for every maze, then
+**Write beams.json**.
+
+Nothing is written until you press Write. The write is atomic — a backup
+alongside, then the result is loaded through `config/loader.py` before it
+replaces the live file, so a beams.json the loader rejects never becomes the one
+the game boots from. Only the `mazes` block is rewritten; the 45 channel entries
+are left alone.
 
 ### Notes from the field
 
 - Verify a relay board with a **Modbus read**, not a ping. One sweep from the
   Mac got no ICMP reply from .100-.106 while Modbus on 4196 answered fine —
-  whatever the cause, `connect_all()` returning True is the signal that matters.
-  (Ping works from the operator's own machine.)
-- Measured on one camera with 2 rows (50 lasers) lit: 46-48 dots found. So
-  expect ~4-8% of dots to go unfound, and channels with fewer than 5 recorded
-  dots are normal rather than an error.
-- Below 4 dots on a channel, `detect.py` can no longer tell a real break from a
-  dead channel (`_MIN_DOTS_FOR_FAULT`) — the sweep warns, and those channels
-  want a look before opening.
-- Colinearity is measured and reported, never enforced. The arrays are
-  physically colinear and a pinhole projection preserves straight lines, but
-  wide-angle lenses bow them, worst at the frame edges where the far dots land.
+  `connect_all()` returning True is the signal that matters.
+- Measured on one camera with 2 rows (50 lasers) lit: 46-48 dots found. Expect
+  a few percent of dots to go unfound per camera. With eight cameras and
+  overlapping coverage that matters far less than it did with four.
+- A camera that finds nothing for a maze is a warning, not an error. Blind spots
+  are expected; that is the reason for eight cameras.
+- A dot with a near-zero baseline is an **error**: it already reads dark, so it
+  can never register a break. `/admin/beams` shows the minimum baseline per
+  camera so these surface before an event, not during one.
+- The ceiling is being repainted white and flat. That evens out dot brightness
+  far more than any parameter tuning will.
 
 ### Safety
 
-`--no-write` still drives the relays. There is no flag that runs the sweep
-without switching lasers on. Treat every invocation as "the maze is about to
-light up".
-
-### Running it
-
-`tools/sweep.py` does not sweep on launch. It connects the cameras and relay
-boards, then waits. You choose channels and mazes on the page and press START,
-so you can leave it running, walk to the container, kill the house lights and
-start the run from a phone. ABORT stops mid-run and leaves the maze dark.
-
-`--now` sweeps immediately and exits, for scripting.
-
-The page on **:8090** — progress, ambient reading,
-dots found per channel, dot counts per maze against expected, and a preview per
-camera with the detected dots circled. Open it beside the admin panel.
-
-It is a separate server on purpose: the sweep needs the game service stopped, so
-`/admin` is down while it runs.
+`--no-write` still drives the relays. There is no flag that captures without
+switching lasers on. Treat every invocation as "the maze is about to light up".

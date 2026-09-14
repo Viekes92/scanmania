@@ -1,0 +1,33 @@
+[Unit]
+# The two HDMI kiosk browsers. Kept in git so a rebuild reproduces the box —
+# this unit previously existed only on the NUC, which is how it ended up in a
+# permanent crash loop (773 restarts) that nobody had a file to inspect.
+Description=ScanMania kiosk displays
+After=scanmania.service
+Wants=scanmania.service
+
+# Never give up. [Unit] section — in [Service] the ...Sec spelling is ignored.
+StartLimitIntervalSec=0
+StartLimitBurst=0
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/scanmania
+Environment=DISPLAY=:0
+ExecStart=/opt/scanmania/kiosk.sh
+Restart=always
+RestartSec=5
+
+# kiosk.sh now supervises each Chromium window itself, so this restart policy is
+# the outer backstop rather than the only one.
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=scanmania-kiosk
+
+[Install]
+WantedBy=multi-user.target

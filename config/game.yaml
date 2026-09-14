@@ -4,6 +4,20 @@
 mode: hard_cutoff
 # hard_cutoff: a confirmed break ends the run immediately. Only option in v1.
 
+# How long the GM has to CONFIRM or VETO an assisted-mode break before the
+# system decides for them. Without a deadline an undecided halt wedges the game
+# in a RUN state with every timer cancelled.
+#
+# On timeout the run ABORTS — it does not count, and the player runs again.
+# Not bust (that convicts someone nobody looked at) and not veto (which re-arms
+# detection on a player still standing in the beam, and loops forever).
+# Range: 10000-300000
+assisted_timeout_ms: 60000
+
+# How long a signed-in player may stand around before the run is cancelled and
+# the attract show comes back. Range: 30000-600000
+registered_timeout_ms: 180000
+
 max_run_ms: 180000
 # Maximum run duration in ms before the run is auto-aborted. Range: 60000-600000.
 

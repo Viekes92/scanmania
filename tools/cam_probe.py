@@ -13,13 +13,13 @@ Invariant: imports nothing from the game. No FSM, no SQLite, no web server, no
 Usage:
     export SCANMANIA_CAM_USER=scanmania SCANMANIA_CAM_PASSWORD='...'
     python3 tools/cam_probe.py \
-      'SM-CAM-1=rtsp://[User]:[Password]@172.16.0.201:8554/9c756e2e9121-0_m' \
-      'SM-CAM-2=rtsp://[User]:[Password]@172.16.0.202:8554/9c756e2e9aad-0_m'
+      'SM-CAM-11=rtsp://[User]:[Password]@172.16.0.211:8554/9c756e2e94bb-0_m' \
+      'SM-CAM-22=rtsp://[User]:[Password]@172.16.0.222:8554/9c756e2e9aad-0_m'
 
     # every camera on one path template? build the URLs instead:
-    python3 tools/cam_probe.py --hosts 172.16.0.201-204 --path '/stream1'
+    python3 tools/cam_probe.py --hosts 172.16.0.211-214 --path '/stream1'
 
-Keys in the window: q / Esc quit, s save a PNG of each live frame, 1-4 solo a camera.
+Keys in the window: q / Esc quit, s save a PNG of each live frame, 1-8 solo a camera.
 """
 
 from __future__ import annotations
@@ -222,7 +222,17 @@ def build_urls(args: argparse.Namespace) -> list[tuple[str, str]]:
         return out
 
     if not args.hosts:
-        raise SystemExit("give RTSP URLs, or --hosts (e.g. --hosts 172.16.0.201-204)")
+        # Default to the configured cameras. Typing eight RTSP URLs by hand to
+        # look at the eight cameras already declared in hardware.yaml is busywork
+        # that also invites a typo you then debug as a network fault.
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+        import config.loader as loader
+        cams = loader.load_hardware().cameras
+        if not cams:
+            raise SystemExit("no cameras in hardware.yaml; give URLs or --hosts")
+        return [(c.id, c.url) for c in cams]
 
     auth = ""
     if args.user:
@@ -243,8 +253,10 @@ def build_urls(args: argparse.Namespace) -> list[tuple[str, str]]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("urls", nargs="*",
-                    help="[NAME=]rtsp://... — may contain [User]/[Password]")
-    ap.add_argument("--hosts", nargs="+", help="IPs or ranges, e.g. 172.16.0.201-204")
+                    help="[NAME=]rtsp://... — may contain [User]/[Password]. "
+                         "With no URLs and no --hosts, every camera in "
+                         "config/hardware.yaml is opened")
+    ap.add_argument("--hosts", nargs="+", help="IPs or ranges, e.g. 172.16.0.211-214")
     ap.add_argument("--user", default=os.environ.get("SCANMANIA_CAM_USER", ""))
     ap.add_argument("--password", default=os.environ.get("SCANMANIA_CAM_PASSWORD", ""),
                     help="defaults to $SCANMANIA_CAM_PASSWORD, to keep it out of history")

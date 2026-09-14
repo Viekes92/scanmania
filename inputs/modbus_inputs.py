@@ -86,7 +86,9 @@ class ModbusInputs:
                 timeout=self._timeout_s * 2,
             )
             self._sock = sock
-            self._connected = True
+            # Not connected until a read actually succeeds — a TCP handshake is
+            # not a working Opta. ModbusBoard learned this the hard way.
+            self._connected = False
             log.info("ModbusInputs connected to %s:%d", self._ip, self._port)
             return True
         except Exception as exc:
@@ -129,8 +131,20 @@ class ModbusInputs:
         try:
             self._sock.sendall(frame)
             resp = self._sock.recv(256)
-        except (socket.timeout, OSError) as exc:
-            log.debug("ModbusInputs read error: %s", exc)
+        except socket.timeout as exc:
+            # The request is still in flight. Its late reply will be sitting in
+            # the buffer when the NEXT request goes out, and since the response
+            # was never matched against its transaction id, that reply was
+            # parsed as the next one — leaving the reader permanently one poll
+            # behind, and one further behind on every subsequent timeout. That
+            # is late stop-button registration and phantom false starts, with
+            # nothing in the logs. Drop the socket instead.
+            log.warning("ModbusInputs: read timed out (%s) — reconnecting", exc)
+            self._close()
+            return None
+        except OSError as exc:
+            log.warning("ModbusInputs read error: %s", exc)
+            self._close()
             return None
 
         # recv() returning 0 bytes is EOF — the peer closed the connection. The
@@ -140,6 +154,16 @@ class ModbusInputs:
             log.warning("ModbusInputs: connection closed by peer")
             self._connected = False
             return None
+
+        # The transaction id MUST match, or this is a stale reply to an earlier
+        # request and every input state derived from it is one poll out of date.
+        if len(resp) >= 2:
+            got = struct.unpack(">H", resp[0:2])[0]
+            if got != self._transaction_id:
+                log.warning("ModbusInputs: transaction id %d != expected %d — "
+                            "stale reply, reconnecting", got, self._transaction_id)
+                self._close()
+                return None
 
         # Parse response: MBAP(7) + function(1) + byte_count(1) + data(N)
         if len(resp) < 10:
@@ -169,6 +193,10 @@ class ModbusInputs:
             else:
                 states.append(False)
 
+        # A read came back clean — only now is this thing genuinely connected.
+        if not self._connected:
+            log.info("ModbusInputs: Opta responding")
+        self._connected = True
         return states
 
     # ------------------------------------------------------------------

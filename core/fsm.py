@@ -366,7 +366,23 @@ def _run_seg3_handlers() -> dict:
         return _log_ignored(state, event, {"reason": "repeat_cp2_in_seg3"})
 
     def on_stop(state, event, ctx):
-        effects: list = [StopStopwatch(), DisarmDetection(), PlayShow("clean")]
+        # A break is already confirmed and waiting on the GM. The stopwatch was
+        # halted when it fired, and stop() is idempotent, so calling this clean
+        # recorded the HALT time — a beam-breaking run topping the leaderboard
+        # with a time shorter than reality. The break wins.
+        if ctx.pending_break:
+            busting = ctx.pending_break
+            ctx.pending_break = None
+            ctx.assisted_halt_elapsed_ms = None
+            effects: list = [StopStopwatch(), DisarmDetection(), PlayShow("bust")]
+            if ctx.run_id:
+                effects.append(SaveRun(outcome=RunOutcome.busted,
+                                       run_id=ctx.run_id,
+                                       busting_beam_id=busting))
+            effects.append(BroadcastState())
+            return BUSTED, effects
+
+        effects = [StopStopwatch(), DisarmDetection(), PlayShow("clean")]
         if ctx.run_id:
             effects += [
                 SaveRun(outcome=RunOutcome.clean, run_id=ctx.run_id),
@@ -502,7 +518,14 @@ def _handle_global(state: str, event: Any, ctx: FSMContext) -> tuple[str, list] 
 
     # MasterModeEngage — from any state. Stop everything, hand control to the admin.
     if etype is MasterModeEngage:
-        return MASTER, [StopStopwatch(), DisarmDetection(), BroadcastState()]
+        effects: list = [StopStopwatch(), DisarmDetection()]
+        # The runner clears run_id on entering MASTER, so without this the run
+        # simply vanishes — no clean, no busted, no aborted, no DB row at all.
+        # One mis-tap should not erase a player's run.
+        if ctx.run_id and state in RUN_STATES:
+            effects.append(SaveRun(outcome=RunOutcome.aborted, run_id=ctx.run_id))
+        effects.append(BroadcastState())
+        return MASTER, effects
 
     # ProcessRestart — never resume a run.
     if etype is ProcessRestart:

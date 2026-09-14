@@ -5,17 +5,26 @@
 # was documented in prose that nothing enforced.
 Description=ScanMania game service
 Documentation=file:///opt/scanmania/docs/architecture.md
-After=network-online.target
-Wants=network-online.target
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
+
+# Never give up restarting — an attraction must keep trying.
+# These are [Unit] settings. They sat in [Service] where systemd silently
+# ignores the ...Sec spelling, leaving the defaults (5 starts / 10 s) in force:
+# any fast-exit failure put the unit in `failed` permanently.
+StartLimitIntervalSec=0
+StartLimitBurst=0
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/scanmania
 EnvironmentFile=/etc/default/scanmania
 
-# --fake-vision is REQUIRED until the RTSP pipeline is wired. vision/camera.py
-# has no VisionService, so the process refuses to start without it.
-ExecStart=/opt/scanmania/.venv/bin/python -m scanmania --fake-vision
+# Real vision. vision/service.py owns the RTSP pipeline; --fake-vision here was
+# left over from before that class existed and silently disabled every camera.
+# --config-dir is explicit so the box can never silently run on a different
+# config directory than the one deploy.sh manages.
+ExecStart=/opt/scanmania/.venv/bin/python -m scanmania --config-dir /opt/scanmania/config
 
 # runner.py now re-raises when a subsystem task dies, so the process exits and
 # systemd restarts it. It used to stay alive with a dead game loop, which meant
@@ -23,9 +32,6 @@ ExecStart=/opt/scanmania/.venv/bin/python -m scanmania --fake-vision
 # resumes a run, it always comes back clean.
 Restart=always
 RestartSec=2
-
-# Do not give up after repeated restarts — an attraction must keep trying.
-StartLimitIntervalSec=0
 
 KillSignal=SIGTERM
 TimeoutStopSec=20

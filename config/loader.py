@@ -9,11 +9,14 @@ Invariant: if this module raises, the process must not start. Bad config is alwa
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 import yaml
+
+log = logging.getLogger(__name__)
 
 CONFIG_DIR = Path(__file__).parent
 
@@ -37,6 +40,12 @@ class CameraConfig:
     id: str
     url: str
     reference_frame: str
+    # The substream resolution this camera is SET to. ROIs are frame pixels, so
+    # a change in the camera UI silently invalidates every saved dot; declaring
+    # it here lets tools/capture.py catch the mismatch at capture time instead
+    # of the game quietly sampling the wrong coordinates.
+    w: int = 0
+    h: int = 0
     note: str = ""
 
 
@@ -158,6 +167,59 @@ class BeamConfig:
 
 
 @dataclass
+class Dot:
+    """
+    One watched point on the ceiling.
+
+    Detection is per DOT, not per relay channel. The calibration capture lights
+    a whole maze and records whatever the cameras can see; which relay drives a
+    given dot is never established and is not needed. A dot going dark means a
+    beam was broken — knowing which beam adds nothing to the game.
+
+    `id` is stable within a maze capture (cam_3:d17) so a bust can name what
+    broke, a dot can be masked individually, and evidence can crop the region.
+    """
+    id: str
+    cx: int
+    cy: int
+    r: int
+    # Measured with this maze lit, so it is already the right reference for the
+    # only condition this dot is ever evaluated in.
+    baseline: float = 0.0
+    masked: bool = False
+    note: str = ""
+
+
+@dataclass
+class CameraCapture:
+    """What one camera saw of one maze, and the settings that found it."""
+    camera: str
+    w: int                      # frame size the coordinates were measured at
+    h: int
+    params: dict                # detection params that produced these dots
+    dots: list[Dot] = field(default_factory=list)
+
+
+@dataclass
+class MazeROIs:
+    """Every dot watched while one maze is lit."""
+    name: str
+    captured_at: str = ""
+    cameras: dict[str, CameraCapture] = field(default_factory=dict)
+
+    def dots_for(self, camera_id: str) -> list[Dot]:
+        cap = self.cameras.get(camera_id)
+        return cap.dots if cap else []
+
+    def all_dots(self) -> list[Dot]:
+        return [d for cap in self.cameras.values() for d in cap.dots]
+
+    @property
+    def total(self) -> int:
+        return sum(len(c.dots) for c in self.cameras.values())
+
+
+@dataclass
 class DetectionConfig:
     consecutive_frames: int
     arm_grace_ms: int
@@ -165,12 +227,28 @@ class DetectionConfig:
     global_break_rate_limit: int
     flap_count_threshold: int
     flap_window_s: int
+    # More than this many dots going dark at once is not a person. A body blocks
+    # a handful; a relay failure, a preset change or a camera glitch kills
+    # dozens. Replaces the old per-channel "all 5 of its dots dark" rule, which
+    # needed a dot-to-channel mapping we no longer have. Sane range 6-25.
+    max_simultaneous_breaks: int = 10
+    # Hysteresis thresholds, as a fraction of a dot's baseline. These used to be
+    # read from beams[0] — one entry of the 45-channel wiring record that
+    # invariant 3 says is not read at runtime — so one entry supplied the
+    # threshold for all ~225 dots and editing any other did nothing.
+    break_ratio: float = 0.4
+    clear_ratio: float = 0.65
 
 
 @dataclass
 class BeamsConfig:
+    # The 45 relay channels. Kept as the wiring reference — which channel sits
+    # on which board, which row and strip it is — but detection no longer uses
+    # them. Dots are not mapped to channels.
     beams: list[BeamConfig]
     detection: DetectionConfig
+    # preset name -> the dots watched while that maze is lit.
+    mazes: dict[str, MazeROIs] = field(default_factory=dict)
 
 
 @dataclass
@@ -206,6 +284,11 @@ class GameConfig:
     count_in: CountInConfig
     arm_grace_ms: int
     leaderboard: LeaderboardConfig
+    # How long the GM has to decide on an assisted-mode break before the system
+    # defaults to BUST. Without it an undecided halt wedges the game.
+    assisted_timeout_ms: int = 60_000
+    # How long a signed-in player may idle before the run is cancelled.
+    registered_timeout_ms: int = 180_000
     # Minutes between automatic DB snapshots. 0 disables. Sane range 5-240.
     snapshot_interval_min: int = 60
     # How many rolling snapshots to keep. Sane range 4-200.
@@ -248,10 +331,6 @@ class AppConfig:
     beams: BeamsConfig
     game: GameConfig
     mazes: MazesConfig
-    # preset name -> the channel ids lit by that preset. Detection watches
-    # exactly these and ignores the rest, so a maze shape change is not a
-    # beam break: the dots that vanish are simply no longer being asked about.
-    watchlists: dict[str, frozenset[str]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +347,27 @@ def _load_json(name: str) -> dict:
     path = CONFIG_DIR / name
     with open(path) as f:
         return json.load(f)
+
+
+def _ranged(value, lo, hi, default, name: str):
+    """
+    Clamp a numeric config value to its documented range, loudly.
+
+    Every timing and threshold key carries a "Range:" comment that nothing
+    enforced. `max_simultaneous_breaks: 0` loaded clean and suppressed every
+    break forever, with the config file reading as if it were fine.
+    """
+    try:
+        v = type(default)(value)
+    except (TypeError, ValueError):
+        log.error("config: %s=%r is not a number — using %r", name, value, default)
+        return default
+    if v < lo or v > hi:
+        clamped = min(max(v, lo), hi)
+        log.error("config: %s=%r is outside %r..%r — using %r",
+                  name, v, lo, hi, clamped)
+        return clamped
+    return v
 
 
 def load_hardware() -> HardwareConfig:
@@ -288,6 +388,8 @@ def load_hardware() -> HardwareConfig:
             id=c["id"],
             url=c["url"],
             reference_frame=c["reference_frame"],
+            w=c.get("w", 0),
+            h=c.get("h", 0),
             note=c.get("note", ""),
         )
         for c in d.get("cameras", [])
@@ -346,14 +448,58 @@ def _first_dot_as_roi(b: dict) -> BeamROI:
     return BeamROI(cx=d["cx"], cy=d["cy"], r=d.get("r", 9))
 
 
-def load_beams() -> BeamsConfig:
-    d = _load_json("beams.json")
+def _parse_mazes(d: dict) -> dict[str, MazeROIs]:
+    """
+    Read the per-maze dot captures.
+
+    Absent means uncalibrated, which is legal: the game refuses to arm rather
+    than the config refusing to load, so an operator can still reach the admin
+    portal and see why.
+    """
+    out: dict[str, MazeROIs] = {}
+    for name, m in (d.get("mazes") or {}).items():
+        cams: dict[str, CameraCapture] = {}
+        for cam_id, c in (m.get("cameras") or {}).items():
+            cams[cam_id] = CameraCapture(
+                camera=cam_id,
+                w=int(c.get("w", 0)),
+                h=int(c.get("h", 0)),
+                params=dict(c.get("params") or {}),
+                dots=[
+                    Dot(
+                        id=dot.get("id") or f"{cam_id}:d{i}",
+                        cx=int(dot["cx"]), cy=int(dot["cy"]),
+                        r=int(dot.get("r", 9)),
+                        baseline=float(dot.get("baseline", 0.0)),
+                        masked=bool(dot.get("masked", False)),
+                        note=dot.get("note", ""),
+                    )
+                    for i, dot in enumerate(c.get("dots") or [])
+                ],
+            )
+        out[name] = MazeROIs(name=name,
+                             captured_at=m.get("captured_at", ""),
+                             cameras=cams)
+    return out
+
+
+def load_beams(path: Path | None = None) -> BeamsConfig:
+    """
+    Load beams.json. `path` points at a different file — the calibration tool
+    uses it to prove a freshly written file parses BEFORE it becomes the live
+    one. A beams.json the loader rejects takes the game down at next restart.
+    """
+    if path is None:
+        d = _load_json("beams.json")
+    else:
+        with open(path) as f:
+            d = json.load(f)
     beams = [
         BeamConfig(
             id=b["id"],
             relay_channel=b["relay_channel"],
             board_id=b["board_id"],
-            camera=b["camera"],
+            camera=b.get("camera", ""),   # vestigial; see ADR 0009
             roi=BeamROI(**b["roi"]) if "roi" in b else _first_dot_as_roi(b),
             dots=_parse_dots(b),
             capture_w=b.get("capture_w", 0),
@@ -376,6 +522,7 @@ def load_beams() -> BeamsConfig:
     det = d.get("detection", {})
     return BeamsConfig(
         beams=beams,
+        mazes=_parse_mazes(d),
         detection=DetectionConfig(
             consecutive_frames=det.get("consecutive_frames", 3),
             arm_grace_ms=det.get("arm_grace_ms", 150),
@@ -383,6 +530,11 @@ def load_beams() -> BeamsConfig:
             global_break_rate_limit=det.get("global_break_rate_limit", 6),
             flap_count_threshold=det.get("flap_count_threshold", 5),
             flap_window_s=det.get("flap_window_s", 60),
+            max_simultaneous_breaks=_ranged(
+                det.get("max_simultaneous_breaks", 10), 1, 100, 10,
+                "detection.max_simultaneous_breaks"),
+            break_ratio=float(det.get("break_ratio", 0.4)),
+            clear_ratio=float(det.get("clear_ratio", 0.65)),
         ),
     )
 
@@ -394,15 +546,25 @@ def load_game() -> GameConfig:
     lb = d.get("leaderboard", {})
     return GameConfig(
         mode=d.get("mode", "hard_cutoff"),
-        max_run_ms=d.get("max_run_ms", 180000),
-        result_display_ms=d.get("result_display_ms", 15000),
-        arm_timeout_ms=d.get("arm_timeout_ms", 180000),
+        max_run_ms=_ranged(d.get("max_run_ms", 180000),
+                           10_000, 3_600_000, 180000, "game.max_run_ms"),
+        result_display_ms=_ranged(d.get("result_display_ms", 15000),
+                                  1_000, 120_000, 15000, "game.result_display_ms"),
+        arm_timeout_ms=_ranged(d.get("arm_timeout_ms", 180000),
+                               10_000, 3_600_000, 180000, "game.arm_timeout_ms"),
+        assisted_timeout_ms=_ranged(d.get("assisted_timeout_ms", 60000),
+                                    10_000, 300_000, 60000, "game.assisted_timeout_ms"),
+        registered_timeout_ms=_ranged(d.get("registered_timeout_ms", 180000),
+                                      30_000, 600_000, 180000,
+                                      "game.registered_timeout_ms"),
         detection_mode=d.get("detection_mode", "assisted"),
         show=d.get("show", "main_game"),
         count_in=CountInConfig(
             preset=ci.get("preset", "maze_1"),
             ready_blink_ms=ci.get("ready_blink_ms", 150),
-            baseline_pulse_index=min(ci.get("baseline_pulse_index", 0), max(len(pulses) - 1, 0)),
+            baseline_pulse_index=min(
+                max(0, int(ci.get("baseline_pulse_index", 0))),
+                max(len(pulses) - 1, 0)),
             pulses=pulses,
             solid_at_end=ci.get("solid_at_end", True),
         ),
@@ -455,51 +617,6 @@ def load_mazes() -> MazesConfig:
     return MazesConfig(presets=presets, shows=shows)
 
 
-def _global_channel(beam: BeamConfig, board_order: list[str], per_board: int = 16) -> int | None:
-    """
-    beams.json stores relay_channel LOCAL to a board (1-15).
-    mazes.yaml presets list GLOBAL channels (1-48). Convert.
-
-    global = board_index * per_board + local_channel
-    """
-    try:
-        idx = board_order.index(beam.board_id)
-    except ValueError:
-        return None
-    return idx * per_board + beam.relay_channel
-
-
-def build_watchlists(beams: BeamsConfig, mazes: MazesConfig,
-                     hardware: HardwareConfig) -> dict[str, frozenset[str]]:
-    """
-    Join mazes.yaml (which channels a preset lights) with beams.json (which
-    channel each entry is) to get the set of channel ids to watch per preset.
-
-    This is the whole answer to "how do we tell a shape change from a break":
-    when the maze switches, the watch-list switches with it. A dot that goes
-    dark because its relay opened is not in the new list, so nothing looks at
-    it and nothing reports it.
-
-    No extra config to author — both halves already exist.
-    """
-    board_order = [b.id for b in hardware.relay_boards]
-    by_global: dict[int, str] = {}
-    for beam in beams.beams:
-        g = _global_channel(beam, board_order)
-        if g is not None:
-            by_global[g] = beam.id
-
-    out: dict[str, frozenset[str]] = {}
-    for name, preset in mazes.presets.items():
-        if preset.channels == "*":
-            out[name] = frozenset(by_global.values())
-            continue
-        out[name] = frozenset(
-            by_global[c] for c in (preset.channels or []) if c in by_global
-        )
-    return out
-
-
 def load_all() -> AppConfig:
     """Load and validate all config. Raises on any error."""
     hardware = load_hardware()
@@ -516,15 +633,26 @@ def load_all() -> AppConfig:
                 f"Beam {beam.id} references board_id '{beam.board_id}' "
                 f"which is not in hardware.yaml (known: {board_ids})"
             )
-        if beam.camera not in camera_ids and camera_ids:
-            raise ValueError(
-                f"Beam {beam.id} references camera '{beam.camera}' "
-                f"which is not in hardware.yaml (known: {camera_ids})"
-            )
+        # A channel entry's `camera` field is NOT validated. These 45 entries are
+        # the relay wiring record; detection reads the per-maze captures under
+        # `mazes` instead (ADR 0009), and the field is a leftover from when a
+        # channel owned its dots. Enforcing it would only block renaming a
+        # camera until someone hand-edited 45 lines that nothing reads.
         if beam.break_ratio >= beam.clear_ratio:
             raise ValueError(
                 f"Beam {beam.id}: break_ratio ({beam.break_ratio}) must be < clear_ratio ({beam.clear_ratio})"
             )
+
+    # The captures ARE validated: these camera ids route live frames to ROIs, so
+    # a stale one means dots sampled against a frame they do not belong to.
+    for maze_name, rois in beams.mazes.items():
+        for cam_id in rois.cameras:
+            if camera_ids and cam_id not in camera_ids:
+                raise ValueError(
+                    f"beams.json: maze '{maze_name}' has a capture for camera "
+                    f"'{cam_id}' which is not in hardware.yaml (known: "
+                    f"{sorted(camera_ids)}). Recapture that maze."
+                )
 
     show = mazes.shows.get(game.show)
     if show is None:
@@ -549,5 +677,4 @@ def load_all() -> AppConfig:
 
     return AppConfig(
         hardware=hardware, beams=beams, game=game, mazes=mazes,
-        watchlists=build_watchlists(beams, mazes, hardware),
     )

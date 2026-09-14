@@ -3,7 +3,7 @@
   web/static/display_out/index.html — Outdoor display (HDMI 2).
 
   The crowd-puller. Faces the street. Designed as a visual object.
-  - Background: MJPEG feed from http://localhost:8081/cam_a.mjpg (full-screen)
+  - Background: back-cam MJPEG feed (full-screen). Not wired yet — plan.md §18.
     Falls back to dark background gracefully if the stream is unavailable.
   - Overlay: stopwatch (top-right), leaderboard (idle), state overlays
   - ATTRACT:  leaderboard prominent, game name, MJPEG in background
@@ -417,12 +417,18 @@
   <!-- MJPEG background -->
   <img id="mjpegBg" src="" alt="">
   <script>
-    // Resolve MJPEG URL relative to the current host instead of hardcoding localhost
-    (function() {
-      const mjpegPort = 8081;
-      const img = document.getElementById("mjpegBg");
-      img.src = `http://${location.hostname}:${mjpegPort}/cam_a.mjpg`;
-    })();
+    let lastLeaderboardSig = null;
+    // The background camera feed is not wired yet — see plan.md section 18. The
+    // back cam is a separate, non-detection camera; the ceiling cameras must
+    // never be shown here. Requesting a port nothing listens on fired a failed
+    // connection every 15 s for the whole tour, so nothing is requested until
+    // there is something to request. Set BACK_CAM_URL when it lands.
+    const BACK_CAM_URL = null;
+    if (BACK_CAM_URL) {
+      document.getElementById("mjpegBg").src = BACK_CAM_URL;
+    } else {
+      document.getElementById("mjpegBg").removeAttribute("src");
+    }
   </script>
 
   <!-- Dark overlay for legibility -->
@@ -556,11 +562,18 @@
       mjpegBg.classList.remove("hidden");
     });
 
-    // Retry MJPEG stream every 15 seconds when hidden (stream down)
+    // Retry only when there is something to retry, and drive it off frame
+    // freshness rather than the `hidden` class. A hung request never fires
+    // `error`, so `hidden` was never set and the retry never ran — and Chromium
+    // does not fire `error` on a multipart stream that dies after the first
+    // part, it just freezes on the last frame. Both cases looked intentional.
+    let lastFrameAt = 0;
+    mjpegBg.addEventListener("load", () => { lastFrameAt = Date.now(); });
     setInterval(() => {
-      if (mjpegBg.classList.contains("hidden")) {
-        const base = mjpegBg.src.split("?")[0];
-        mjpegBg.src = base + "?t=" + Date.now();
+      if (!BACK_CAM_URL) return;
+      if (Date.now() - lastFrameAt > 10000) {
+        mjpegBg.src = BACK_CAM_URL + (BACK_CAM_URL.includes("?") ? "&" : "?")
+                    + "t=" + Date.now();
       }
     }, 15000);
 
@@ -628,7 +641,19 @@
       swClientAtMsg  = performance.now() / 1000;
 
       // Update leaderboard data whenever provided
-      if (msg.leaderboard) renderLeaderboard(msg.leaderboard);
+      // Only re-render when the data actually changed. This ran on every
+      // broadcast — 10x/second, forever — rebuilding ~70 DOM nodes via
+      // innerHTML for a list that changes a few times an hour, so the outdoor
+      // Chromium never idled. Also guard on length: the server ships an empty
+      // array before the first save, and `if (msg.leaderboard)` is true for [],
+      // which wiped the board the page had just seeded from the API.
+      if (Array.isArray(msg.leaderboard) && msg.leaderboard.length) {
+        const sig = JSON.stringify(msg.leaderboard);
+        if (sig !== lastLeaderboardSig) {
+          lastLeaderboardSig = sig;
+          renderLeaderboard(msg.leaderboard);
+        }
+      }
 
       /* --- Clear overlays by default --- */
       bustOverlay.classList.remove("visible");
@@ -759,6 +784,7 @@
       };
 
       ws.onmessage = (evt) => {
+        __noteMessage();
         let msg;
         try { msg = JSON.parse(evt.data); } catch { return; }
         applyState(msg);
@@ -779,6 +805,23 @@
     }
 
     connect();
+  
+    /* -----------------------------------------------------------------------
+       Stale-data watchdog
+
+       onclose is not enough. If the server's broadcaster task dies, or the path
+       half-opens, every socket stays "healthy" and the screen freezes silently
+       on its last frame — in front of a player, for as long as nobody notices.
+       Track time since the last message and force a reconnect when it lapses.
+    ----------------------------------------------------------------------- */
+    let __lastMsgAt = Date.now();
+    function __noteMessage() { __lastMsgAt = Date.now(); }
+    setInterval(() => {
+      // The server broadcasts at 10 Hz; 3 s of silence is not a slow frame.
+      if (Date.now() - __lastMsgAt > 3000) {
+        try { if (ws && ws.readyState === WebSocket.OPEN) ws.close(); } catch (e) {}
+      }
+    }, 1000);
   </script>
 </body>
 </html>

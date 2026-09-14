@@ -20,6 +20,9 @@ from config.loader import BeamsConfig
 
 log = logging.getLogger(__name__)
 
+# Plausible dot count so preflight sees a calibrated maze.
+_FAKE_DOTS = 174
+
 
 class FakeVision:
     """
@@ -45,6 +48,7 @@ class FakeVision:
         self._metrics_emit = metrics_emit
 
         self._armed: bool = False
+        self._maze: str | None = None
         self._run_id: str | None = None
         self._arm_time_ns: int | None = None
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=256)
@@ -138,10 +142,42 @@ class FakeVision:
     # Properties — mirror DotDetector / CameraStream interface
     # ------------------------------------------------------------------
 
-    def set_watchlist(self, channel_ids, settle_ms: int = 250,
-                      preset: str | None = None) -> None:
-        """Accepted and recorded so the runner can call it unconditionally."""
-        self._watching = set(channel_ids) if channel_ids is not None else None
+    def set_maze(self, preset: str | None, settle_ms: int = 250) -> None:
+        """Recorded so the runner can call it unconditionally. No dots to watch."""
+        self._maze = preset
+
+    def set_masked(self, dot_id: str, masked: bool = True) -> bool:
+        """No real dots to mask; report success so admin calls do not error."""
+        return True
+
+    def detector_stats(self) -> dict:
+        """
+        Report a healthy, calibrated detector.
+
+        The fake exists so the whole game can be driven with no hardware, and
+        preflight now refuses to arm a run when the lit maze has no calibrated
+        dots. A fake that reported zero would block the --fake-all workflow for
+        a condition that cannot exist without cameras.
+        """
+        return {
+            "maze": self._maze,
+            "total": _FAKE_DOTS,
+            "blind": 0,
+            "stalled": False,
+            "fault": None,
+            "cameras_live": 1,
+            "cameras_total": 1,
+            "cameras": {
+                "fake_cam": {
+                    "watched": _FAKE_DOTS, "blind": 0, "dark": 0, "masked": 0,
+                    "stalled": False, "fps": 30.0, "age_ms": 0,
+                }
+            },
+        }
+
+    def clear_masks(self) -> int:
+        """No real dots to unmask."""
+        return 0
 
     @property
     def is_armed(self) -> bool:

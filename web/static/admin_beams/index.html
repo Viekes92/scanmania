@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <!--
-  web/static/admin_beams/index.html — Beam ROI overlay page.
+  web/static/admin_beams/index.html — calibration state.
 
-  Phase 2: live MJPEG feed with beam circle overlays, ratio bars, and mask toggles.
-  Phase 1: static placeholder showing beam config from beams.json.
+  What each camera saw when each maze was lit: dot counts, baselines, the
+  detection params that produced them, and the frame size they were measured at.
+  This is what detection watches. The channel table below is the relay wiring
+  record — nothing reads it at runtime.
 -->
 <html lang="en">
 <head>
@@ -124,13 +126,37 @@
 
 <div class="container">
 
-  <div class="notice">
-    Phase 2 feature: live camera overlay with ROI circles, ratio bars, and one-tap masking
-    will appear here once cameras are connected. Currently showing static config from beams.json.
+  <div class="notice" id="notice">
+    Calibrate with <strong>tools/capture.py</strong> &mdash; stop the game first
+    (<code>systemctl stop scanmania-kiosk scanmania</code>), then open port 8090.
+    ROIs are frame pixels: changing a camera&rsquo;s substream resolution or
+    bumping a camera invalidates every dot below.
   </div>
 
   <div class="card">
-    <div class="card-title">Beam configuration</div>
+    <div class="card-title">Calibration &mdash; what detection watches</div>
+    <div id="mazeSummary">Loading&hellip;</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Maze</th>
+          <th>Camera</th>
+          <th>Dots</th>
+          <th>Masked</th>
+          <th>Baseline mean / min</th>
+          <th>Captured at</th>
+          <th>Frame</th>
+          <th>thr / top-hat / area</th>
+        </tr>
+      </thead>
+      <tbody id="mazeBody">
+        <tr><td colspan="8" style="color:var(--muted)">Loading&hellip;</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Relay wiring &mdash; reference only</div>
     <div id="summary">Loading&hellip;</div>
     <table>
       <thead>
@@ -163,6 +189,60 @@
     return d.innerHTML;
   }
 
+  async function loadMazes() {
+    const body = document.getElementById("mazeBody");
+    try {
+      const d = await (await fetch("/api/admin/mazes")).json();
+      const mazes = d.mazes || [];
+
+      if (!mazes.length) {
+        document.getElementById("mazeSummary").innerHTML =
+          '<span style="color:var(--orange)">Nothing calibrated. ' +
+          'Detection watches nothing until a maze is captured &mdash; ' +
+          'that is deliberate: without a baseline every reading is a guess.</span>';
+        body.innerHTML = '<tr><td colspan="8" style="color:var(--muted)">' +
+          'No captures in beams.json. Run tools/capture.py on-site.</td></tr>';
+        return;
+      }
+
+      document.getElementById("mazeSummary").textContent =
+        mazes.map(m => `${m.maze}: ${m.total} dots`).join("  \u00b7  ");
+
+      const rows = [];
+      mazes.forEach(m => {
+        if (!m.cameras.length) {
+          rows.push(`<tr><td style="font-weight:700">${esc(m.maze)}</td>` +
+            `<td colspan="7" style="color:var(--orange)">no cameras captured</td></tr>`);
+          return;
+        }
+        m.cameras.forEach((c, i) => {
+          // A dot that reads near zero can never register a break — it already
+          // looks dark. Flag it here rather than at 3am in front of a queue.
+          const weak = c.min_baseline > 0 && c.min_baseline < 15;
+          const p = c.params || {};
+          rows.push(`<tr>
+            <td style="font-weight:700">${i === 0 ? esc(m.maze) : ""}</td>
+            <td style="color:var(--muted)">${esc(c.camera)}</td>
+            <td>${c.dots ? c.dots
+                 : '<span class="badge masked">NONE</span>'}</td>
+            <td style="color:var(--muted)">${c.masked || "—"}</td>
+            <td style="font-size:12px${weak ? ";color:var(--orange)" : ""}">
+                ${c.mean_baseline} / ${c.min_baseline}</td>
+            <td style="color:var(--muted);font-size:12px">
+                ${i === 0 ? esc(m.captured_at || "—") : ""}</td>
+            <td style="color:var(--muted);font-size:12px">${c.w}&times;${c.h}</td>
+            <td style="color:var(--muted);font-size:12px">
+                ${p.thr ?? "—"} / ${p.tophat ?? "—"} / ${p.min_area ?? "—"}&ndash;${p.max_area ?? "—"}</td>
+          </tr>`);
+        });
+      });
+      body.innerHTML = rows.join("");
+    } catch (e) {
+      body.innerHTML =
+        `<tr><td colspan="8" style="color:var(--red)">${esc(e.message)}</td></tr>`;
+    }
+  }
+
   async function load() {
     try {
       const resp = await fetch("/api/admin/beams");
@@ -175,7 +255,7 @@
 
       const tbody = document.getElementById("beamBody");
       if (!beams.length) {
-        tbody.innerHTML = '<tr><td colspan="9" style="color:var(--muted)">No beams in beams.json yet. Run tools/pick_rois.py on-site.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="color:var(--muted)">No channels in beams.json.</td></tr>';
         return;
       }
       tbody.innerHTML = beams.map(b => {
@@ -201,6 +281,7 @@
     }
   }
 
+  loadMazes();
   load();
 </script>
 </body>

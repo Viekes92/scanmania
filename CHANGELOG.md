@@ -7,7 +7,316 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — from the 10-agent longevity audit
+
+Findings ranked by how they would fail over a 2-month tour. Everything below was
+verified against the code, not assumed.
+
+**Critical**
+
+- **A camera stall crash-looped the whole process.** `VisionStalled` was used in
+  `core/runner.py` and never imported, so any frame gap over 300 ms raised
+  `NameError`, killed the vision listener, and took the process down —
+  restarting mid-run, over and over, for a flapping camera. Invariant 5's
+  "drop to manual, never bust" path had never executed. The test suite stayed
+  green because it dispatches `VisionStalled` straight into the FSM, bypassing
+  the listener.
+- **The unit file still forced `--fake-vision`,** with a comment claiming
+  `VisionService` did not exist. It does. Production would have run fake vision
+  with eight cameras wired up and nothing reading them.
+- **One wedged WebSocket client froze the entire game.** `broadcast()` awaited
+  each client serially with no timeout, and only an *exception* evicted anyone —
+  a sleeping iPad filled its TCP window and blocked the single event drain for
+  minutes. The stop button, beam breaks and GM BUST all queued unprocessed, and
+  because `Stopwatch.stop()` reads the clock when it executes, a 28-second run
+  was persisted with the stalled elapsed. Now: one serialisation, concurrent
+  sends, 250 ms per-client deadline, drop what cannot keep up.
+- **Lasers and the hazer stayed ON when the service stopped.** `apply_all_off`
+  was only ever called inside the count-in. Coils latch and the boards are
+  separately powered, so `systemctl stop` — which the recalibration runbook
+  tells the operator to run — left the maze lit in an unattended container.
+  `GameRunner.blackout()` now runs on every exit path, bounded so an unreachable
+  board cannot hold shutdown, and the hazer sends a zeroed DMX frame.
+- **Eight camera threads exactly filled the default executor.** Every RTSP read
+  used `run_in_executor(None, …)`, the same pool as every Modbus write and the
+  20 Hz Opta poll that carries the stop button — `min(32, cpu+4)` = 8 workers on
+  a 4-core NUC. Modbus timed out while merely *queued* and marked boards
+  DEGRADED, so camera traffic could take the maze and the stop button down with
+  no network fault at all. Cameras now have their own pool, with open and read
+  deadlines so a frozen stream reconnects instead of costing a worker forever.
+- **Five fast restarts left the unit permanently dead.** `StartLimitIntervalSec=0`
+  sat in `[Service]`, where systemd silently ignores that spelling, so the
+  defaults (5 starts / 10 s) applied and the "never give up" comment said the
+  opposite of what the box did.
+
+**High**
+
+- **The rolling EMA corrupted baselines during ATTRACT.** Shows drive presets
+  straight through the resolver, bypassing `_apply_maze`, so the detector kept
+  watching the last *applied* maze while the attract show flashed blackout —
+  and every dark frame was folded into that maze's baselines. Editing a show's
+  `hold_ms` silently retuned live detection sensitivity.
+- **A beam-breaking run could top the leaderboard with a faster time.** In
+  assisted mode, a player reaching the stop button before the GM decided was
+  recorded `clean` — and `Stopwatch.stop()` being idempotent meant the saved
+  time was the *halt* time, not the finish time. The pending break now wins.
+- **An undecided assisted break wedged the game** in a RUN state with the
+  stopwatch frozen and every timer cancelled. There is now an
+  `assisted_timeout_ms` deadline (default 60 s). On timeout the run **aborts**:
+  auto-veto re-arms detection on a player still standing in the beam and loops
+  forever, and auto-bust convicts someone nobody looked at. Abort is the honest
+  outcome — the run does not count and the player runs again.
+- **`max_run_ms` restarted from zero on every veto**, so three false positives
+  bought a player nine minutes. It is now an absolute deadline anchored at GO.
+- **The box booted into terminal FAULT if the relay boards were slower than the
+  NUC.** A single failed self-test latched FAULT, which only FORCE RESET
+  escapes. It now retries six times over 30 s.
+- **`POST /api/gm/master-mode` was an unauthenticated kill switch** with zero
+  consumers — one curl from the venue wifi stopped a run and cleared `run_id`
+  with no `SaveRun`. Removed, along with `/api/gm/mask-beam` (a stub that only
+  logged). `MasterModeEngage` from a RUN state now saves the run as aborted.
+- **The GM stopwatch kept running after the WebSocket dropped.** Both displays
+  freeze theirs, commented *"A frozen clock is honest. A running one is a lie."*
+  The GM console did not.
+- **Masking a beam was a no-op through all three paths.** `clear_masks()` was
+  called behind a `hasattr` guard and existed on neither backend — returning
+  `{"ok": true, "unmasked": 45}` while changing nothing. Masking now works on
+  dot ids against the maze captures, which is the only masked flag detection
+  reads, and reports when a dot is not in the maze currently lit.
+- **Detection could watch zero dots while the GM showed healthy counts.**
+  `stats()` counted states, not *sampled* states, so an uncalibrated capture
+  reported a full watch count while `process_frame` skipped every dot. It now
+  counts what is actually sampled and reports `blind` separately.
+- **Detection thresholds came from `beams[0]`** — one entry of the 45-channel
+  wiring record that invariant 3 says is not read at runtime. Moved into
+  `detection.break_ratio` / `clear_ratio`.
+- **Preflight could not fail.** `PreflightFail` was never emitted from anywhere,
+  so a run would arm with unreachable boards, stalled cameras and zero
+  calibrated dots. It now checks board health, camera liveness and whether the
+  lit maze has dots.
+- **`deploy.sh` could wedge the box permanently.** It committed local config
+  drift *then* pushed; a rejected push left the commit behind and every later
+  deploy failed `--ff-only`. It now verifies a fast-forward first, undoes its
+  own commit on failure, backs up with `sqlite3 .backup` instead of `cp` of a
+  live WAL database, and rolls the checkout back if `pip install` fails.
+- **Modbus `wait_for` orphaned the executor thread**, leaving two threads on one
+  socket — and RTU has no transaction id, so a crossed response CRCs clean and
+  is accepted as the wrong transaction. Timeouts now burn the socket.
+- **A DEGRADED board never dropped its socket**, so a blackholed flow stayed
+  dead for the kernel retransmit timeout — about 15 minutes.
+- **The Opta never validated the Modbus transaction id.** One timeout left the
+  button reader permanently one poll behind, compounding with each subsequent
+  timeout: late stop-button registration and phantom false starts, with nothing
+  in the logs. `is_connected` now means a read succeeded, not that TCP
+  handshook.
+- **"Download snapshot" deleted 34 of 48 backups** — a hardcoded `14` against
+  the loop's `snapshot_keep`, on the same directory with the same glob.
+- **Every metric was discarded.** `metrics.configure()` had zero callers, so
+  `relay.mismatch`, `vision.stall`, `vision.mass_dark` and `break.detected` had
+  never recorded a value. They are now structured log lines (`METRIC name=…`).
+- **`vision.run()` and `inputs.run()` were unsupervised orphan tasks**, and
+  `VisionService.run()` *returned* (no exception) when no cameras were
+  configured — a silently dead pipeline behind a healthy console.
+
+**Medium**
+
+- The reconciler compared a stale `desired` snapshot against a fresh read,
+  producing a false mismatch on every preset change — a warning and a redundant
+  full-board write several times a second during a show.
+- `reload_config()` never touched vision, so pasting in a fresh calibration
+  returned `ok` and changed nothing until a restart. The admin UI now also shows
+  the `reload_note` it had been discarding ("deferred — FSM is in RUN_SEG_2").
+- `_apply_maze` ran *after* the coil write, so the settle window did not cover
+  the transition.
+- The outdoor leaderboard went blank after every restart: the cache started `[]`
+  and was only refreshed on save, and `if (msg.leaderboard)` is true for `[]`.
+- "Daily" meant UTC midnight — the public board wiped at 02:00 local, and 01:00
+  after the 25 Oct 2026 DST change, inside the tour. It is now a configurable
+  local operating day (`SCANMANIA_DAY_START_HOUR`, default 09:00), bounded on
+  both sides so a session recorded with a wrong clock cannot pin junk to it
+  forever. `leaderboard.scope` is finally honoured, and one row per player.
+- Config range comments are enforced: `max_simultaneous_breaks: 0` used to load
+  clean and suppress every break forever.
+- A schema downgrade is refused rather than run against an unknown schema, and a
+  `PRAGMA quick_check` runs at open.
+- The snapshot loop prunes *before* writing (it could never recover from a full
+  disk) and snapshots immediately on start rather than after the first hour.
+- `/api/signin` and `/api/admin/login` are rate limited; failed logins are
+  logged. Display names are normalised, with bidi/zero-width controls stripped
+  and combining runs capped — those went straight onto the public display.
+- The DB no longer silently relocates to a gitignored, never-backed-up file when
+  `/var/lib/scanmania` is missing.
+- A resolution mismatch now stops that camera being sampled instead of clamping
+  ROIs to the frame edge and returning confident nonsense.
+- Credentials are redacted from `config_audit`, which was copying whole config
+  files — including camera RTSP passwords — into all 48 rolling snapshots.
+
+**Low**
+
+- Evidence uses one ring buffer per camera (one shared ring held ~50 ms of
+  interleaved frames, so crops came from the wrong camera) and filenames are
+  stamped with wall-clock UTC (they used monotonic time, which restarts near
+  zero each boot, so day 2 overwrote day 1's proof).
+- `faults()` no longer flags the configured `assisted` mode as a fault — it
+  cried wolf on every deploy — and now reports dead cameras, uncalibrated mazes,
+  dots without baselines and failed DB writes, none of which it could see.
+- All four frontends have a stale-data watchdog: a half-open socket or a dead
+  broadcaster used to freeze every screen silently.
+- The outdoor display no longer rebuilds its leaderboard DOM 10×/second, and no
+  longer fires a failing connection every 15 s to a port nothing listens on.
+- `vision/mjpeg.py` removed: never fed (`push_frame` had no caller), depended on
+  an undeclared `aiohttp`, leaked a task per client per 5 s, and keyed a
+  never-evicted dict on a client-supplied path.
+- `requirements.txt` is pinned. ADR 0005 claimed it already was.
+- `kiosk.sh` supervises each window (`wait` blocked on *all* jobs, so one dead
+  panel was never noticed); the kiosk unit and journald limits are now in git.
+
 ### Added
+
+- **End-of-day CSV export.** `EXPORT DAY` on the GM console downloads every run
+  of the operating day: run id, player id, first name, surname, email, DOB,
+  gender, local start time, time of day, elapsed (ms and mm:ss.mmm), busted
+  flag, outcome, segment reached, detection mode, busting dot, and void status
+  with reason. It is the one GM action that asks for the admin password —
+  everything else on that console is deliberately passwordless, and this carries
+  personal data. `?day=YYYY-MM-DD` exports a past day.
+- **The flight recorder is wired.** `insert_event` had zero callers, so every
+  disputed bust opened a run detail with an empty timeline. FSM transitions are
+  now recorded per run, fire-and-forget so the game path never waits on the DB.
+- **Invariant 7's record-keeping half.** The run row is written pessimistically
+  at GO, so a crash or power cut mid-run leaves a row instead of nothing. Runs
+  left `in_progress` are settled as aborted at the next boot — the run is still
+  never *resumed*.
+- **Retention that runs.** Events rotate at 30 days (the docstring had claimed
+  this for months while nothing called it), player contact details are purged
+  after 90 days, and `config_audit` is capped.
+- **`docs/deployment.md`** — two ADRs referenced it; it did not exist. Bare
+  Debian to a playable box, the stop order, DB recovery and rollback.
+
+
+### Fixed
+
+- **BUST, VOID and FORCE RESET were unreachable from the GM console.** All three
+  are tap-to-confirm: first tap shows "TAP AGAIN", second tap fires. The reset
+  that clears a pending confirmation was meant to run on a state change, but it
+  ran inside `applyState()`, which is called on **every** WebSocket frame — about
+  10 per second. A pending confirmation was therefore cleared within 100 ms, and
+  the operator's second tap only restarted the cycle. The request never left the
+  browser, which is why a FORCE RESET out of MASTER appeared to do nothing: the
+  FSM had handled it correctly every time it was actually asked. Guarded on
+  `prevState`.
+
+### Changed
+
+- **`tools/capture.py` shows every stage of the detection pipeline**, per camera:
+  raw / signal / mask / overlay. Looking only at the final overlay tells you a
+  camera found nothing but not why, and the causes want opposite corrections — a
+  dark signal is exposure, an empty mask is the threshold, and rings in the mask
+  mean the top-hat kernel is smaller than a dot. Rejected blobs are drawn too, in
+  amber below `min_area` and blue above `max_area`, so a bound that is cutting
+  real dots is visible rather than inferred. Each camera also reports its signal
+  peak and median dot area, which is the number that says whether the kernel is
+  in the right range.
+
+- **`tools/capture.py --no-relays`**, and an unreachable relay board no longer
+  aborts the tool. Looking at cameras and tuning parameters is useful on its own.
+
+- **Removed `tools/pick_rois.py` and `tools/dot_calib.py`.** Both are superseded
+  by `tools/capture.py`: `pick_rois` clicked dots by hand to print stanzas that
+  had to be pasted in, and `dot_calib`'s stage panels are now in the capture page
+  next to the sliders that write the file.
+
+- **`tools/cam_probe.py` defaults to the cameras in `hardware.yaml`.** Typing
+  eight RTSP URLs to look at the eight cameras already declared in config is
+  busywork that invites a typo you then debug as a network fault.
+
+- **Eight ceiling cameras, named by position.** `cam_1`-`cam_4` on `.201`-`.204`
+  became `SM-CAM-11`-`14` on `.211`-`.214` (left side) and `SM-CAM-21`-`24` on
+  `.221`-`.224` (right side), matching the `SM-NODE-*` house style. Full ceiling
+  coverage means every dot is close to some camera, which is what makes
+  per-camera tuning tractable — and it removes the blind spots four cameras left.
+  The four original cameras are in the new set; their MAC-derived paths prove it.
+  Substream resolution is 1024x576 on all eight, declared per camera in
+  `hardware.yaml` so `tools/capture.py` can catch a camera that drifted.
+
+- **`find_dots` defaults err large on both bounds**, because the two failure
+  directions are not symmetric. A top-hat kernel that is too *large* only weakens
+  background subtraction; one that is too *small* leaves the dot as a ring that
+  fragments into arcs — which is why one camera found 5 dots and another 11
+  looking at the same five lasers. Both artefacts are now pinned by tests.
+  Worth knowing: `max_area` does **not** reject a ceiling light fitting. The
+  top-hat hollows out anything bigger than the kernel, so a fitting arrives as
+  four small *corner* blobs that are dot-sized by area. `min_area` rejects those,
+  and the real defence is the ambient guard.
+
+- **`beams.json` no longer declares cameras.** Its top-level `cameras` block
+  duplicated `hardware.yaml`, still held the old `.201`-`.204` addresses, and
+  was read by nothing. Two places declaring camera URLs with one of them wrong
+  is how a stream silently points at nothing. The per-channel `camera`, `roi`
+  and `baseline` fields went with it — leftovers from when a channel owned its
+  dots, and a dead camera name repeated 45 times after a rename.
+
+- **Camera ids are validated where they matter.** `load_all()` checked the 45
+  wiring entries' `camera` field, which nothing reads; it now checks the maze
+  captures' camera ids, which route live frames to ROIs. A stale one there means
+  dots sampled against a frame they do not belong to.
+
+- **`tools/camshow.py` reads `hardware.yaml`** instead of carrying its own copy
+  of the camera table. Takes `SM-CAM-13`, `13`, `left`, `right` or `all`, tiles
+  8 in a 4x2 grid, and `--probe` now reports a camera answering at someone
+  else's address as a stale config rather than silently correcting it — the IPs
+  are static.
+
+- **Calibration is per maze, not per relay channel.** `tools/sweep.py` lit one
+  channel at a time to learn which 5 dots belonged to it — two passes, 45 relay
+  switches, and a fault rule that depended on the mapping being right. The
+  mapping bought nothing: ending a run needs to know that *a* beam broke, not
+  which relay drives it. `tools/capture.py` replaces it. Light a maze, tune each
+  camera until its count looks right, save what it saw. See
+  [ADR 0009](docs/adr/0009-per-maze-dot-capture.md).
+
+- **Detection parameters are per camera.** One top-hat kernel cannot serve
+  cameras at different distances: the kernel must be larger than a dot and
+  smaller than the dot spacing, and both scale with distance. A real sweep found
+  5 dots on one camera and 11 on another looking at the same five lasers — the
+  near camera's dots were bigger than the kernel, so each became a ring that
+  fragmented into arcs. Params are now stored alongside the dots they produced,
+  so a capture is reproducible.
+
+- **The hardware-fault rule is a count.** It was "all 5 dots of this channel are
+  dark, so it is a relay, not a player". With no channel mapping there is
+  nothing to key that on. Now: 1 to `max_simultaneous_breaks` dark dots is a
+  player, more than that is suppressed and reported as a fault. Coarser, but it
+  rests on nothing that can be miscalibrated.
+
+- **The GM beam strip is a per-camera summary.** It was 45 pills, one per relay
+  channel. Detection watches ~175 individual dots now, and 175 pills is not
+  something anyone reads on an iPad mid-run. Each camera shows watched / dark /
+  masked, with a total line above. Long-press masking moved to `/admin/beams`,
+  where you can see the dot on the frame.
+
+- **`/admin/beams` leads with the calibration state** — per maze, per camera,
+  dot counts, mean and minimum baseline, capture resolution and the params that
+  produced them. The 45 channel entries are still listed, now labelled as the
+  relay wiring reference that nothing reads at runtime.
+
+- **A bust names a dot, not a channel** (`cam_3:d17`). Which segment broke is no
+  longer knowable, accepted deliberately: the operator needs to know a beam
+  broke and roughly where to look, and the camera id answers that.
+
+### Fixed
+
+- **The rolling EMA baseline was dead code.** `BaselineManager.update_ema()` and
+  `save_to_config()` had zero callers, so the haze-drift correction that
+  CLAUDE.md documents as deliberate behaviour had never run. The detector now
+  feeds samples between runs, and only between runs — during a run the manager
+  is frozen, so adapting to a broken beam remains impossible.
+
+- **Evidence filenames no longer carry a colon.** Dot ids are `cam_3:d17`.
+  Legal in a POSIX filename and a trap in a URL, on SMB, and on Windows.
+
+### Added
+
 
 - **The four real cameras are wired in.** `config/hardware.yaml` had a single `cam_a`
   pointing at a stale IP with the wrong password and a path served by a different

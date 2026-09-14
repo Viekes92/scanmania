@@ -1,3 +1,10 @@
+# Pinned, not floating. ADR 0005 claims the environment is reproducible because
+# this file is pinned — it was not, every line was >=, and deploy.sh reinstalls
+# whenever this file changes. A new major of numpy or starlette landing mid-tour
+# would install untested code onto the box at a venue.
+#
+# Versions below are what this checkout is tested against. Regenerate with:
+#   .venv/bin/pip freeze
 # requirements.txt — ScanMania system dependencies
 #
 # Pin reasonable versions. Install with:
@@ -6,30 +13,30 @@
 #
 # Notes:
 #   - opencv-python-headless is for the NUC (no display). For laptop dev
-#     (tools/pick_rois.py GUI), install opencv-python separately.
+#     (a GUI window), install opencv-python separately.
 #   - All versions tested on Python 3.12 / Debian 12.
 #   - Never pin exact hashes here; use pip-compile for lock files if needed.
 
 # ---- Web framework ----
-fastapi>=0.110.0
-uvicorn[standard]>=0.29.0
-websockets>=12.0
-python-multipart>=0.0.9          # for form/file upload support in FastAPI
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+websockets==17.1
+python-multipart==0.0.32          # for form/file upload support in FastAPI
 
 # ---- Database ----
-aiosqlite>=0.20.0                # async SQLite (local source of truth)
+aiosqlite==0.22.1                # async SQLite (local source of truth)
 
 # ---- Hardware ----
-pymodbus>=3.6.0                  # Modbus TCP to Waveshare relay boards
-pyserial-asyncio>=0.6            # async serial for Pico USB CDC link
+pymodbus==3.15.0                  # Modbus TCP to Waveshare relay boards
+pyserial-asyncio==0.6            # async serial for Pico USB CDC link
 
 # ---- Vision ----
-opencv-python-headless>=4.9.0    # RTSP decode + dot detection (NUC, no GUI)
-numpy>=1.26.0                    # array ops in vision pipeline
+opencv-python-headless==5.0.0.93    # RTSP decode + dot detection (NUC, no GUI)
+numpy==2.5.2                    # array ops in vision pipeline
 
 # ---- Config ----
-pyyaml>=6.0                      # YAML config file parsing
+pyyaml==6.0.3                      # YAML config file parsing
 
 # ---- Testing ----
-pytest>=8.0.0
-pytest-asyncio>=0.23.0           # async test support (FSM, reconcile, vision tests)
+pytest==9.1.1
+pytest-asyncio==1.4.0           # async test support (FSM, reconcile, vision tests)

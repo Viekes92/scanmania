@@ -80,7 +80,7 @@ Vision detects break on beam b07
 |------|----------|-------|
 | NUC → relay boards | Modbus TCP, function 0x0F (write coils) + 0x01 (read coils) | One async connection per board, 200 ms timeout |
 | NUC ← Pico | USB CDC serial, 115200, ASCII line protocol | See `docs/protocols/pico-serial.md` |
-| NUC ← cameras | RTSP (one decode per stream) | 1280×720 @ 25–30 fps, locked exposure |
+| NUC ← cameras | RTSP (one decode per stream) | 8 × 1024×576 @ 25 fps, locked exposure |
 | Browser ← NUC | WebSocket (10 Hz broadcast) + HTTP/static | See `docs/protocols/websocket.md` |
 | NUC → cloud | HTTPS POST, idempotency key per run | See `docs/protocols/cloud-api.md` |
 

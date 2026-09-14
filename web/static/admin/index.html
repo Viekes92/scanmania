@@ -1611,6 +1611,7 @@
       ws = new WebSocket(`${proto}://${location.host}/ws`);
       ws.onopen = () => { wsLed.className="ws-led ok"; wsLbl.textContent="live"; wsDelay=1000; };
       ws.onmessage = (evt) => {
+        __noteMessage();
         let m; try { m = JSON.parse(evt.data); } catch { return; }
         if (m.state && m.state !== _fsmState) {
           _fsmState = m.state;
@@ -2193,12 +2194,23 @@
       const btn = document.querySelector(`#cfgCard-${file} .btn-primary`);
       const req = apiPost(`/api/admin/config/${file}`, { content });
       try {
-        await (btn ? btnLoading(btn, req) : req);
+        const res = await (btn ? btnLoading(btn, req) : req);
         _cfgDirty[file] = false;
-        msgEl.textContent = "Saved.";
-        msgEl.style.color = "var(--green)";
-        toast(`${file} saved and applied.`);
-        setTimeout(() => { msgEl.textContent = ""; }, 5000);
+        // The server reports whether the live reload actually happened —
+        // "deferred — FSM is in RUN_SEG_2", "reload failed: …". Nothing read
+        // it, so a save that changed nothing on the floor still showed as
+        // applied and the only record was a line in journalctl.
+        const note = res && res.reload_note;
+        if (note) {
+          msgEl.textContent = `Saved to disk, but NOT applied live: ${note}`;
+          msgEl.style.color = "var(--orange)";
+          toast(`${file} saved — not applied live: ${note}`, "error");
+        } else {
+          msgEl.textContent = "Saved and applied.";
+          msgEl.style.color = "var(--green)";
+          toast(`${file} saved and applied.`);
+        }
+        setTimeout(() => { msgEl.textContent = ""; }, 8000);
         // Other tabs cache this file's contents — drop them and reload the
         // visible tab so nothing is edited against stale geometry.
         invalidateConfigCaches();
@@ -3147,6 +3159,23 @@
        auto-refresh interval actually starts.
     ----------------------------------------------------------------------- */
     onTabActivated("dashboard");
+  
+    /* -----------------------------------------------------------------------
+       Stale-data watchdog
+
+       onclose is not enough. If the server's broadcaster task dies, or the path
+       half-opens, every socket stays "healthy" and the screen freezes silently
+       on its last frame — in front of a player, for as long as nobody notices.
+       Track time since the last message and force a reconnect when it lapses.
+    ----------------------------------------------------------------------- */
+    let __lastMsgAt = Date.now();
+    function __noteMessage() { __lastMsgAt = Date.now(); }
+    setInterval(() => {
+      // The server broadcasts at 10 Hz; 3 s of silence is not a slow frame.
+      if (Date.now() - __lastMsgAt > 3000) {
+        try { if (ws && ws.readyState === WebSocket.OPEN) ws.close(); } catch (e) {}
+      }
+    }, 1000);
   </script>
 </body>
 </html>

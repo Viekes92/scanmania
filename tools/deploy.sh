@@ -12,7 +12,25 @@
 
 set -euo pipefail
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Re-exec from a private copy before touching git.
+#
+# Step 4 pulls, which rewrites THIS file while bash is still reading it. Bash
+# reads a script lazily and seeks by byte offset, so a pull that changes the
+# file's length leaves the interpreter mid-line in the new bytes: it silently
+# runs the wrong half of the script. That is how a deploy ran the OLD health
+# check after pulling the new one — the update appeared not to take effect,
+# with nothing in the output to say why.
+if [ -z "${SCANMANIA_DEPLOY_SELF:-}" ]; then
+    _self="$(mktemp /tmp/scanmania-deploy.XXXXXX)"
+    cat "${BASH_SOURCE[0]}" > "$_self"
+    # The copy lives in /tmp, so the checkout can no longer be derived from
+    # $0 — hand the original path down.
+    SCANMANIA_DEPLOY_ORIG="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" \
+    SCANMANIA_DEPLOY_SELF="$_self" exec bash "$_self" "$@"
+fi
+trap 'rm -f "$SCANMANIA_DEPLOY_SELF"' EXIT
+
+REPO="$(cd "${SCANMANIA_DEPLOY_ORIG}/.." && pwd)"
 VENV="$REPO/.venv"
 DB="/var/lib/scanmania/scanmania.db"
 SERVICES=(scanmania.service scanmania-kiosk.service)

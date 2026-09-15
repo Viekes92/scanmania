@@ -66,6 +66,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **`deploy.sh` rewrote its own source mid-run.** Bash reads a script lazily and
+  seeks by byte offset, so the `git pull` in step 4 left the interpreter
+  pointing into the middle of the new file — a deploy could run the old half of
+  the script after pulling the new one, with nothing in the output to say so.
+  It now re-execs from a private copy in `/tmp` before touching git.
+
 - **The fault list was never empty at idle.** "detection is blind" fired
   whenever no maze was armed — which is MASTER and ATTRACT, i.e. most of the
   day, and now every boot, since the box boots into MASTER. The detector

@@ -573,10 +573,48 @@ def load_beams(path: Path | None = None) -> BeamsConfig:
             max_simultaneous_breaks=_ranged(
                 det.get("max_simultaneous_breaks", 10), 1, 100, 10,
                 "detection.max_simultaneous_breaks"),
-            break_ratio=float(det.get("break_ratio", 0.4)),
-            clear_ratio=float(det.get("clear_ratio", 0.65)),
+            **_ratios(det),
         ),
     )
+
+
+def _one_of(value, allowed: tuple, default: str, key: str) -> str:
+    """
+    Coerce to one of `allowed`, or fall back loudly.
+
+    detection_mode reached the FSM unchecked, and its branch is
+    `if auto ... elif assisted ... else: manual`. So "Assisted", "automatic" or
+    a trailing space silently meant MANUAL — nobody is ever busted — while the
+    GM console displayed the string and looked configured.
+    """
+    v = str(value).strip().lower()
+    if v in allowed:
+        return v
+    log.error("config: %s=%r is not one of %s — using %r",
+              key, value, "/".join(allowed), default)
+    return default
+
+
+def _ratios(det: dict) -> dict:
+    """
+    Validate the thresholds every dot is actually judged by.
+
+    load_all enforces break < clear on the 45 wiring entries in beams.json,
+    which invariant 3 says are not read at runtime — while these, the values
+    the detector really uses, had no range check and no ordering check at all.
+    Inverted or overlapping ratios make every dot near the boundary flap dark /
+    clear / dark at the hysteresis cadence, so runs end at random.
+    """
+    br = float(det.get("break_ratio", 0.4))
+    cl = float(det.get("clear_ratio", 0.65))
+    br = _ranged(br, 0.01, 0.99, 0.4, "detection.break_ratio")
+    cl = _ranged(cl, 0.02, 1.0, 0.65, "detection.clear_ratio")
+    if br >= cl:
+        log.error("config: detection.break_ratio (%.2f) must be BELOW "
+                  "clear_ratio (%.2f) or every dot flaps — using defaults",
+                  br, cl)
+        br, cl = 0.4, 0.65
+    return {"break_ratio": br, "clear_ratio": cl}
 
 
 def _parse_audio(d: dict) -> AudioConfig:
@@ -632,7 +670,9 @@ def load_game() -> GameConfig:
         registered_timeout_ms=_ranged(d.get("registered_timeout_ms", 180000),
                                       30_000, 600_000, 180000,
                                       "game.registered_timeout_ms"),
-        detection_mode=d.get("detection_mode", "assisted"),
+        detection_mode=_one_of(d.get("detection_mode", "assisted"),
+                               ("auto", "assisted", "manual"), "assisted",
+                               "game.detection_mode"),
         show=d.get("show", "main_game"),
         count_in=CountInConfig(
             preset=ci.get("preset", "maze_1"),

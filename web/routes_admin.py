@@ -106,15 +106,45 @@ def _password_ok(supplied: str | None) -> bool:
     return hmac.compare_digest(supplied_bytes, expected.encode("ascii"))
 
 
-def _require_admin(x_admin_password: str | None = Header(default=None)) -> None:
-    """Validate the X-Admin-Password header against the hashed env var."""
+# Failed admin auths per client address before it is throttled. Generous
+# enough that an operator mistyping a password is never locked out, tight
+# enough that guessing is hopeless.
+# Mirrors iobackend.lightshow._DARK_STATES. Duplicated deliberately: the web
+# layer must be able to refuse without importing the DMX stack.
+_LIGHTS_FORCED_DARK = frozenset({
+    "COUNTDOWN", "RUN_SEG_1", "RUN_SEG_2", "RUN_SEG_3",
+})
+
+_AUTH_FAIL_LIMIT = 10
+_AUTH_FAIL_WINDOW_S = 60.0
+
+
+def _require_admin(request: Request,
+                   x_admin_password: str | None = Header(default=None)) -> None:
+    """
+    Validate the X-Admin-Password header against the hashed env var.
+
+    Rate-limited and logged on failure. Only /api/admin/login was throttled, so
+    an attacker skipped it and brute-forced any other gated route — a shared,
+    human-memorable password, guessed as fast as the NUC could answer, with
+    nothing in the journal to show for it. Success there is config write,
+    master-mode relay control and the shutdown endpoint.
+    """
     if not _expected_hash():
         raise HTTPException(
             status_code=503,
             detail=f"{ENV_PASSWORD_KEY} is not set — admin API is disabled",
         )
-    if not _password_ok(x_admin_password):
-        raise HTTPException(status_code=403, detail="Forbidden")
+    if _password_ok(x_admin_password):
+        return
+
+    who = request.client.host if request.client else "unknown"
+    log.warning("admin auth failed from %s for %s", who, request.url.path)
+    if not allow("admin_auth", who, _AUTH_FAIL_LIMIT, _AUTH_FAIL_WINDOW_S):
+        raise HTTPException(
+            status_code=429,
+            detail="too many failed attempts — wait before trying again")
+    raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def _issue_download_token() -> str:
@@ -1247,6 +1277,20 @@ def register_routes(
         if body.name:
             if body.level is None:
                 raise HTTPException(status_code=400, detail="level required with name")
+            # The force-dark rule is a correctness property, not a look, and it
+            # was only enforced inside the cue player's _restart() — i.e. on a
+            # transition. This branch writes straight at the DMX, so raising a
+            # level mid-run washed out the ceiling dots, detection read them as
+            # dark, and the player was busted for the GM's slider. Refuse it
+            # here too, for the same reason CLAUDE.md says "over any cue and
+            # over the GM's work-light switch".
+            runner = _runner()
+            state = getattr(runner, "state", "") if runner else ""
+            if state in _LIGHTS_FORCED_DARK and body.level > 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"the container is forced dark in {state} — raising a "
+                           f"light here would wash out the dots and bust the player")
             if not hazer.set_light(body.name, body.level):
                 raise HTTPException(
                     status_code=400,

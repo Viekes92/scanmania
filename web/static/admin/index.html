@@ -832,7 +832,7 @@
             </tr>
           </thead>
           <tbody id="boardsBody">
-            <tr><td colspan="6" style="color:var(--muted)">Loading…</td></tr>
+            <tr><td colspan="7" style="color:var(--muted)">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -2052,7 +2052,12 @@
         const rttCell = row.cells[3];
         if (rttCell) rttCell.textContent = state.rtt_ms != null ? state.rtt_ms + "ms" : "—";
         // Update coils
-        const coilCell = row.cells[5];
+        // cells[6], not [5]. The table is ID, IP, Status, RTT, Errors,
+        // Mismatches, Coils — so this was painting the 16-square grid over the
+        // MISMATCHES column ten times a second, hiding the one number that
+        // proves invariant 4 is holding, while the real Coils column froze at
+        // whatever the page load returned and never updated again.
+        const coilCell = row.cells[6];
         if (coilCell && state.coils) {
           coilCell.innerHTML = state.coils.map((v, i) =>
             `${i > 0 && i % 4 === 0 ? '<span style="display:inline-block;width:6px;"></span>' : ''}<span style="display:inline-block;width:28px;height:28px;
@@ -2076,7 +2081,7 @@
         renderCameras(d.cameras || []);
       } catch (e) {
         document.getElementById("boardsBody").innerHTML =
-          `<tr><td colspan="6" style="color: var(--red-text)">${esc(e.message)}</td></tr>`;
+          `<tr><td colspan="7" style="color: var(--red-text)">${esc(e.message)}</td></tr>`;
       }
       loadHazer();
       loadDmxPatch();
@@ -2085,7 +2090,7 @@
     function renderBoards(boards) {
       const tbody = document.getElementById("boardsBody");
       if (!boards.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">No boards configured.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted)">No boards configured.</td></tr>';
         return;
       }
       tbody.innerHTML = boards.map(b => {

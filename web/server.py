@@ -35,6 +35,37 @@ _STATIC_ROOT = Path(__file__).parent / "static"
 # WebSocket hub
 # ---------------------------------------------------------------------------
 
+# Bodies larger than this are refused before anything reads them. The largest
+# legitimate POST is a raw config file, capped at 1 MB by ConfigRawBody.
+_MAX_BODY_BYTES = 2 * 1024 * 1024
+
+# Concurrent websocket clients. Four frontends plus a spare laptop is the real
+# load; the set was unbounded, and broadcast() gathers a send to every client
+# ten times a second on the same loop the game runs on.
+_MAX_WS_CLIENTS = 32
+
+
+def _host_is_expected(host_header: str) -> bool:
+    """
+    True for a Host this box is actually reached by.
+
+    Deliberately narrow: an IP literal, localhost, or a .local name. DNS
+    rebinding needs a resolvable NAME to point at us, and there is no
+    deployment where the container is reached that way.
+    """
+    if not host_header:
+        return True                     # HTTP/1.0 and some probes omit it
+    host = host_header.rsplit(":", 1)[0].strip("[]").lower()
+    if host in ("localhost", "127.0.0.1", "::1") or host.endswith(".local"):
+        return True
+    import ipaddress
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
 class WebSocketHub:
     """
     Tracks all connected WebSocket clients and broadcasts JSON messages.
@@ -48,6 +79,14 @@ class WebSocketHub:
 
     async def connect(self, ws: WebSocket) -> None:
         await ws.accept()
+        if len(self._clients) >= _MAX_WS_CLIENTS:
+            # Refuse rather than grow. broadcast() fans out to every client at
+            # 10 Hz inside the single event drain, so an unbounded set is a
+            # remote freeze of the stop button and beam handling.
+            log.warning("WS client refused: %d already connected",
+                        len(self._clients))
+            await ws.close(code=1013)   # try again later
+            return
         self._clients.add(ws)
         log.debug("WS client connected; total=%d", len(self._clients))
 
@@ -195,6 +234,39 @@ class ScanManiaApp:
 
         @self.app.middleware("http")
         async def _origin_guard(request, call_next):
+            # Body size FIRST, before anything reads or parses it.
+            #
+            # FastAPI reads and json-decodes the whole body while solving
+            # dependencies — i.e. BEFORE the auth dependency runs — and there is
+            # no reverse proxy in front of this. An unauthenticated guest could
+            # POST a multi-gigabyte chunked body to a gated route: the NUC
+            # buffered all of it, then json.loads blocked, then it returned 403.
+            # uvicorn shares the event loop with the game runner, so that is an
+            # OOM kill or a multi-second freeze of the FSM drain and the 10 Hz
+            # stopwatch broadcast, mid-run.
+            declared = request.headers.get("content-length")
+            if declared is not None:
+                try:
+                    if int(declared) > _MAX_BODY_BYTES:
+                        return JSONResponse(
+                            status_code=413,
+                            content={"detail": "request body too large"})
+                except ValueError:
+                    return JSONResponse(status_code=400,
+                                        content={"detail": "bad content-length"})
+
+            # Reject an unexpected Host. The allowlist below was derived FROM
+            # the Host header, which the attacker controls, so a page on
+            # evil.test whose DNS rebinds to this box passed its own check. The
+            # box is reached by IP (or localhost) in every real deployment, so
+            # a name-based Host is not something we ever need to honour.
+            host_header = request.headers.get("host", "")
+            if not _host_is_expected(host_header):
+                log.warning("Blocked request with unexpected Host=%r for %s",
+                            host_header, request.url.path)
+                return JSONResponse(status_code=421,
+                                    content={"detail": "unrecognised Host"})
+
             if request.method in ("GET", "HEAD", "OPTIONS"):
                 return await call_next(request)
 

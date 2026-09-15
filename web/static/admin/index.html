@@ -29,7 +29,11 @@
          Anything that renders as text uses --accent-text (5.5:1). */
       --accent:      #005AA9;
       --accent-glow: rgba(0, 90, 169, 0.6);
-      --accent-text: #3D8FD6;
+      /* The logo blue itself, used for text as well. 2.8:1 on these surfaces,
+         below AA — a deliberate brand call. The note above about --accent
+         being chrome-only no longer holds: it is both now. Revert with
+         #3D8FD6 (5.6:1). */
+      --accent-text: #005AA9;
       --accent-dim:  #00305c;
       --text:        #e8f0fc;
       /* was #5a7899 — 4.0:1, below AA for the 10-12px labels it is used on */
@@ -40,7 +44,9 @@
          AA — so red text uses --red-text (5.9:1). The same chrome/text split
          as --accent above, and for the same reason. */
       --red:         #EC1C24;
-      --red-text:    #FF4A50;
+      /* The logo red itself, text included — 4.4:1, just under AA. Same
+         deliberate call as --accent-text. #FF4A50 (5.9:1) reverts it. */
+      --red-text:    #EC1C24;
       --orange:      #ff8800;
       --radius:      8px;
       --tab-h:       44px;
@@ -72,6 +78,12 @@
     /* -----------------------------------------------------------------------
        Layout — header, tab nav, tab content
     ----------------------------------------------------------------------- */
+    /* Lifted above the laser plate (a positioned element at z-index 0). */
+    #header, #tabNav, #tabContent {
+      position: relative;
+      z-index: 1;
+    }
+
     #header {
       display: flex;
       align-items: center;
@@ -82,6 +94,28 @@
       position: sticky;
       top: 0;
       z-index: 10;
+    }
+
+
+    /* ---------------------------------------------------------------------
+       Laser artwork behind the console, same plate as /display/in.
+
+       Held well down in opacity: on a show screen it is the design, here it
+       sits behind live data read at arm's length in a lit container, and a
+       busy background under a coil grid costs more than it adds. Fixed, so it
+       does not travel with a scrolling panel, and pointer-events:none so it
+       can never eat a tap on the operator tablet.
+    --------------------------------------------------------------------- */
+    .console-lasers {
+      position: fixed;
+      inset: 0;
+      background-image: url("/static/shared/scanmania-design/lasers-h.png");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: cover;
+      opacity: 0.16;
+      pointer-events: none;
+      z-index: 0;
     }
 
     #header .logo {
@@ -685,6 +719,8 @@
 
   <!-- LOGIN OVERLAY -->
   <div id="loginOverlay" style="position:fixed;inset:0;z-index:1000;background:#050507;background-image:linear-gradient(rgba(0, 90, 169,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(0, 90, 169,0.06) 1px,transparent 1px);background-size:40px 40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;">
+    <img src="/static/shared/scanmania-design/sm-text-tp.png" alt="ScanMania"
+         style="width:min(60vw,320px);height:auto;margin-bottom:8px;">
     <div style="font-family:'Courier New',monospace;font-size:28px;font-weight:900;letter-spacing:8px;color:#5b8fd6;text-shadow:0 0 20px rgba(0, 90, 169,0.6);text-transform:uppercase;">SCANMANIA</div>
     <div style="font-family:'Courier New',monospace;font-size:12px;letter-spacing:3px;color:#6c8cae;text-transform:uppercase;">// Admin access</div>
     <div style="display:flex;flex-direction:column;gap:12px;width:320px;">
@@ -697,6 +733,8 @@
   <!-- -----------------------------------------------------------------------
        HEADER
   ----------------------------------------------------------------------- -->
+  <div class="console-lasers" aria-hidden="true"></div>
+
   <header id="header">
     <img class="logo" src="/static/shared/scanmania-design/sm-text-tp.png"
          alt="ScanMania">

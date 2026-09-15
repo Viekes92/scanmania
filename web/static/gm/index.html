@@ -34,7 +34,12 @@
          a console is read at arm's length in a lit container. */
       --accent:      #005AA9;
       --accent-glow: rgba(0, 90, 169, 0.6);
-      --accent-text: #3D8FD6;
+      /* The logo blue itself, used for text as well. It is 2.8:1 on these
+         surfaces — below AA — which is a deliberate brand call, not an
+         oversight. Where it lands it is large and heavy (the state label is
+         24px/900), which is where low-contrast colour survives best. Swap
+         this one line back to #3D8FD6 (5.6:1) to undo it. */
+      --accent-text: #005AA9;
       --accent-dim:  #00305c;
       --text:        #e8f0fc;
       --muted:       #5a7899;
@@ -46,7 +51,9 @@
          AA — so red text uses --red-text (5.9:1). A bust indicator that is
          harder to read is not a trade worth making for a closer swatch. */
       --red:         #EC1C24;
-      --red-text:    #FF4A50;
+      /* The logo red itself, text included — 4.4:1, just under AA. Same
+         deliberate call as --accent-text. #FF4A50 (5.9:1) reverts it. */
+      --red-text:    #EC1C24;
       --red-dark:    #6b0f13;
       --orange:      #ff8800;
       --orange-dark: #7a4200;
@@ -113,6 +120,15 @@
     /* -----------------------------------------------------------------------
        Top bar — state, stopwatch, player name, detection badge
     ----------------------------------------------------------------------- */
+    /* Every top-level block is lifted above the laser plate, which is a
+       positioned element at z-index 0. */
+    #topBar, #signinPanel, #wsDisconnectBanner, #actions, #banners,
+    #gmFeedback, #detectionSection, #beamSection, #healthSection,
+    #lowerSection {
+      position: relative;
+      z-index: 1;
+    }
+
     #topBar {
       display: flex;
       align-items: center;
@@ -122,6 +138,28 @@
       background: var(--surface);
       box-shadow: inset 0 -1px 0 rgba(0, 90, 169,0.15);
       flex-shrink: 0;
+    }
+
+
+    /* ---------------------------------------------------------------------
+       Laser artwork behind the console, same plate as /display/in.
+
+       Held well down in opacity: on a show screen it is the design, here it
+       sits behind live data read at arm's length in a lit container, and a
+       busy background under a coil grid costs more than it adds. Fixed, so it
+       does not travel with a scrolling panel, and pointer-events:none so it
+       can never eat a tap on the operator tablet.
+    --------------------------------------------------------------------- */
+    .console-lasers {
+      position: fixed;
+      inset: 0;
+      background-image: url("/static/shared/scanmania-design/lasers-h.png");
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: cover;
+      opacity: 0.16;
+      pointer-events: none;
+      z-index: 0;
     }
 
     #brandMark {
@@ -796,6 +834,8 @@
   <!-- -----------------------------------------------------------------------
        TOP BAR — state · stopwatch · player · detection badge
   ----------------------------------------------------------------------- -->
+  <div class="console-lasers" aria-hidden="true"></div>
+
   <div id="topBar">
     <img id="brandMark" src="/static/shared/scanmania-design/sm-text-tp.png"
          alt="ScanMania">

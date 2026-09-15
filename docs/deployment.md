@@ -56,6 +56,11 @@ SCANMANIA_DAY_START_HOUR=9
 # screen photographs well on a phone. "left" or "right" depending on which way
 # it was physically turned; get it wrong and the picture is upside down.
 SCANMANIA_ROTATE_OUT=left
+# Which page lands on which panel. This is cabling, not logic — swap these two
+# rather than moving plugs. An output named here that is not connected drops
+# only its own page; the other panel keeps the page it was assigned.
+SCANMANIA_OUT_IN=HDMI-2
+SCANMANIA_OUT_OUT=HDMI-1
 ENVEOF
 chmod 600 /etc/default/scanmania
 
@@ -119,6 +124,32 @@ git reset --hard <sha>
 .venv/bin/pip install -r requirements.txt
 systemctl restart scanmania scanmania-kiosk
 ```
+
+## The screens show the wrong thing
+
+```bash
+# Which page is on which panel, and what X thinks is connected:
+journalctl -u scanmania-kiosk -n 40 --no-pager -o cat | grep -E 'Connected|Launching|-> http'
+DISPLAY=:0 xrandr --query | grep ' connected'
+```
+
+Swap the panels by editing `SCANMANIA_OUT_IN` / `SCANMANIA_OUT_OUT` in
+`/etc/default/scanmania` and `systemctl restart scanmania-kiosk`. No code change
+and no re-cabling.
+
+The markup and `brand.css` are served `no-store`, so a restarted kiosk always
+picks up a redeployed frontend. Fonts and artwork are still cached on purpose.
+If a screen looks stale anyway, the profile cache is disposable:
+
+```bash
+systemctl stop scanmania-kiosk
+rm -rf /var/tmp/scanmania-kiosk-*
+systemctl start scanmania-kiosk
+```
+
+There is no window manager, so nothing looks at a window's requested size —
+geometry comes from `xrandr` and explicit pixels. A rotated output swaps width
+and height; get that wrong and the page hangs off the edge of the panel.
 
 ## What to check when something is wrong
 

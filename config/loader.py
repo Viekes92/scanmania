@@ -323,6 +323,9 @@ class ShowConfig:
 class MazesConfig:
     presets: dict[str, PresetConfig]
     shows: dict[str, ShowConfig]
+    # Room-light cues keyed by FSM state (lower-case). Show content, kept
+    # beside the laser shows because an operator tunes both in the same sitting.
+    light_cues: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -614,7 +617,8 @@ def load_mazes() -> MazesConfig:
                 segments=list(segs),
                 description=s.get("description", ""),
             )
-    return MazesConfig(presets=presets, shows=shows)
+    return MazesConfig(presets=presets, shows=shows,
+                       light_cues=d.get("light_cues") or {})
 
 
 def load_all() -> AppConfig:

@@ -7,6 +7,66 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`iobackend/hazer.py` is now `iobackend/dmx.py`.** The name stopped being
+  accurate when the room lights joined it. `HazerController` is `DmxController`,
+  with an alias kept so an out-of-tree import does not break.
+
+- **Room lights on DMX**, on the hazer's existing Art-Net universe: ch3 left,
+  ch4 right, ch5 entrance (a 3-channel decoder addressed at 3, so its own
+  ch1/ch2/ch3 land there). 1-channel white, so they dim and fade. They live in
+  the DMX module rather than one of their own because **one object must own the
+  universe** — every Art-Net frame carries all 512 channels, so a second sender
+  would zero the lights twice a second.
+
+- **`tools/dmxpatch.py`** prints the patch sheet, generated from config so it
+  cannot drift from what the software actually sends.
+
+- **Haze is duty-cycled** — 60 s on, 240 s off (20% of continuous). Tested
+  manually in the container: 1% (DMX 2-3) was too much, so the working range is
+  DMX 1-2 — barely any room to tune the level. The duty cycle is the main dose
+  control, and the interval is the dial: if there is still too much
+  haze, lengthen `haze_interval_s` rather than shortening the burst. The burst
+  must stay long because a hazer has a heater — a 2 s command is spent warming
+  up and produces essentially nothing. The blower runs throughout so settled
+  haze stays distributed, and the GM switch wins mid-burst.
+
+- **Light cues driven by FSM state** (`light_cues` in `mazes.yaml`): a slow dim
+  alternating pulse in ATTRACT, a step up on sign-in, a flash on a clean finish,
+  one hard snap on a bust, a throb in FAULT. Steps set levels and hold; `loop`
+  repeats, `fade: false` snaps — which is what makes a flash read as a flash.
+
+- **The GM switch is a work-light override**, not a level: solid on for loading
+  and unloading, suspending the cue; off hands the lights back to the show.
+
+### Fixed
+
+- **Fades were jumpy because short moves did not fade at all.** The per-tick
+  step was derived from full 0-255 travel and applied whatever the distance, so
+  the attract pulse — twelve levels, 14 to 2 — completed in a single tick. Fades
+  are now interpolated against elapsed time, so every move takes `fade_ms`
+  regardless of distance: that pulse went from one 12-level jump to 52 frames of
+  1-level steps. Levels are carried as floats and rounded rather than truncated
+  (truncation biased every ramp a level low, reading as a stall then a jump),
+  and the tick rate now sits above the node's 35 Hz output so each frame it
+  sends carries a fresh value. A full 0-255 fade in 800 ms is still inherently
+  stepped — 8-bit DMX cannot fit 255 levels into ~28 frames — so lengthen
+  `fade_ms` if a long throw needs to be smooth.
+
+- **COUNTDOWN and the RUN states are forced dark in code**, over any cue and over
+  the GM override. This is correctness, not a look: the detector samples raw
+  brightness inside each dot's ROI with no background subtraction, so ambient
+  light raises the reading and a genuinely broken beam can still read above
+  `break_ratio` — a MISSED break, where a player runs clean through a beam they
+  broke. Measured: each camera sees 12-31 ambient blobs with the house lights on.
+  A forgotten tap can no longer invalidate a run.
+
+- **The entrance light is never switched off by software**, including on
+  shutdown. An Art-Net node holds the last frame it received, so that frame is
+  the state the container is left in when the process exits — and a dark box
+  with people in it and no lit way out is worth hard-coding against.
+
 ### Fixed — from the 10-agent longevity audit
 
 Findings ranked by how they would fail over a 2-month tour. Everything below was

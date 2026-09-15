@@ -964,6 +964,10 @@
          out and washes the laser dots. The GM decides ON or OFF; the amount is
          a tuned setting, not a live decision. -->
     <div style="display:flex;gap:12px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+      <button class="health-item" id="hLightsToggle" style="cursor:pointer;touch-action:manipulation;border:none;">
+        <div class="health-led ok" id="hLightsLed"></div>
+        <span id="hLightsLabel">Lights ON</span>
+      </button>
       <button class="health-item" id="hHazerToggle" style="cursor:pointer;touch-action:manipulation;border:none;">
         <div class="health-led ok" id="hHazerLed"></div>
         <span id="hHazerLabel">Haze ON</span>
@@ -1673,6 +1677,51 @@
 
     /* --- Assisted overlay --- */
     btnConfirm.addEventListener("click", () => gmPost("confirm-break"));
+
+    /* -----------------------------------------------------------------------
+       Room lights (DMX ch3 entrance / ch4 left / ch5 right)
+
+       The toggle covers the MAZE lights only. The entrance is marked always_on
+       in config and the server refuses to switch it off — a dark container
+       with an unlit way out is not a state this console can create.
+    ----------------------------------------------------------------------- */
+    const hLightsLed = document.getElementById("hLightsLed");
+    const hLightsLabel = document.getElementById("hLightsLabel");
+    let lightsOn = true;
+
+    function renderLights(d) {
+      if (!d || !d.available) {
+        setLed(hLightsLed, "warn");
+        hLightsLabel.textContent = "Lights n/a";
+        return;
+      }
+      // Track the work-light override, not the live level: during ATTRACT the
+      // cue pulses the lights, so the measured level swings and the button
+      // would flicker between ON and OFF while nobody touched it.
+      lightsOn = (d.work_lights !== null && d.work_lights !== undefined)
+                 ? !!d.work_lights : !!d.maze_on;
+      setLed(hLightsLed, lightsOn ? "ok" : "off");
+      hLightsLabel.textContent = lightsOn ? "Work lights" : "Show lights";
+    }
+
+    async function refreshLights() {
+      try { renderLights(await (await fetch("/api/gm/lights")).json()); }
+      catch (e) { setLed(hLightsLed, "warn"); }
+    }
+
+    document.getElementById("hLightsToggle").addEventListener("click", async () => {
+      try {
+        const r = await fetch("/api/gm/lights", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ on: !lightsOn }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        renderLights(await r.json());
+      } catch (e) { alert(`Lights failed: ${e.message}`); }
+    });
+
+    refreshLights();
+    setInterval(refreshLights, 5000);
 
     /* --- Hazer controls --- */
     const hHazerLed = document.getElementById("hHazerLed");

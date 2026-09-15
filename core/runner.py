@@ -114,6 +114,9 @@ class GameRunner:
         self._max_run_deadline_ns: int | None = None
         self._current_preset: str | None = None
         self._event_writes: set[asyncio.Task] = set()
+        # Set by __main__ once the DMX controller exists. The lights are show
+        # content driven by FSM state, not a static room setting.
+        self.lights = None
         self._db_fault: str | None = None
         # Nothing ever called metrics.configure(), so _sink stayed None and
         # every emit() returned immediately — relay.mismatch, vision.stall,
@@ -352,8 +355,16 @@ class GameRunner:
             except Exception as exc:
                 log.error("blackout: could not drive coils off (%s) — "
                           "LASERS MAY STILL BE LIT", exc)
+        if self.lights is not None:
+            try:
+                self.lights.stop()
+            except Exception as exc:
+                log.warning("stopping light cues failed: %s", exc)
         hazer = getattr(self, "hazer", None)
         if hazer is not None and hasattr(hazer, "blackout"):
+            # Zeroes haze and the maze lights but leaves the ENTRANCE lit —
+            # the node holds the last frame, so this is the state the container
+            # is left in when the process exits.
             hazer.blackout()
 
     # ------------------------------------------------------------------
@@ -372,6 +383,17 @@ class GameRunner:
         self.state = new_state
 
         log.debug("FSM %s --[%s]--> %s", old_state, type(event).__name__, new_state)
+
+        # Room lights follow the state: dim pulse in ATTRACT, dark for the run,
+        # a flash on a clean finish. COUNTDOWN and the RUN states are forced
+        # dark inside the player regardless of cue or GM override — ambient
+        # light raises the reading inside every dot's ROI, and a broken beam
+        # that still reads above break_ratio is a MISSED break.
+        if self.lights is not None and new_state != old_state:
+            try:
+                self.lights.set_state(new_state)
+            except Exception as exc:
+                log.error("light cue for %s failed: %s", new_state, exc)
 
         # Flight recorder. insert_event() had zero callers, so every disputed
         # bust opened a run detail showing an empty timeline — which reads as

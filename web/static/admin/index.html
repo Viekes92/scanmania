@@ -616,6 +616,29 @@
     }
 
     /* Master mode status indicator */
+    .dmx-group {
+      margin: 16px 0 6px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .dmx-group:first-of-type { margin-top: 4px; }
+    .lightbar {
+      display: inline-block;
+      width: 90px; height: 6px;
+      background: var(--surface2);
+      border-radius: 3px;
+      overflow: hidden;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    .lightbar > i { display: block; height: 100%; background: var(--green); }
+    .dmx-locked { color: var(--orange); font-size: 11px; letter-spacing: 1px; }
+
     #masterStatus {
       font-size: 13px;
       font-weight: 700;
@@ -743,13 +766,17 @@
       </div>
 
       <div class="card" id="hazerCard">
-        <div class="card-title">Hazer</div>
+        <div class="card-title">DMX &mdash; Art-Net universe</div>
+        <div id="dmxPatch" style="font-size:12px;color:var(--muted);
+             margin-bottom:12px;font-family:var(--font);"></div>
         <div id="hazerInfo" style="font-size:13px; color:var(--muted); margin-bottom:12px;">Loading…</div>
         <div id="hazerControls" style="display:none;">
           <div class="info-row">
-            <span class="info-key">Connection</span>
+            <span class="info-key">Node</span>
             <span class="info-val" id="hazerStatus">—</span>
           </div>
+
+          <div class="dmx-group">Hazer</div>
           <div class="info-row" style="align-items:center;">
             <span class="info-key">Enabled</span>
             <span class="info-val">
@@ -771,6 +798,21 @@
               <input type="range" id="hazerHazeSlider" aria-label="Hazer haze level" min="0" max="255" value="0"
                 style="width:160px;accent-color:var(--accent);">
               <span id="hazerHazeVal" style="width:30px;text-align:right;">0</span>
+            </span>
+          </div>
+          <div class="info-row">
+            <span class="info-key">Duty cycle</span>
+            <span class="info-val" id="hazerDuty">—</span>
+          </div>
+
+          <div class="dmx-group">Room lights</div>
+          <div id="lightsRows"></div>
+          <div class="info-row" style="align-items:center;">
+            <span class="info-key">Work lights</span>
+            <span class="info-val">
+              <button class="btn btn-default" id="btnLightsToggle"
+                      style="font-size:11px;padding:4px 12px;">Toggle</button>
+              <span id="lightsModeVal" style="margin-left:8px;font-weight:700;"></span>
             </span>
           </div>
         </div>
@@ -1802,6 +1844,7 @@
           `<tr><td colspan="6" style="color:var(--red)">${esc(e.message)}</td></tr>`;
       }
       loadHazer();
+      loadDmxPatch();
     }
 
     function renderBoards(boards) {
@@ -1861,7 +1904,11 @@
     }
 
     /* -----------------------------------------------------------------------
-       HAZER
+       DMX — one Art-Net universe carrying the hazer AND the room lights.
+
+       They share a card because they share a universe: every Art-Net frame
+       carries all 512 channels, so one process owns the lot. Anything else we
+       put on DMX later belongs in this card too.
     ----------------------------------------------------------------------- */
     function applyHazerEnabled(d) {
       const enabledEl = document.getElementById("hazerEnabledVal");
@@ -1896,11 +1943,89 @@
         ctrlEl.style.display = "";
         applyHazerEnabled(d);
         applyHazerSliders(d);
+        applyHazerDuty(d);
+        await loadLights();
       } catch (e) {
         infoEl.style.display = "";
-        infoEl.textContent = "Hazer status failed: " + e.message;
+        infoEl.textContent = "DMX status failed: " + e.message;
         ctrlEl.style.display = "none";
       }
+    }
+
+    function applyHazerDuty(d) {
+      const el = document.getElementById("hazerDuty");
+      if (!el) return;
+      const b = d.duty && d.duty.burst_s, i = d.duty && d.duty.interval_s;
+      if (!b || !i) {
+        el.textContent = "continuous";
+        return;
+      }
+      // The level has almost no usable range (1-2), so the duty cycle is the
+      // real dose control and belongs on screen next to it.
+      const pct = Math.round(100 * b / i);
+      el.innerHTML = `${b}s on / ${i - b}s off &nbsp;<span style="color:var(--muted)">`
+                   + `(${pct}% of continuous)</span>`
+                   + (d.duty.bursting
+                      ? ' &nbsp;<span style="color:var(--green)">BURSTING</span>' : "");
+    }
+
+    /* --- Room lights on the same universe --- */
+    let lightsWorkMode = null;
+
+    function renderLights(d) {
+      const rows = document.getElementById("lightsRows");
+      const mode = document.getElementById("lightsModeVal");
+      if (!rows) return;
+      if (!d || !d.available) {
+        rows.innerHTML = '<div class="info-row"><span class="info-key">—</span>'
+                       + '<span class="info-val">no lights configured</span></div>';
+        if (mode) mode.textContent = "";
+        return;
+      }
+      lightsWorkMode = d.work_lights;
+      const entries = Object.entries(d.lights)
+        .sort((a, b) => a[1].channel - b[1].channel);
+      rows.innerHTML = entries.map(([name, v]) => {
+        const pct = Math.round(100 * v.level / 255);
+        return `<div class="info-row"><span class="info-key">ch${v.channel} ${esc(name)}</span>
+          <span class="info-val">
+            <span class="lightbar"><i style="width:${pct}%"></i></span>${v.level}
+            ${v.always_on ? '<span class="dmx-locked"> · ALWAYS ON</span>' : ""}
+          </span></div>`;
+      }).join("");
+      if (mode) {
+        mode.textContent = d.work_lights ? "ON (cues suspended)" : "OFF (show cues)";
+        mode.style.color = d.work_lights ? "var(--green)" : "var(--muted)";
+      }
+    }
+
+    async function loadLights() {
+      try { renderLights(await apiFetch("/api/admin/lights")); }
+      catch (e) { renderLights(null); }
+    }
+
+    document.getElementById("btnLightsToggle").addEventListener("click", async function () {
+      try {
+        renderLights(await apiPost("/api/admin/lights", { on: !lightsWorkMode }));
+      } catch (e) {
+        toast("Lights failed: " + e.message, "error");
+      }
+    });
+
+    async function loadDmxPatch() {
+      const el = document.getElementById("dmxPatch");
+      if (!el) return;
+      try {
+        const d = await apiFetch("/api/admin/lights");
+        const h = await apiFetch("/api/admin/hazer");
+        if (!h.available) { el.textContent = ""; return; }
+        const parts = [`ch1 blower`, `ch2 haze`];
+        if (d.available) {
+          Object.entries(d.lights).sort((a, b) => a[1].channel - b[1].channel)
+            .forEach(([n, v]) => parts.push(`ch${v.channel} ${n}`));
+        }
+        el.textContent = "patch: " + parts.join("  ·  ");
+      } catch (e) { el.textContent = ""; }
     }
 
     /**

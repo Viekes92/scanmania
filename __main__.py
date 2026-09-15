@@ -342,17 +342,26 @@ async def async_main(args: argparse.Namespace) -> int:
     hazer_cfg = getattr(cfg.hardware, "hazer", None) or {}
     if isinstance(hazer_cfg, dict) and hazer_cfg.get("artnet_ip"):
         try:
-            from iobackend.hazer import HazerController
-            hazer = HazerController(
+            from iobackend.dmx import DmxController
+            hazer = DmxController(
                 artnet_ip=hazer_cfg["artnet_ip"],
                 universe=hazer_cfg.get("universe", 1),
                 fan_channel=hazer_cfg.get("fan_channel", 1),
                 haze_channel=hazer_cfg.get("haze_channel", 2),
                 default_fan=hazer_cfg.get("default_fan", 200),
                 default_haze=hazer_cfg.get("default_haze", 128),
+                haze_burst_s=hazer_cfg.get("haze_burst_s", 0.0),
+                haze_interval_s=hazer_cfg.get("haze_interval_s", 0.0),
+                lights=hazer_cfg.get("lights"),
             )
             if not hazer_cfg.get("enabled", True):
                 hazer.set_enabled(False)
+            names = hazer.light_names()
+            if names:
+                log.info("DMX lights: %s", ", ".join(
+                    f"{n} ch{hazer.lights_state()[n]['channel']}"
+                    + ("*" if hazer.lights_state()[n]["always_on"] else "")
+                    for n in names))
             log.info("Hazer: %s universe=%d (default %s)",
                      hazer_cfg["artnet_ip"], hazer_cfg.get("universe", 1),
                      "ON" if hazer_cfg.get("enabled", True) else "OFF")
@@ -372,6 +381,11 @@ async def async_main(args: argparse.Namespace) -> int:
     runner = GameRunner(cfg, backends["io"], backends["inputs"], backends["vision"], db, hub=hub)
     # The runner drives everything off on shutdown; it needs the hazer to do it.
     runner.hazer = hazer
+    if hazer is not None and hasattr(hazer, "set_light"):
+        from iobackend.lightshow import LightCuePlayer
+        runner.lights = LightCuePlayer(hazer, cfg.mazes.light_cues)
+        web_app_lights = runner.lights
+        log.info("Light cues: %s", ", ".join(sorted(cfg.mazes.light_cues)) or "none")
     tasks.append(asyncio.create_task(runner.run(), name="runner"))
 
     if hazer:

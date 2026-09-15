@@ -118,3 +118,71 @@ shows:
     - preset: all_on
       hold_ms: 200
     loop: true
+
+# ---------------------------------------------------------------------------
+# Room light cues — DMX ch4 (left) and ch5 (right), 1-channel white, 0-255.
+#
+# Keyed by FSM state, lower-case. Each step sets levels and holds for `ms`;
+# `loop: true` repeats until the state changes. `fade: false` snaps instead of
+# fading, which is what makes a flash read as a flash.
+#
+# The entrance (ch3) is never in a cue — it is always_on in hardware.yaml and
+# the DMX layer refuses to dim it.
+#
+# COUNTDOWN and the RUN states are NOT listed and cannot be: the container must
+# be dark for detection to be trustworthy, so they are forced off in code.
+# ---------------------------------------------------------------------------
+light_cues:
+  attract:
+    description: "slow alternating pulse, very dim — the room is idle"
+    loop: true
+    steps:
+      - {left: 14, right: 2,  ms: 1600}
+      - {left: 2,  right: 14, ms: 1600}
+
+  registered:
+    description: "player signed in — both sides up a little, waiting"
+    loop: true
+    steps:
+      - {left: 30, right: 30, ms: 1200}
+      - {left: 12, right: 12, ms: 1200}
+
+  arm:
+    description: "on the plate — steady low, about to go dark"
+    steps:
+      - {left: 20, right: 20, ms: 0}
+
+  finished:
+    description: "clean run — celebratory flash, then hold bright"
+    steps:
+      - {left: 255, right: 255, ms: 90,  fade: false}
+      - {left: 0,   right: 0,   ms: 90,  fade: false}
+      - {left: 255, right: 255, ms: 90,  fade: false}
+      - {left: 0,   right: 0,   ms: 90,  fade: false}
+      - {left: 255, right: 255, ms: 90,  fade: false}
+      - {left: 0,   right: 0,   ms: 90,  fade: false}
+      - {left: 200, right: 200, ms: 0}
+
+  busted:
+    description: "busted — one hard snap, then sullen low"
+    steps:
+      - {left: 255, right: 255, ms: 140, fade: false}
+      - {left: 0,   right: 0,   ms: 260, fade: false}
+      - {left: 40,  right: 40,  ms: 0}
+
+  aborted:
+    description: "aborted — plain lights up, no drama"
+    steps:
+      - {left: 120, right: 120, ms: 0}
+
+  result:
+    description: "score on screen — bright enough to walk out by"
+    steps:
+      - {left: 180, right: 180, ms: 0}
+
+  fault:
+    description: "something is wrong — slow throb so it is obvious from outside"
+    loop: true
+    steps:
+      - {left: 200, right: 200, ms: 700}
+      - {left: 40,  right: 40,  ms: 700}

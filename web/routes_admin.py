@@ -205,6 +205,13 @@ class ConfigRawBody(BaseModel):
     content: str = Field(max_length=1_000_000)
 
 
+class LightsBody(BaseModel):
+    """Either on= for all maze lights, or name= + level= for one fixture."""
+    on: bool | None = None
+    name: str | None = None
+    level: int | None = Field(default=None, ge=0, le=255)
+
+
 class MaskBeamBody(BaseModel):
     masked: bool
 
@@ -1161,7 +1168,13 @@ def register_routes(
             "enabled": hazer.enabled,
             "haze": hazer.haze,
             "fan": hazer.fan,
-            # Drives the SM-NODE-DMX LED on the GM console.
+            # The level has almost no usable range (1-2), so the duty cycle is
+            # the real dose control and the operator needs to see it.
+            "duty": getattr(hazer, "duty", None),
+            "hazing": getattr(hazer, "hazing", None),
+            # Drives the SM-NODE-DMX LED on the GM console. Only ever means
+            # "our sendto did not raise" — Art-Net is fire-and-forget UDP and
+            # cannot confirm the node received anything.
             "link_ok": hazer.link_ok,
         }
 
@@ -1180,6 +1193,72 @@ def register_routes(
     @router.post("/api/admin/hazer", dependencies=[Depends(_require_admin)])
     async def admin_hazer_set(body: HazerBody):
         return await _apply_hazer(body)
+
+    # ------------------------------------------------------------------
+    # Room lights (same Art-Net universe as the hazer)
+    # ------------------------------------------------------------------
+
+    def _cue_player():
+        r = _runner()
+        return getattr(r, "lights", None) if r else None
+
+    async def _lights_status() -> dict:
+        hazer = getattr(app_ref, "get_hazer", lambda: None)()
+        if not hazer or not hasattr(hazer, "lights_state"):
+            return {"ok": True, "available": False}
+        st = hazer.lights_state()
+        player = _cue_player()
+        # "on" means the maze lights, not the entrance — the entrance cannot be
+        # switched off, so including it would make this always read True.
+        maze = [v for v in st.values() if not v["always_on"]]
+        return {
+            "ok": True, "available": True, "lights": st,
+            "maze_on": any(v["target"] > 0 for v in maze),
+            # The GM switch is the WORK-LIGHT override: solid on for loading and
+            # unloading, which suspends the cue. Turning it off hands the lights
+            # back to the state cues. Neither survives into a run.
+            "work_lights": bool(player.work_lights) if player else None,
+            "cue_state": getattr(player, "_state", None) if player else None,
+        }
+
+    @router.get("/api/gm/lights")
+    async def gm_lights_status():
+        """Unauthenticated, like the rest of /api/gm/* — the console has no password."""
+        return await _lights_status()
+
+    @router.post("/api/gm/lights")
+    async def gm_lights_set(body: LightsBody):
+        hazer = getattr(app_ref, "get_hazer", lambda: None)()
+        if not hazer or not hasattr(hazer, "set_light"):
+            raise HTTPException(status_code=503, detail="DMX lights not available")
+        if body.name:
+            if body.level is None:
+                raise HTTPException(status_code=400, detail="level required with name")
+            if not hazer.set_light(body.name, body.level):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"unknown light {body.name!r}, or it is always_on and "
+                           f"cannot be switched off")
+        elif body.on is not None:
+            player = _cue_player()
+            if player is not None:
+                # Go through the cue player, not straight at the DMX: a direct
+                # set would be overwritten by the next cue step.
+                player.set_work_lights(body.on)
+            else:
+                hazer.set_maze_lights(body.on)
+            log.info("GM: work lights %s", "ON" if body.on else "OFF")
+        else:
+            raise HTTPException(status_code=400, detail="send on=, or name= and level=")
+        return await _lights_status()
+
+    @router.get("/api/admin/lights", dependencies=[Depends(_require_admin)])
+    async def admin_lights_status():
+        return await _lights_status()
+
+    @router.post("/api/admin/lights", dependencies=[Depends(_require_admin)])
+    async def admin_lights_set(body: LightsBody):
+        return await gm_lights_set(body)
 
     # GM-facing hazer control. Deliberately unauthenticated, consistent with the
     # rest of /api/gm/* — the GM console is the operator tablet and has no

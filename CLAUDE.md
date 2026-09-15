@@ -53,7 +53,8 @@ event pipelines. See `docs/testing.md`.
 
 ```
 core/       Pure logic: FSM, stopwatch, scoring, events dataclasses, metrics façade. Zero I/O.
-iobackend/  Modbus master, preset resolution, reconciliation loop. fake.py is mandatory.
+iobackend/  Modbus master, preset resolution, reconciliation loop, Art-Net DMX
+            (hazer + room lights), FSM-driven light cues. fake.py is mandatory.
 inputs/     Pico USB serial link + MicroPython firmware. fake.py is mandatory.
 vision/     RTSP decode, dot detection, baseline, evidence thumbnails, MJPEG out. fake.py is mandatory.
 persist/    SQLite schema + migrations, local snapshots, CSV exports. No cloud sync.
@@ -73,6 +74,7 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
 - **Metric names:** `<domain>.<thing>.<verb|state>` snake_case — `relay.mismatch`, `run.completed`, `vision.stall`. Constants live in `core/metrics.py`; add new names there, not inline.
 - **Config keys:** add to the YAML/JSON file + a one-line comment with purpose and sane range + validation in `config/loader.py`.
 - **Commit format:** `<scope>: <what changed>` e.g. `fsm: handle false-start during COUNTDOWN`.
+- **DMX:** one universe, one owner — `iobackend/dmx.py`. Every Art-Net frame carries all 512 channels, so a second sender would zero the first one's work twice a second. Patch: ch1 hazer blower, ch2 haze, ch3 left, ch4 right, ch5 entrance. Run `python3 tools/dmxpatch.py` for the live sheet; it is generated from config, never hand-maintained. Haze is **duty-cycled** (`haze_burst_s` / `haze_interval_s`) because continuous output at any usable level is too much. Light levels come from `light_cues` in `mazes.yaml`, keyed by FSM state. The entrance is `always_on` and the DMX layer refuses to dim it, including on shutdown. COUNTDOWN and every RUN state are forced dark in code, over any cue and over the GM's work-light switch.
 - **Recalibrating:** stop the game (`systemctl stop scanmania-kiosk scanmania` — kiosk first, or its `Wants=` drags the game back up), run `tools/capture.py`, open port 8090. Light a maze, tune each camera, capture, repeat, write. Verify on `/admin/beams`.
 - **Module docstrings:** every module opens with its one job, inputs, outputs, and invariants (3–6 lines). No exceptions.
 

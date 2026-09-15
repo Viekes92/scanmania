@@ -135,14 +135,71 @@ inputs:
 
 hazer:
   artnet_ip: "172.16.0.104"    # ShowTec NET-2/3 (SM-NODE-DMX)
+  # The node (SM-NODE-DMX, 2-port) is configured:
+  #   DMX Port 01 -> Network 0, Primary 1   <- DMX-A, the one we are wired to
+  #   DMX Port 02 -> Network 0, Primary 2
+  # So universe 1. Verify with `python3 tools/dmxpatch.py --discover`, which
+  # lists every port — a multi-port node sends one ArtPollReply PER PORT.
   universe: 1
   fan_channel: 1               # DMX ch1 = blower speed (0-255)
   haze_channel: 2              # DMX ch2 = haze volume (0-255)
   default_fan: 255             # 0-255 (blower always on for haze distribution)
-  # Haze output while the GM switch is ON. 0-255, but the useful range is
-  # tiny: measured in the container, 1% (DMX 2-3) gives sustained haze that
-  # lasts. Anything higher fogs the space out and washes the laser dots.
+  # Haze output while the GM switch is ON, DURING a burst.
+  #
+  # The useful range is tiny and sits at the very bottom of the scale. Tested
+  # manually in the container: 1% (DMX 2-3) was too much, so the working range
+  # is DMX 1-2 and 1 is the hardware floor. There is almost nothing to tune
+  # here — the dose is set by the duty cycle below.
+  #
+  # Anything higher fogs the space and washes out the laser dots, which breaks
+  # detection as surely as no haze at all. Raise to 2 only if 1 is invisible.
   # The GM console has an on/off switch only; this is the amount it turns on.
-  # Tune here or live on /admin — do not put a slider back on the GM console.
-  default_haze: 3              # 0-255 (~1%)
+  default_haze: 1              # 0-255. Useful range is 1-2, nothing higher.
+
+  # Even at DMX 1 the machine puts out too much haze to run continuously, so it
+  # is duty-cycled: haze for burst_s, then nothing until the next interval.
+  # The blower keeps running throughout, so what is already in the container
+  # stays evenly distributed instead of settling.
+  #
+  # The burst has to be LONG. A hazer has a heater, and a short command is
+  # spent warming up rather than producing — a 2 s burst put out essentially
+  # nothing. One minute on, four off, is the useful shape.
+  #
+  # THIS IS THE MAIN DOSE CONTROL. The level only has two usable values (1-2),
+  # so if there is still too much haze, LENGTHEN haze_interval_s — do not
+  # shorten haze_burst_s, or the machine goes back to spending the whole burst
+  # warming up and produces nothing at all.
+  #
+  # Too little haze means invisible beams; too much fogs the space and washes
+  # the dots out, which breaks detection as surely as no haze at all.
+  haze_burst_s: 60.0           # seconds of output per cycle. 0 = continuous.
+  haze_interval_s: 300.0       # seconds between the START of each burst
   enabled: true
+
+  # Room lights on the SAME Art-Net universe, via a DMX decoder starting at
+  # channel 3. One controller owns the universe — every Art-Net frame carries
+  # all 512 channels, so a second sender would zero these twice a second.
+  #
+  # Each fixture is 1-channel white, 0-255, so they dim and fade.
+  lights:
+    fade_ms: 800               # full 0-255 travel time. 0 disables fading.
+    fixtures:
+      # A 3-channel decoder addressed at DMX 3, so its own ch1/ch2/ch3 land on
+      # DMX 3/4/5. Check this against the decoder before an event: the always_on
+      # guard has to land on the REAL entrance, or the entrance can go dark
+      # during a run while some other fixture is the one being protected.
+      left:
+        channel: 3               # decoder ch1
+        default: 255
+      right:
+        channel: 4               # decoder ch2
+        default: 255
+      entrance:
+        channel: 5               # decoder ch3
+        default: 255
+        # Never switched off by software, not even on shutdown. An Art-Net node
+        # holds the last frame it received, so this is the state the container
+        # is left in when the process exits — and a dark box with people in it
+        # and no lit exit is the one state worth hard-coding against.
+        always_on: true
+

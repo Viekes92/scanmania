@@ -1,9 +1,21 @@
 /*
   web/static/shared/brand.css — ScanMania brand tokens and the Proxima Nova faces.
 
-  Shared by /display/in and /display/out. The GM and admin consoles keep their
-  own look: they are working tools read at arm's length in a lit container, not
-  show surfaces, and they should not be restyled to match a public display.
+  Shared by /display/in, /display/out, /gm and /admin.
+
+  The consoles take the brand IDENTITY — the face, the wordmark, the two
+  colours — but not the display LAYOUT. They are working tools read at arm's
+  length in a lit container, so they keep their dense layout, their big touch
+  targets and their dark surfaces, and two things stay monospace on purpose:
+  the stopwatch, whose digits would jitter in a proportional face, and the
+  player nickname, which is read back character by character against what
+  someone typed at sign-in.
+
+  The brand colours are chrome, not text. #005AA9 is 2.8:1 and #EC1C24 is
+  4.4:1 on these near-black surfaces — both under AA for body text — so each
+  has a lighter same-hue text tint (--accent-text 5.6:1, --red-text 5.9:1).
+  A bust indicator that is harder to read is not a trade worth making for a
+  closer swatch.
 
   Colours are sampled from the supplied artwork, not eyeballed:
     #005AA9  blue   (SCAN, and the left half of the QR block)

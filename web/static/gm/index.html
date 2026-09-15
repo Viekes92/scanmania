@@ -17,6 +17,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>GM — SCANMANIA</title>
+  <link rel="stylesheet" href="/static/shared/brand.css">
   <style>
     /* -----------------------------------------------------------------------
        Custom properties — neon red heist
@@ -25,18 +26,28 @@
       --bg:          #050507;
       --surface:     #080d18;
       --surface2:    #0d1525;
-      --border:      #0d1e3a;
-      --accent:      #264f9a;
-      --accent-glow: rgba(38, 79, 154, 0.6);
-      --accent-dim:  #1a3366;
+      --border:      #0d2a4a;
+      /* Brand blue, sampled from the artwork like the displays use. It is
+         2.8:1 on these surfaces, so it is CHROME ONLY — borders, glow, fills.
+         Anything that renders as text uses --accent-text (5.6:1), a lighter
+         tint of the same hue. Same split the admin console already documents:
+         a console is read at arm's length in a lit container. */
+      --accent:      #005AA9;
+      --accent-glow: rgba(0, 90, 169, 0.6);
+      --accent-text: #3D8FD6;
+      --accent-dim:  #00305c;
       --text:        #e8f0fc;
       --muted:       #5a7899;
 
       /* action button colours */
       --green:       #00ff88;
       --green-dark:  #005533;
-      --red:         #ff0033;
-      --red-dark:    #660015;
+      /* Brand red for fills, borders and LEDs. As TEXT it is 4.4:1 — under
+         AA — so red text uses --red-text (5.9:1). A bust indicator that is
+         harder to read is not a trade worth making for a closer swatch. */
+      --red:         #EC1C24;
+      --red-text:    #FF4A50;
+      --red-dark:    #6b0f13;
       --orange:      #ff8800;
       --orange-dark: #7a4200;
       --grey:        #555;
@@ -44,17 +55,22 @@
 
       /* beam state colours */
       --beam-ok:      #00ff88;
-      --beam-broken:  #ff0033;
+      --beam-broken:  #EC1C24;
       --beam-masked:  #444;
 
       /* health state colours */
       --health-ok:    #00ff88;
       --health-warn:  #ff8800;
-      --health-err:   #ff0033;
+      --health-err:   #EC1C24;
 
       --radius: 10px;
       --btn-h:  72px;          /* minimum 48 px, targeting 72 for iPad comfort */
+      /* Two families on purpose. Proxima Nova (the display face) for chrome —
+         headings, buttons, labels — so the console reads as the same product
+         as the screens. Monospace stays on DATA: the stopwatch, coil grids,
+         tables and logs, where digits have to hold their column. */
       --font: 'Courier New', Courier, monospace;
+      --font-ui: 'Proxima Nova', 'Helvetica Neue', Arial, sans-serif;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -64,8 +80,8 @@
       overflow: hidden;        /* no scrolling for anything urgent */
       background: var(--bg);
       background-image:
-        linear-gradient(rgba(38,79,154,0.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(38,79,154,0.06) 1px, transparent 1px);
+        linear-gradient(rgba(0, 90, 169,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 90, 169,0.06) 1px, transparent 1px);
       background-size: 40px 40px;
       color: var(--text);
       font-family: 'Courier New', Courier, monospace;
@@ -104,8 +120,15 @@
       padding: 12px 16px;
       border-bottom: 2px solid var(--border);
       background: var(--surface);
-      box-shadow: inset 0 -1px 0 rgba(38,79,154,0.15);
+      box-shadow: inset 0 -1px 0 rgba(0, 90, 169,0.15);
       flex-shrink: 0;
+    }
+
+    #brandMark {
+      height: 26px;
+      width: auto;
+      flex-shrink: 0;          /* a long nickname must not squeeze the logo */
+      opacity: 0.92;
     }
 
     #stateLabel {
@@ -113,9 +136,9 @@
       font-weight: 900;
       letter-spacing: 2px;
       text-transform: uppercase;
-      font-family: 'Courier New', Courier, monospace;
-      color: var(--accent);
-      text-shadow: 0 0 20px var(--accent-glow), 0 0 50px rgba(38,79,154,0.15);
+      font-family: var(--font-ui);
+      color: var(--accent-text);
+      text-shadow: 0 0 20px var(--accent-glow), 0 0 50px rgba(0, 90, 169,0.15);
       flex: 1 1 auto;
       min-width: 0;
       white-space: nowrap;
@@ -124,6 +147,10 @@
     }
 
     /* Large stopwatch — mono, always visible, no glow (readability first) */
+    /* Monospace on purpose, not an oversight: the digits change ten times a
+       second and a proportional face makes the whole clock jitter as they do.
+       Same reason #playerName stays monospace — it is read back character by
+       character against what the player typed at sign-in. */
     #stopwatch {
       font-family: 'Courier New', Courier, monospace;
       font-size: 48px;
@@ -156,7 +183,7 @@
       font-size: 13px;
       font-weight: 800;
       letter-spacing: 2px;
-      font-family: 'Courier New', Courier, monospace;
+      font-family: var(--font-ui);
       text-transform: uppercase;
       padding: 6px 14px;
       border-radius: 999px;
@@ -169,7 +196,7 @@
     #detectionBadge.mode-auto {
       background: var(--accent);
       color: #000;
-      border-color: var(--accent);
+      border-color: var(--accent-text);
       box-shadow: 0 0 10px var(--accent-glow);
     }
 
@@ -208,8 +235,8 @@
     .banner.visible { display: block; }
 
     .banner-red {
-      background: rgba(255, 0, 51, 0.12);
-      color: var(--red);
+      background: rgba(236, 28, 36, 0.12);
+      color: var(--red-text);
       border-bottom: 1px solid var(--red);
       animation: pulse-banner 1.4s ease-in-out infinite;
     }
@@ -244,7 +271,7 @@
       height: var(--btn-h);
       font-size: 18px;
       font-weight: 900;
-      font-family: 'Courier New', Courier, monospace;
+      font-family: var(--font-ui);
       letter-spacing: 2px;
       text-transform: uppercase;
       background: var(--surface2);
@@ -277,8 +304,8 @@
 
     #btnBust {
       border: 2px solid var(--red);
-      color: var(--red);
-      box-shadow: 0 0 10px rgba(255,0,51,0.25), inset 0 0 6px rgba(255,0,51,0.05);
+      color: var(--red-text);
+      box-shadow: 0 0 10px rgba(236, 28, 36,0.25), inset 0 0 6px rgba(236, 28, 36,0.05);
     }
     #btnBust:active:not(:disabled) {
       background: var(--red);
@@ -442,7 +469,7 @@
     }
     .cam-card .cam-sub { font-size: 12px; color: var(--muted); }
     .cam-card.dark  { border-color: var(--beam-broken);
-                      box-shadow: 0 0 8px rgba(255,0,51,0.35); }
+                      box-shadow: 0 0 8px rgba(236, 28, 36,0.35); }
     .cam-card.dark  .cam-n { color: var(--beam-broken);
                              animation: flash-red 0.5s infinite; }
     .cam-card.blind { border-color: var(--beam-masked); }
@@ -588,7 +615,7 @@
     }
 
     .run-outcome.clean   { background: rgba(0,255,136,0.12); color: var(--green); border: 1px solid #005533; }
-    .run-outcome.busted  { background: rgba(255,0,51,0.12);  color: var(--red);   border: 1px solid #660015; }
+    .run-outcome.busted  { background: rgba(236, 28, 36,0.12);  color: var(--red-text);   border: 1px solid #660015; }
     .run-outcome.aborted { background: rgba(255,136,0,0.12); color: var(--orange); border: 1px solid #7a4200; }
     .run-outcome.voided  { background: rgba(85,85,85,0.12);  color: var(--grey);  border: 1px solid #333; }
 
@@ -616,10 +643,10 @@
       font-size: 48px;
       font-weight: 900;
       font-family: 'Courier New', Courier, monospace;
-      color: var(--accent);
+      color: var(--accent-text);
       text-transform: uppercase;
       letter-spacing: 4px;
-      text-shadow: 0 0 30px var(--accent-glow), 0 0 60px rgba(38,79,154,0.2);
+      text-shadow: 0 0 30px var(--accent-glow), 0 0 60px rgba(0, 90, 169,0.2);
     }
 
     #assistedBeam {
@@ -636,7 +663,7 @@
       object-fit: cover;
       border-radius: 8px;
       border: 2px solid var(--red);
-      box-shadow: 0 0 20px rgba(255,0,51,0.5);
+      box-shadow: 0 0 20px rgba(236, 28, 36,0.5);
       background: #060d1a;
       display: block;
     }
@@ -673,7 +700,7 @@
       background: var(--red);
       color: #000;
       border: 2px solid var(--red);
-      box-shadow: 0 0 20px rgba(255,0,51,0.4);
+      box-shadow: 0 0 20px rgba(236, 28, 36,0.4);
     }
 
     /* CLEAR — filled green, wider (60%) */
@@ -754,7 +781,7 @@
     }
 
     .signin-input:focus {
-      border-color: var(--accent);
+      border-color: var(--accent-text);
     }
 
     .gender-btn.selected {
@@ -770,6 +797,8 @@
        TOP BAR — state · stopwatch · player · detection badge
   ----------------------------------------------------------------------- -->
   <div id="topBar">
+    <img id="brandMark" src="/static/shared/scanmania-design/sm-text-tp.png"
+         alt="ScanMania">
     <div id="stateLabel">ATTRACT</div>
     <div id="stopwatch">00:00.000</div>
     <div id="playerName">—</div>
@@ -901,8 +930,8 @@
     font-family: 'Courier New', Courier, monospace;
     letter-spacing: 1px;
     text-align: center;
-    color: var(--red);
-    background: rgba(255,0,51,0.10);
+    color: var(--red-text);
+    background: rgba(236, 28, 36,0.10);
     border-bottom: 1px solid var(--red);
     flex-shrink: 0;
     transition: opacity 0.3s;

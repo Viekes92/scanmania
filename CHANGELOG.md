@@ -422,6 +422,25 @@ verified against the code, not assumed.
 
 ### Changed
 
+- **The GM console and admin portal now carry the brand.** Proxima Nova and the
+  wordmark from the displays, and the accent moved to the sampled brand blue
+  and red, so the tools read as the same product as the screens.
+
+  Identity, not layout: both stay dense, dark and big-targeted, because they
+  are read at arm's length in a lit container rather than photographed from the
+  street. Two things deliberately stay monospace — the stopwatch, whose digits
+  would jitter ten times a second in a proportional face, and the player
+  nickname, which an operator reads back character by character against what
+  was typed at sign-in.
+
+  The brand colours are chrome, not text: `#005AA9` is 2.8:1 and `#EC1C24` is
+  4.4:1 on these near-black surfaces, both under AA for body text. Each gained
+  a lighter same-hue text tint (`--accent-text` 5.6:1, `--red-text` 5.9:1) and
+  the 18 text usages were moved onto them. A bust indicator that is harder to
+  read is not a trade worth making for a closer swatch.
+
+### Changed
+
 - **`tools/capture.py` shows every stage of the detection pipeline**, per camera:
   raw / signal / mask / overlay. Looking only at the final overlay tells you a
   camera found nothing but not why, and the causes want opposite corrections — a

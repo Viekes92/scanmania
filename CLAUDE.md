@@ -87,6 +87,16 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
 - **Detection cannot say which segment broke.** Correct, and deliberate. Calibration lights a whole maze and records what the cameras see; no dot is tied to a relay. A bust names the dot and the camera that saw it (`SM-CAM-13:d17`), which is what an operator needs to know where to look. See ADR 0009.
 - **`write_coils` writes the full 16-channel board every time.** Correct. One atomic transaction is what makes the maze snap rather than morph. Never loop single-coil writes.
 
+## Boot behaviour
+
+The box comes up in **MASTER MODE** with the house lights on and the lasers
+dark (`game.boot_to_master`, default true). The GM walks the container, then
+presses **FORCE RESET** on the console to drop into ATTRACT. Nothing is playable
+until a human has been inside — a box that boots straight into its attract show
+after a power cut invites someone to start a run before anyone has looked at the
+maze. The flag is consumed on the first self-test pass, so exiting MASTER later
+goes to ATTRACT rather than looping back.
+
 ## Operating-day boundary
 
 `SCANMANIA_DAY_START_HOUR` (default 9) sets when the leaderboard and the

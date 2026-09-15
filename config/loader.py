@@ -284,6 +284,9 @@ class GameConfig:
     count_in: CountInConfig
     arm_grace_ms: int
     leaderboard: LeaderboardConfig
+    # Boot into MASTER with the house lights up, so the GM must walk the
+    # container and press FORCE RESET before anything is playable.
+    boot_to_master: bool = True
     # How long the GM has to decide on an assisted-mode break before the system
     # defaults to BUST. Without it an undecided halt wedges the game.
     assisted_timeout_ms: int = 60_000
@@ -555,6 +558,7 @@ def load_game() -> GameConfig:
                                   1_000, 120_000, 15000, "game.result_display_ms"),
         arm_timeout_ms=_ranged(d.get("arm_timeout_ms", 180000),
                                10_000, 3_600_000, 180000, "game.arm_timeout_ms"),
+        boot_to_master=bool(d.get("boot_to_master", True)),
         assisted_timeout_ms=_ranged(d.get("assisted_timeout_ms", 60000),
                                     10_000, 300_000, 60000, "game.assisted_timeout_ms"),
         registered_timeout_ms=_ranged(d.get("registered_timeout_ms", 180000),

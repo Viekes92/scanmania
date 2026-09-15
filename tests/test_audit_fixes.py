@@ -183,3 +183,44 @@ def test_an_ordinary_name_is_untouched():
     from web.routes_signin import _clean_display_name
     assert _clean_display_name("  Joenne  ") == "Joenne"
     assert _clean_display_name("José") == "José"
+
+
+# ---------------------------------------------------------------------------
+# Boot lands in MASTER, not ATTRACT
+# ---------------------------------------------------------------------------
+
+def test_boot_lands_in_master_so_a_human_checks_the_container_first():
+    """A box that comes up playable after a power cut lets someone start a run
+    before anyone has looked inside the maze."""
+    from core.events import SelfTestPass, SELF_TEST
+    ctx = FSMContext(boot_to_master=True)
+    assert transition(SELF_TEST, SelfTestPass(), ctx)[0] == MASTER
+
+
+def test_the_boot_flag_is_consumed_so_leaving_master_does_not_loop():
+    """Exiting MASTER re-runs the self test. Without consuming the flag the box
+    would bounce straight back into MASTER and never reach game mode."""
+    from core.events import SelfTestPass, SELF_TEST, ATTRACT as _ATTRACT
+    ctx = FSMContext(boot_to_master=True)
+    transition(SELF_TEST, SelfTestPass(), ctx)
+    assert ctx.boot_to_master is False
+    assert transition(SELF_TEST, SelfTestPass(), ctx)[0] == _ATTRACT
+
+
+def test_boot_to_master_can_be_turned_off():
+    from core.events import SelfTestPass, SELF_TEST, ATTRACT as _ATTRACT
+    assert transition(SELF_TEST, SelfTestPass(),
+                      FSMContext(boot_to_master=False))[0] == _ATTRACT
+
+
+def test_boot_into_master_does_not_start_the_attract_show():
+    """The lasers must stay dark until someone has been in the container."""
+    from core.events import SelfTestPass, SELF_TEST, PlayShow
+    _, fx = transition(SELF_TEST, SelfTestPass(), FSMContext(boot_to_master=True))
+    assert not [e for e in fx if isinstance(e, PlayShow)]
+
+
+def test_force_reset_is_the_way_out_of_the_boot_master_state():
+    ctx = FSMContext(boot_to_master=True)
+    state, _ = transition("SELF_TEST", __import__("core.events", fromlist=["x"]).SelfTestPass(), ctx)
+    assert transition(state, GmForceReset(), ctx)[0] == RESET

@@ -160,12 +160,26 @@ class GameRunner:
         Boot sequence:
         1. Emit BootComplete → SELF_TEST
         2. Run self-tests (relay boards, Pico, cameras)
-        3. Emit SelfTestPass/Fail → ATTRACT or FAULT
+        3. Emit SelfTestPass/Fail → MASTER or FAULT
+
+        Boot lands in MASTER, not ATTRACT (game.boot_to_master). The lasers
+        stay dark and the house lights stay up until the GM has walked the
+        container and pressed FORCE RESET.
 
         Then drain the event queue, executing side effects for each event.
         Also starts background tasks: inputs listener, vision listener, clock broadcaster.
         """
         log.info("GameRunner starting")
+
+        # Seed this BEFORE the self test, which is what consumes it. Setting it
+        # afterwards is setting it too late — the pass handler has already sent
+        # the box to ATTRACT.
+        self.context.boot_to_master = bool(
+            getattr(getattr(self.config, "game", None), "boot_to_master", True)
+        ) if self.config else True
+        if self.context.boot_to_master:
+            log.info("Boot will land in MASTER MODE — the GM must walk the "
+                     "container and press FORCE RESET to enter game mode")
 
         # Boot
         await self.dispatch(BootComplete())

@@ -72,6 +72,12 @@ class FSMContext:
         assisted_halt_elapsed_ms:
                                value of elapsed_ms at the moment the stopwatch was
                                halted for a GM adjudication, or None when not halted
+        boot_to_master:        True until the first self-test passes, when set.
+                               Sends the box to MASTER instead of ATTRACT on
+                               boot, so nothing is playable until a human has
+                               walked the container and pressed FORCE RESET.
+                               Consumed once, so leaving MASTER later behaves
+                               normally rather than looping back into it.
     """
     detection_mode: str = DetectionMode.auto
     run_id: str | None = None
@@ -81,6 +87,7 @@ class FSMContext:
     beams_masked: set[str] = field(default_factory=set)
     pending_break: str | None = None
     assisted_halt_elapsed_ms: int | None = None
+    boot_to_master: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +164,17 @@ def _boot_handlers() -> dict:
 
 def _self_test_handlers() -> dict:
     def on_pass(state, event, ctx):
+        # Boot lands in MASTER, not ATTRACT: the lasers stay dark, the house
+        # lights stay up, and the GM has to walk the container and press
+        # FORCE RESET before anything is playable. A box that came up already
+        # running its attract show invites someone to start a game before
+        # anyone has looked inside it.
+        #
+        # Consumed here, so exiting MASTER later (which re-runs the self test)
+        # goes to ATTRACT rather than looping straight back into MASTER.
+        if ctx.boot_to_master:
+            ctx.boot_to_master = False
+            return MASTER, [StopStopwatch(), DisarmDetection(), BroadcastState()]
         return ATTRACT, [PlayShow("attract"), BroadcastState()]
 
     def on_fail(state, event: SelfTestFail, ctx):

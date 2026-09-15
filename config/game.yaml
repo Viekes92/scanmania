@@ -1,6 +1,17 @@
 # game.yaml — timings, detection mode, and count-in configuration
 # This is the file people will edit on site. Every key has a comment.
 
+# Come up in MASTER MODE rather than ATTRACT, with the house lights up and the
+# lasers dark. The GM walks the container, then presses FORCE RESET on the
+# console to drop into game mode.
+#
+# The point is that nothing is playable until a human has been inside. A box
+# that boots straight into its attract show after a power cut invites someone
+# to start a run before anyone has looked at the maze.
+#
+# false = boot straight to ATTRACT (the old behaviour).
+boot_to_master: true
+
 mode: hard_cutoff
 # hard_cutoff: a confirmed break ends the run immediately. Only option in v1.
 

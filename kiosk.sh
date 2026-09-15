@@ -141,15 +141,35 @@ echo "Launching:"
 # other — and systemd never restarted anything, because nothing had exited.
 # `wait -n` returns on the FIRST exit, so a dead window is noticed and relaunched.
 declare -A RESTARTS=()
+RELAUNCH_BACKOFF_S=2
+_TOTAL_RELAUNCHES=0
+_RELAUNCH_CAP=50
 while true; do
     wait -n || true
-    sleep 2
+    # Back off. A launch that can never succeed — dbus-run-session missing,
+    # chromium gone — relaunched every 2 s forever while systemd reported the
+    # unit active and both panels stayed black. Growing the gap turns a hot
+    # spin into something a human can read in the journal, and the cap means we
+    # stop pretending it is going to work.
+    sleep "$RELAUNCH_BACKOFF_S"
+    if [ "$RELAUNCH_BACKOFF_S" -lt 30 ]; then
+        RELAUNCH_BACKOFF_S=$(( RELAUNCH_BACKOFF_S * 2 ))
+    fi
     for name in in out; do
         [ "$name" = "in" ]  && [ -z "${MODE_IN:-}" ]  && continue
         [ "$name" = "out" ] && [ -z "${MODE_OUT:-}" ] && continue
-        if ! pgrep -f "scanmania-kiosk-$name" >/dev/null 2>&1; then
+        if pgrep -f "scanmania-kiosk-$name" >/dev/null 2>&1; then
+            RELAUNCH_BACKOFF_S=2        # it is up; forget the backoff
+        else
             RESTARTS[$name]=$(( ${RESTARTS[$name]:-0} + 1 ))
+            _TOTAL_RELAUNCHES=$(( _TOTAL_RELAUNCHES + 1 ))
             echo "$(date -Is) $name window gone — relaunch #${RESTARTS[$name]}"
+            if [ "$_TOTAL_RELAUNCHES" -gt "$_RELAUNCH_CAP" ]; then
+                echo "Giving up after $_TOTAL_RELAUNCHES relaunches — the window"
+                echo "is not staying up. Exiting so systemd records a FAILURE"
+                echo "instead of reporting a healthy unit with black panels."
+                exit 1
+            fi
             if [ "$name" = "in" ]; then
                 launch in "$MODE_IN" 0 "$SERVER/display/in"
             else

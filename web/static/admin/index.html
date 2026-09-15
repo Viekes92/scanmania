@@ -1492,7 +1492,15 @@
     }
 
     async function apiFetch(path, opts = {}) {
-      const headers = { "X-Admin-Password": getAdminPwd(), ...(opts.headers || {}) };
+      // Do not call the API before there is a password to send. The dashboard
+      // loader started unconditionally at page load, so a first-time visitor
+      // was greeted with "Session rejected — sign in again", and its 30 s
+      // interval kept running BEHIND the login overlay — forceRelogin() clears
+      // the password field, so anyone reading a password off a note had what
+      // they were typing wiped out from under them, repeatedly.
+      const pwd = getAdminPwd();
+      if (!pwd) throw new Error("not signed in");
+      const headers = { "X-Admin-Password": pwd, ...(opts.headers || {}) };
       const resp = await fetch(path, { ...opts, headers });
       if (resp.status === 403) {
         forceRelogin();

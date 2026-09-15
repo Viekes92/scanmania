@@ -169,6 +169,40 @@ fi
 
 # --- 5. Restart --------------------------------------------------------------
 # The kiosk restarts too: the browser caches the single-file frontends.
+# --- 4b. Prove the tree still imports ----------------------------------------
+# A killed pip (ssh dropping over venue wifi — the case this script exists for)
+# leaves new code on a venv missing a package, and nothing here noticed: the
+# box kept running the OLD code in memory all evening and only crash-looped at
+# the next power cycle, twelve hours and one venue from the cause. Import the
+# entry point before restarting anything, and roll back if it fails.
+say "Checking the tree imports"
+if ! "$VENV/bin/python" -c "import scanmania" 2>/tmp/scanmania-import.err; then
+    head -5 /tmp/scanmania-import.err || true
+    git reset -q --hard "$before"
+    "$VENV/bin/pip" install -q -r requirements.txt || true
+    die "the pulled tree does not import — rolled back, services untouched"
+fi
+echo "OK."
+
+# --- 4c. Unit files -----------------------------------------------------------
+# Nothing installed these, so a fix to StartLimitBurst or TimeoutStopSec could
+# be committed, deployed, and read back from the repo as the state of the box
+# while the NUC kept running whatever was hand-copied months ago.
+say "Syncing unit files"
+_units_changed=0
+for unit in scanmania.service scanmania-kiosk.service; do
+    if [ -f "deploy/$unit" ] && ! cmp -s "deploy/$unit" "/etc/systemd/system/$unit"; then
+        install -m 644 "deploy/$unit" "/etc/systemd/system/$unit"
+        echo "  updated $unit"
+        _units_changed=1
+    fi
+done
+if [ "$_units_changed" -eq 1 ]; then
+    systemctl daemon-reload
+else
+    echo "  unchanged."
+fi
+
 say "Restarting services"
 systemctl restart "${SERVICES[@]}"
 sleep 6

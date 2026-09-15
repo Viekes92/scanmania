@@ -17,6 +17,7 @@
 #   ./tools/push_sounds.sh                  # copy to the default NUC
 #   ./tools/push_sounds.sh root@10.0.0.5    # somewhere else
 #   DRY=1 ./tools/push_sounds.sh            # show what would be sent
+#   YES=1 ./tools/push_sounds.sh            # skip the overwrite confirmation
 
 set -euo pipefail
 
@@ -45,6 +46,27 @@ if [ -n "${DRY:-}" ]; then
 fi
 
 ssh "$HOST" "mkdir -p '$REMOTE_DIR'"
+
+# Back up whatever is already there before overwriting it.
+#
+# Audio is gitignored, so THE BOX IS THE ONLY COPY. A second operator on a
+# fresh clone runs gen_placeholder_sounds.py to have something to test with,
+# then runs this to "make sure the box has the audio" — and replaces the real
+# soundtrack with sine tones. The generator guards that exact hazard with
+# --force; this did not guard it at all.
+BACKUP="$REMOTE_DIR/.replaced-$(date +%Y%m%dT%H%M%S)"
+if ssh "$HOST" "ls '$REMOTE_DIR'/*.wav '$REMOTE_DIR'/*.mp3 '$REMOTE_DIR'/*.ogg >/dev/null 2>&1"; then
+    echo
+    echo "The box already has audio. It will be overwritten where names match."
+    ssh "$HOST" "ls -la '$REMOTE_DIR' | tail -n +2"
+    if [ -z "${YES:-}" ]; then
+        printf '\nType "replace" to continue: '
+        read -r reply
+        [ "$reply" = "replace" ] || { echo "Nothing sent."; exit 1; }
+    fi
+    ssh "$HOST" "mkdir -p '$BACKUP' && cp -p '$REMOTE_DIR'/*.wav '$REMOTE_DIR'/*.mp3 '$REMOTE_DIR'/*.ogg '$BACKUP'/ 2>/dev/null || true"
+    echo "Previous audio kept at $BACKUP"
+fi
 
 # rsync if the box has it (only sends what changed — a 14 MB bed does not need
 # resending because a 60 KB cue did); scp otherwise.

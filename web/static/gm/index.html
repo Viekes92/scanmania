@@ -778,7 +778,13 @@
     /* -----------------------------------------------------------------------
        WebSocket status
     ----------------------------------------------------------------------- */
+    /* Above the FORCE RESET button, which is fixed at bottom-right with
+       z-index 60 and covered this completely. During the first seconds of a
+       wifi drop — before the disconnect banner appears — the GM had no visible
+       sign the console had gone stale, which is exactly the window in which
+       they press COUNT IN. */
     #wsStatus {
+      z-index: 70;
       position: fixed;
       bottom: 8px;
       right: 12px;
@@ -961,7 +967,10 @@
 
 
   <!-- GM action feedback -->
-  <div id="gmFeedback" style="
+  <!-- z-index 110: above the assisted confirm/veto overlay (100). A failed
+       BUST/CLEAR used to render its error behind that overlay, so the GM saw
+       an unresponsive screen and tapped again with a player's run paused. -->
+  <div id="gmFeedback" style="z-index:110;
     display:none;
     padding: 8px 14px;
     font-size: 13px;

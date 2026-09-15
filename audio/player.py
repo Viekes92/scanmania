@@ -184,7 +184,7 @@ class AudioPlayer:
             self._current_music = filename
             log.info("Audio: music -> %s", filename)
         except Exception as exc:
-            log.warning("Audio: could not play music %r: %s", filename, exc)
+            self._device_lost(f"playing {filename!r}: {exc}")
             self._current_music = None
 
     def stop_music(self, fade_ms: int = 400) -> None:
@@ -203,13 +203,16 @@ class AudioPlayer:
         """Fire a one-shot over the top of the bed. Cheap; safe on the game path."""
         if not self._available or not filename:
             return
+        if filename in self._missing:
+            return          # already known bad; do not re-stat and re-decode
+                            # it on the game path at every checkpoint
         sound = self._sounds.get(filename) or self._load_cue(filename)
         if sound is None:
             return
         try:
             sound.play()
         except Exception as exc:
-            log.warning("Audio: could not play cue %r: %s", filename, exc)
+            self._device_lost(f"playing cue {filename!r}: {exc}")
 
     def stop_all(self, fade_ms: int = 0) -> None:
         """Everything quiet, bed included. Used by the shutdown sequence."""
@@ -224,6 +227,24 @@ class AudioPlayer:
     # ------------------------------------------------------------------
     # Introspection
     # ------------------------------------------------------------------
+
+    def _device_lost(self, why: str) -> None:
+        """
+        Mark the device gone so the box stops claiming it is playing.
+
+        _available and _error were only ever written in start()/stop(), and
+        playback errors were swallowed into a log line — so unplugging the DAC,
+        or a plugged-in HDMI stealing the default sink, left the box silent for
+        the rest of the day while /api/admin/audio kept answering
+        {"available": true, "music": "ambient.mp3"} and the admin card the docs
+        point operators at showed it happily playing. Silent when it should be
+        loud, on the one surface meant to tell you.
+        """
+        if self._available:
+            log.error("Audio: device lost while %s — running silent", why)
+        self._available = False
+        self._error = f"device lost while {why}"
+        self._current_music = None
 
     @property
     def available(self) -> bool:
@@ -267,6 +288,10 @@ class AudioPlayer:
             log.error("Audio: %r is outside %s — ignoring", filename, self._dir)
             self._missing.add(filename)
             return None
+        if path.is_file():
+            # An operator who drops the file in mid-day should stop being told
+            # it is missing.
+            self._missing.discard(filename)
         if not path.is_file():
             if filename not in self._missing:
                 self._missing.add(filename)

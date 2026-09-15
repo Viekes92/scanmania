@@ -216,6 +216,7 @@ class GameRunner:
             asyncio.create_task(self._inputs_listener(), name="inputs_listener"),
             asyncio.create_task(self._vision_listener(), name="vision_listener"),
             asyncio.create_task(self._clock_broadcaster(), name="clock_broadcaster"),
+            asyncio.create_task(self._leaderboard_refresher(), name="leaderboard_day"),
             asyncio.create_task(self._event_drain(), name="event_drain"),
             asyncio.create_task(self._hardware_poller(), name="hardware_poller"),
             # Supervised, not fire-and-forget. These used to be created with no
@@ -1717,6 +1718,31 @@ class GameRunner:
                         metrics.emit("vision.recovered", 1.0)
             else:
                 log.warning("vision_listener: unknown event kind %r", kind)
+
+    async def _leaderboard_refresher(self) -> None:
+        """
+        Re-read the board when the operating day rolls over.
+
+        The cache was written only on SaveRun/VoidRun, so after an unattended
+        night the 09:00 rollover left yesterday's names and times broadcasting
+        at 10 Hz to the street-facing display until somebody finished a run —
+        potentially the whole morning queue, photographed.
+        """
+        from persist.db import day_bounds
+        last_day = day_bounds()[0][:10]
+        while True:
+            await asyncio.sleep(60)
+            try:
+                today = day_bounds()[0][:10]
+                if today != last_day:
+                    last_day = today
+                    await self._refresh_leaderboard()
+                    log.info("operating day rolled to %s — leaderboard refreshed",
+                             today)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                log.warning("leaderboard refresh failed: %s", exc)
 
     async def _clock_broadcaster(self) -> None:
         """

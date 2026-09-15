@@ -468,6 +468,18 @@ async def async_main(args: argparse.Namespace) -> int:
     # the loop. Manual and on-stop snapshots worked, so an unclean shutdown
     # (power cut, OOM kill) lost every run back to the last button press.
     snap_min = getattr(cfg.game, "snapshot_interval_min", 60)
+    # Retention is NOT optional, even when snapshots are.
+    #
+    # rotate_old_events / purge_old_players / rotate_config_audit all live
+    # inside the snapshot loop, so snapshot_interval_min: 0 — which reads as
+    # "turn off snapshots" — also silently turned off the 30-day event rotation
+    # and, more seriously, the player PII purge, for the whole tour.
+    if snap_min <= 0:
+        from persist.backup import retention_loop
+        tasks.append(asyncio.create_task(
+            retention_loop(db), name="retention"))
+        log.info("Rolling snapshots: disabled — retention still runs hourly")
+
     if snap_min > 0:
         from persist.backup import rolling_snapshot_loop, snapshot_dir
         snap_dir = snapshot_dir()

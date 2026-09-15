@@ -18,7 +18,10 @@ StartLimitBurst=0
 [Service]
 Type=simple
 WorkingDirectory=/opt/scanmania
-EnvironmentFile=/etc/default/scanmania
+# Optional, like the kiosk unit. Without the dash a missing file makes the
+# unit fail to LOAD, and with Restart=always + StartLimitBurst=0 it retries
+# every couple of seconds forever while the panels show connection-refused.
+EnvironmentFile=-/etc/default/scanmania
 
 # Real vision. vision/service.py owns the RTSP pipeline; --fake-vision here was
 # left over from before that class existed and silently disabled every camera.

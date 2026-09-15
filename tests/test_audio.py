@@ -211,3 +211,63 @@ def test_the_bed_is_not_shipped_as_wav(audio_cfg):
             assert f.stat().st_size < 20_000_000, (
                 f"{name} is a {f.stat().st_size/1e6:.0f} MB wav — "
                 f"encode the bed as .mp3 or .ogg")
+
+
+# ---------------------------------------------------------------------------
+# Audit round 2 — regressions
+# ---------------------------------------------------------------------------
+
+def test_unmuting_restores_the_bed_without_refiring_the_cue(player, audio_cfg):
+    """Cues fire once, on entering a state.
+
+    set_muted(False) used to replay the whole state, so unmuting while the box
+    sat in BUSTED fired defeat.wav with nobody running, and unmuting mid-run
+    fired a spurious checkpoint sting.
+    """
+    cues = AudioCuePlayer(player, audio_cfg)
+    cues.set_state("BUSTED")
+    fired_before = list(player.cues_played)
+    cues.set_muted(True)
+    cues.set_muted(False)
+    assert player.cues_played == fired_before, "unmuting re-fired the one-shot"
+
+
+def test_a_lost_device_stops_the_box_claiming_it_is_playing(tmp_path):
+    """The admin card is the surface the docs point operators at.
+
+    _available was only written in start()/stop() and playback errors were
+    swallowed, so a DAC unplugged mid-tour left the box silent all day while
+    the API kept answering available:true with a track name.
+    """
+    (tmp_path / "bed.wav").write_bytes(b"RIFF")
+    p = AudioPlayer(sounds_dir=tmp_path)
+    p._available = True
+    p._current_music = "bed.wav"
+
+    class _Dead:
+        class music:
+            @staticmethod
+            def load(*a): raise OSError("No such device")
+            @staticmethod
+            def set_volume(*a): pass
+            @staticmethod
+            def play(*a): pass
+            @staticmethod
+            def get_busy(): return False
+    p._mixer = _Dead
+
+    p.play_music("bed.wav")
+    assert p.available is False, "device loss did not mark the player unavailable"
+    st = p.status()
+    assert st["available"] is False and st["music"] is None
+    assert "device lost" in (st["error"] or "")
+
+
+def test_a_file_that_will_not_decode_is_not_retried_every_frame(tmp_path):
+    """play_cue consulted _sounds but never _missing, so a bad file was
+    re-stat'd and re-decoded on the game path at every checkpoint."""
+    p = AudioPlayer(sounds_dir=tmp_path)
+    p._available = True
+    p._mixer = object()
+    p._missing.add("broken.wav")
+    p.play_cue("broken.wav")          # must not touch the mixer at all

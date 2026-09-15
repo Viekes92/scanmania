@@ -458,7 +458,13 @@ def register_routes(
     )
     async def admin_status():
         """Return state, uptime, run counts, and faults."""
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        # The operating day, not the UTC calendar day. These counters rolled
+        # at UTC midnight = 02:00 local in summer — mid-session on a late slot,
+        # which is the exact failure SCANMANIA_DAY_START_HOUR was introduced to
+        # fix — leaving the dashboard disagreeing with the Leaderboard tab on
+        # the same page.
+        from persist.db import day_bounds
+        today = day_bounds()[0][:10]
         by_outcome = await db.count_runs_by_outcome(since_date=today)
 
         runner = _runner()
@@ -1345,6 +1351,17 @@ def register_routes(
             player = getattr(cues, "_player", None)
             if player is None:
                 raise HTTPException(status_code=503, detail="no audio player")
+            # Only files the config actually names, and only ones already
+            # decoded at startup. play_cue falls through to a blocking full
+            # decode, so an arbitrary name let one request freeze the event
+            # loop for seconds — the FSM drain and the stopwatch broadcast with
+            # it — and pin the result in RAM permanently.
+            allowed = set(getattr(cues, "_music", {}).values())
+            allowed |= set(getattr(cues, "_cues", {}).values())
+            if body.play not in allowed:
+                raise HTTPException(
+                    status_code=400,
+                    detail="that file is not named in the audio config")
             # A cue, not the bed: auditioning must not knock the running
             # soundtrack off whatever it is doing.
             player.play_cue(body.play)

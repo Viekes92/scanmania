@@ -146,7 +146,12 @@ def _make_audio(cfg):
                              music_volume=acfg.music_volume,
                              cue_volume=acfg.cue_volume,
                              device=acfg.device)
-        if not player.start(preload=acfg.filenames()):
+        # cue_files(), not filenames(): the latter includes the BED, and
+        # preloading it decodes the whole track into RAM as a Sound — measured
+        # at 105 MB for the shipped 10-minute mp3, and several GB for the
+        # 8-hour source the README warns about. __main__ already gets this
+        # right; this did not.
+        if not player.start(preload=acfg.cue_files()):
             log.info("Audio: silent (%s)", player.status().get("error"))
             return None
         log.info("Audio: on — you should hear this run")

@@ -52,10 +52,13 @@ class AudioCuePlayer:
         if self._muted:
             self._safe(self._player.stop_all, self._fade_ms)
         else:
-            # Put the bed back for whatever state we are actually in.
-            state, self._state = self._state, None
-            if state:
-                self.set_state(state)
+            # Put the BED back — not the one-shot. set_state replays both, so
+            # unmuting while the box sat in BUSTED fired defeat.wav with nobody
+            # running, and unmuting mid-run fired a checkpoint sting. Cues are
+            # meant to fire once, on entering a state.
+            key = (self._state or "").upper()
+            if key in self._music:
+                self._safe(self._player.play_music, self._music[key], self._fade_ms)
 
     def set_state(self, state: str) -> None:
         """Called on every FSM transition. Cheap when the state has not changed."""

@@ -206,9 +206,22 @@ The game logs `DATABASE INTEGRITY CHECK FAILED` at startup and keeps running.
 
 ```bash
 systemctl stop scanmania-kiosk scanmania
-mv /var/lib/scanmania/scanmania.db /var/lib/scanmania/scanmania.db.corrupt
-cp /var/backups/scanmania/$(ls -t /var/backups/scanmania | head -1) \
-   /var/lib/scanmania/scanmania.db
+
+# Move the WAL and SHM aside WITH the database, not just the database.
+#
+# SQLite replays an orphaned -wal over whatever .db it finds next to it, so
+# restoring a snapshot beside the corrupt database's WAL re-corrupts the
+# restore — the runbook made the problem worse, under pressure, at a venue.
+cd /var/lib/scanmania
+mkdir -p corrupt-$(date +%Y%m%dT%H%M%S) && mv scanmania.db* corrupt-*/ 2>/dev/null
+
+# Newest snapshot. Check it is not a truncated one from an interrupted VACUUM
+# before trusting it.
+newest="/var/backups/scanmania/$(ls -t /var/backups/scanmania | head -1)"
+sqlite3 "$newest" 'PRAGMA quick_check;'      # must print: ok
+cp "$newest" /var/lib/scanmania/scanmania.db
+chown root:root /var/lib/scanmania/scanmania.db
+
 systemctl start scanmania scanmania-kiosk
 ```
 

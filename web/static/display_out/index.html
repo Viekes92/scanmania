@@ -362,10 +362,11 @@
       if (!r.ok) return;
       const d = await r.json();
       const rows = Array.isArray(d) ? d : (d.leaderboard || d.runs || []);
-      if (rows.length) {
-        lastLeaderboardSig = JSON.stringify(rows.slice(0, LB_ROWS));
-        renderLeaderboard(rows);
-      }
+      // No length guard: a reload during the morning window before the first
+      // clean run must show an empty board, not silently keep whatever the
+      // previous render left on a screen the public photographs.
+      lastLeaderboardSig = JSON.stringify(rows.slice(0, LB_ROWS));
+      renderLeaderboard(rows);
     } catch (e) { /* the board simply stays empty */ }
   }
 
@@ -423,7 +424,12 @@
     // changes a few times an hour, so the outdoor Chromium never idled. Guard
     // on length too: the server ships an empty array before the first save,
     // and a bare truthiness check wiped the board the page had just seeded.
-    if (Array.isArray(msg.leaderboard) && msg.leaderboard.length) {
+    // Render an EMPTY board too. The && length guard meant the board could
+    // never return to empty: at the 09:00 rollover the first saved run
+    // re-scopes the query, and if that run was busted the broadcast carries
+    // [] — which was skipped, leaving YESTERDAY's names and times on a
+    // street-facing screen for the whole morning queue.
+    if (Array.isArray(msg.leaderboard)) {
       const sig = JSON.stringify(msg.leaderboard.slice(0, LB_ROWS));
       if (sig !== lastLeaderboardSig) {
         lastLeaderboardSig = sig;

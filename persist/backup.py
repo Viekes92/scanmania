@@ -168,6 +168,26 @@ async def rolling_snapshot_loop(
             log.error("Rolling snapshot failed: %s", exc)
 
 
+async def retention_loop(db: Database, interval_min: int = 60) -> None:
+    """
+    Run the retention passes when the snapshot loop is not running.
+
+    They used to exist only inside rolling_snapshot_loop, so disabling
+    snapshots also disabled the PII purge. Keeping personal data because
+    somebody turned off backups is not a trade anyone chose.
+    """
+    while True:
+        await asyncio.sleep(interval_min * 60)
+        try:
+            await db.rotate_old_events(_EVENT_RETENTION_DAYS)
+            await db.purge_old_players(_PII_RETENTION_DAYS)
+            await db.rotate_config_audit()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.warning("retention pass failed: %s", exc)
+
+
 def _prune_snapshots(output_dir: str, keep: int) -> None:
     """Delete oldest snapshots beyond the keep limit."""
     pattern = str(Path(output_dir) / "scanmania_*.db")

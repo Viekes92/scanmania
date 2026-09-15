@@ -138,11 +138,41 @@ class ScanManiaApp:
     def build(self) -> FastAPI:
         """Wire all routes and return the FastAPI app."""
         self._add_origin_guard()
+        self._add_no_cache_guard()
         self._mount_static()
         self._add_page_routes()
         self._add_ws_route()
         self._register_api_routes()
         return self.app
+
+    # ------------------------------------------------------------------
+    # Cache policy
+    # ------------------------------------------------------------------
+
+    def _add_no_cache_guard(self) -> None:
+        """
+        Never let a browser cache the markup or the stylesheet.
+
+        The frontends are single-file HTML with no build step, so there is no
+        content hash in any filename. A kiosk browser is restarted far more
+        often than it is cleared, and after a deploy Chromium kept serving the
+        PREVIOUS build from disk cache — the box was running new code while the
+        screens showed the old design. Nothing about that reads as a caching
+        problem; it reads as a deploy that silently did nothing.
+
+        Fonts and artwork are deliberately left cacheable: 3.4 MB that never
+        changes, and re-fetching it on every kiosk restart is pure waste.
+        """
+        @self.app.middleware("http")
+        async def _no_cache(request, call_next):
+            response = await call_next(request)
+            ctype = response.headers.get("content-type", "")
+            if ctype.startswith("text/html") or ctype.startswith("text/css"):
+                response.headers["Cache-Control"] = \
+                    "no-store, no-cache, must-revalidate, max-age=0"
+                response.headers["Pragma"] = "no-cache"
+                response.headers["Expires"] = "0"
+            return response
 
     # ------------------------------------------------------------------
     # Cross-origin guard
@@ -313,12 +343,26 @@ class ScanManiaApp:
 # Helper
 # ---------------------------------------------------------------------------
 
+# The frontends are single-file HTML with no build step and therefore no
+# content hash in their filenames. Chromium caches them, and a kiosk browser is
+# restarted far more often than it is cleared — after a deploy it happily kept
+# serving the previous build from disk cache, so the screens showed the old
+# design while the code on the box was new. Nothing about that looks like a
+# caching problem; it looks like the deploy silently failed.
+_NO_STORE = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
 def _serve_page(name: str) -> FileResponse:
     path = _STATIC_ROOT / name / "index.html"
     if path.exists():
-        return FileResponse(str(path))
+        return FileResponse(str(path), headers=_NO_STORE)
     # Fallback: return a minimal placeholder so the route always resolves.
-    return FileResponse(str(_make_placeholder(name)), media_type="text/html")
+    return FileResponse(str(_make_placeholder(name)),
+                        media_type="text/html", headers=_NO_STORE)
 
 
 def _make_placeholder(name: str) -> Path:

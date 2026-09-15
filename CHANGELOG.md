@@ -66,6 +66,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **The kiosk served a cached frontend after a deploy.** The screens are
+  single-file HTML with no build step, so no filename carries a content hash.
+  Chromium kept the previous build in disk cache across restarts: after a deploy
+  the NUC ran new code while the panels showed the old design, which reads as a
+  deploy that silently did nothing rather than as a caching problem. Markup and
+  `brand.css` are now served `no-store`; fonts and artwork stay cacheable, being
+  3.4 MB that never changes.
+
 - **The attract pulse did not run after a force reset.** RESET is transient: the
   runner sets `self.state = ATTRACT` directly and executes its own side effects
   rather than going through `dispatch()`. The light-cue hook lived only in

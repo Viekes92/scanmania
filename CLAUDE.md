@@ -8,7 +8,7 @@ ScanMania is a laser-maze game in a shipping container. A camera watches the cei
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m scanmania --fake-all        # io/fake.py + inputs/fake.py + vision/fake.py active
+python -m scanmania --fake-all        # io/ + inputs/ + vision/ + audio/ fakes active
 ```
 
 Open http://localhost:8000 — frontends are live. Drive a full run from another terminal:
@@ -19,6 +19,24 @@ python tools/fake_run.py --scenario busted   # player breaks beam b03 mid-run
 python tools/fake_run.py --scenario aborted  # max_run_ms exceeded
 python tools/fake_run.py --scenario voided   # gamemaster voids after the fact
 ```
+
+`fake_run.py` builds its **own** runner in its own process — it does not drive a
+`python -m scanmania` you have running, so watch its output, not the server's.
+
+**Hearing the soundtrack.** Audio is real under `--fake-all` (it is the one thing
+a laptop already has hardware for), and on in `fake_run.py`. Add `--pace` or the
+run is over before you can hear it:
+
+```bash
+python tools/fake_run.py --scenario clean --pace 3   # hear the whole arc
+python tools/fake_run.py --scenario busted --pace 3  # ...and the defeat cue
+python tools/fake_run.py --scenario clean --silent   # no audio
+```
+
+To audition one file, or to check what actually loaded: **Admin → Hardware →
+Audio**. To drive the *server* through a run instead, force-reset out of MASTER
+first (the box boots into it), then use the GM console or
+`POST /api/admin/dev/trigger`.
 
 Frontends:
 - `/gm`           — gamemaster console (iPad, includes player sign-in)
@@ -57,6 +75,8 @@ iobackend/  Modbus master, preset resolution, reconciliation loop, Art-Net DMX
             (hazer + room lights), FSM-driven light cues. fake.py is mandatory.
 inputs/     Pico USB serial link + MicroPython firmware. fake.py is mandatory.
 vision/     RTSP decode, dot detection, baseline, evidence thumbnails, MJPEG out. fake.py is mandatory.
+audio/      The soundtrack: player.py owns the device, cues.py maps FSM states
+            onto it, fake.py is mandatory. Sounds live in sounds/ as .wav.
 persist/    SQLite schema + migrations, local snapshots, CSV exports. No cloud sync.
 web/        FastAPI + WebSocket broadcast, route handlers, static frontends (no build step).
 config/     YAML/JSON files — the only place to change hardware topology or game settings.
@@ -64,6 +84,11 @@ tools/      Dev utilities: fake_run.py, capture.py (calibration), camshow.py and
             cam_probe.py (viewers), ramp.py, click_relays.py, deploy.sh.
             laser.py is the operator's own reference file — never modify it.
             shutdown.py is the end-of-day close: save, then darken.
+            gen_placeholder_sounds.py writes stand-in .wav files into sounds/;
+            push_sounds.sh copies the real soundtrack to the box.
+sounds/     The audio the container plays. GITIGNORED except the README —
+            push it with tools/push_sounds.sh, not deploy.sh. A fresh checkout
+            has none and runs silent; see sounds/README.md.
 tests/      Pure-logic modules are covered; every I/O boundary is not (see docs/testing.md).
             FSM tests are the most important — run them first.
 docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is not done.
@@ -76,6 +101,17 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
 - **Config keys:** add to the YAML/JSON file + a one-line comment with purpose and sane range + validation in `config/loader.py`.
 - **Commit format:** `<scope>: <what changed>` e.g. `fsm: handle false-start during COUNTDOWN`.
 - **DMX:** one universe, one owner — `iobackend/dmx.py`. Every Art-Net frame carries all 512 channels, so a second sender would zero the first one's work twice a second. Patch: ch1 hazer blower, ch2 haze, ch3 left, ch4 right, ch5 entrance. Run `python3 tools/dmxpatch.py` for the live sheet; it is generated from config, never hand-maintained. Haze is **duty-cycled** (`haze_burst_s` / `haze_interval_s`) because continuous output at any usable level is too much. Light levels come from `light_cues` in `mazes.yaml`, keyed by FSM state. The entrance is `always_on` and the DMX layer refuses to dim it — on every path except one: `DmxController.power_down()`, reached only from an explicit end-of-day shutdown request, where the operator is at the breaker and wants the box actually dark. `blackout()`, which is what a dying process calls, still leaves the entrance lit. COUNTDOWN and every RUN state are forced dark in code, over any cue and over the GM's work-light switch.
+- **Audio:** decoration, and it must never be able to end a run — a missing
+  file, a dead sound card or a mixer that will not start are all silence plus a
+  log line, never an exception on the game path. `audio.music` in `game.yaml` is
+  keyed by FSM state and a state that is **not listed keeps whatever is
+  playing**, which is what carries one track across `RUN_SEG_1/2/3` instead of
+  restarting it at each checkpoint; ask for quiet by name with `silence`.
+  `audio.cues` fires one-shots on entering a state. **Cues are `.wav`** — decoded
+  into RAM at startup, because the game path may only call `play()`. **The bed
+  is `.mp3`/`.ogg`** — it streams, and an 8-hour ambient track as `.wav` is
+  5 GB. Both are checked at startup (`verify_music`), so a codec the box cannot
+  decode is a boot-log line rather than silence discovered mid-show.
 - **Recalibrating:** stop the game (`systemctl stop scanmania-kiosk scanmania` — kiosk first, or its `Wants=` drags the game back up), run `tools/capture.py`, open port 8090. Light a maze, tune each camera, capture, repeat, write. Verify on `/admin/beams`.
 - **Module docstrings:** every module opens with its one job, inputs, outputs, and invariants (3–6 lines). No exceptions.
 

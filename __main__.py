@@ -39,11 +39,13 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="""
 Backend flags
 -------------
-  --fake-all       Activate all fake backends (io + vision + inputs).
+  --fake-all       Activate all fake backends (io + vision + inputs). Audio
+                   stays REAL so you can hear it; use --fake-audio for silence.
                    Config is loaded from ./config/ (not /etc/scanmania/).
                    Use this for laptop development.
   --fake-io        Use the in-memory relay board fake (io/fake.py).
   --fake-vision    Use the recorded-video vision fake (vision/fake.py).
+  --fake-audio     Silent audio player that logs what it would play.
   --fake-inputs    Use the no-op Pico link fake (inputs/fake.py).
 
 Any combination is valid. A flag only matters if the corresponding real
@@ -62,6 +64,9 @@ Examples
                         help="Use fake relay board backend (io/fake.py).")
     parser.add_argument("--fake-vision", action="store_true",
                         help="Use fake camera/vision backend (vision/fake.py).")
+    parser.add_argument("--fake-audio",  action="store_true",
+                        help="Silent audio player that logs what it would play "
+                             "(audio/fake.py).")
     parser.add_argument("--fake-inputs", action="store_true",
                         help="Use fake Pico serial link (inputs/fake.py).")
     parser.add_argument("--config-dir",  default=None, metavar="DIR",
@@ -116,7 +121,8 @@ def configure_logging(level: str) -> None:
 def resolve_config_dir(args: argparse.Namespace) -> Path:
     if args.config_dir:
         return Path(args.config_dir).resolve()
-    if args.fake_all or args.fake_io or args.fake_vision or args.fake_inputs:
+    if (args.fake_all or args.fake_io or args.fake_vision or args.fake_inputs
+            or args.fake_audio):
         # Development mode: look for config/ relative to the repo root
         return Path(__file__).resolve().parent / "config"
     # Production: systemd sets the working directory; use /etc/scanmania/config
@@ -370,6 +376,45 @@ async def async_main(args: argparse.Namespace) -> int:
     else:
         log.info("Hazer: not configured")
 
+    # Audio. Decoration, so every failure here is a log line and silence:
+    # a box with no sound card still runs a full day of games.
+    audio_player = None
+    acfg = getattr(cfg.game, "audio", None)
+    if acfg is not None and acfg.enabled:
+        sounds_dir = Path(acfg.sounds_dir)
+        if not sounds_dir.is_absolute():
+            sounds_dir = Path(__file__).resolve().parent / sounds_dir
+        # NOT included in --fake-all. Every other fake stands in for hardware
+        # that a laptop does not have; audio needs a sound card, which it does.
+        # Faking it by default meant the documented dev command was silent —
+        # you could not hear the thing you were working on. --fake-audio is the
+        # explicit opt-out, and the real player degrades to silence anyway on a
+        # box with no output.
+        if args.fake_audio:
+            from audio.fake import FakeAudioPlayer
+            audio_player = FakeAudioPlayer(sounds_dir=str(sounds_dir))
+        else:
+            from audio.player import AudioPlayer
+            audio_player = AudioPlayer(
+                sounds_dir=sounds_dir,
+                music_volume=acfg.music_volume,
+                cue_volume=acfg.cue_volume,
+                device=acfg.device,
+                enabled=acfg.enabled,
+            )
+        # Decode the one-shots now: a checkpoint sting must not wait on a disk
+        # read while someone is running.
+        if not audio_player.start(preload=acfg.cue_files()):
+            log.warning("Audio: running silent — %s",
+                        audio_player.status().get("error") or "unavailable")
+        else:
+            bad = audio_player.verify_music(acfg.music_files())
+            if bad:
+                log.warning("Audio: %d bed track(s) will not play: %s",
+                            len(bad), ", ".join(bad))
+    else:
+        log.info("Audio: not configured")
+
     # ================================================================
     #  PHASE 3 — Start services
     # ================================================================
@@ -386,6 +431,12 @@ async def async_main(args: argparse.Namespace) -> int:
         runner.lights = LightCuePlayer(hazer, cfg.mazes.light_cues)
         web_app_lights = runner.lights
         log.info("Light cues: %s", ", ".join(sorted(cfg.mazes.light_cues)) or "none")
+    if audio_player is not None:
+        from audio.cues import AudioCuePlayer
+        runner.audio = AudioCuePlayer(audio_player, acfg)
+        log.info("Audio cues: music=%s cues=%s",
+                 ",".join(sorted(acfg.music)) or "none",
+                 ",".join(sorted(acfg.cues)) or "none")
     tasks.append(asyncio.create_task(runner.run(), name="runner"))
 
     if hazer:
@@ -485,6 +536,12 @@ async def async_main(args: argparse.Namespace) -> int:
         log.info("Snapshot exported to %s", snap_path)
     except Exception as e:
         log.warning("Snapshot export failed: %s", e)
+
+    if audio_player is not None:
+        try:
+            audio_player.stop()
+        except Exception as e:
+            log.warning("Audio: could not release the device: %s", e)
 
     await db.close()
     if exit_code == 0:

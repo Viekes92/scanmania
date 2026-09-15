@@ -41,3 +41,15 @@ config/*.bak
 config/*.json.*.bak
 config/*.json.new
 config/*.tmp
+
+# Audio. The soundtrack is scp'd to the box, not carried in git: a single
+# ambient bed is 14 MB and the repo is cloned and pulled far more often than
+# the music changes. sounds/README.md documents the layout and the ffmpeg
+# recipe for cutting a seamless loop; tools/gen_placeholder_sounds.py writes
+# stand-in tones so a fresh checkout still has something to play.
+# deploy.sh pulls, and git leaves ignored files alone, so the real audio
+# survives every deploy untouched.
+sounds/*.wav
+sounds/*.mp3
+sounds/*.ogg
+sounds/*.flac

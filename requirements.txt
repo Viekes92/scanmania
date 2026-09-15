@@ -34,6 +34,12 @@ pyserial-asyncio==0.6            # async serial for Pico USB CDC link
 opencv-python-headless==5.0.0.93    # RTSP decode + dot detection (NUC, no GUI)
 numpy==2.5.2                    # array ops in vision pipeline
 
+# ---- Audio ----
+# Mixer only (pygame.mixer); pygame.init() is never called, so no video/X is
+# involved. Optional at runtime: audio/player.py degrades to silence if the
+# import or the mixer init fails, and the game runs a full day without it.
+pygame==2.6.1                     # music bed + one-shot cues, .wav
+
 # ---- Config ----
 pyyaml==6.0.3                      # YAML config file parsing
 

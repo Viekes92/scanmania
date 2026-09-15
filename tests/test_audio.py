@@ -1,0 +1,213 @@
+"""
+tests/test_audio.py — the soundtrack: cue mapping, and that it can never bite.
+
+Inputs:  the shipped audio config, the fake player, a real AudioPlayer with no
+         mixer behind it
+Outputs: assertions that the right thing plays at the right moment, and that
+         every failure mode is silence rather than an exception
+Invariant under test: audio is decoration. Nothing in here may be able to end
+         a run, so every fault path is checked for silence, not for raising.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+import config.loader as loader
+from audio.cues import AudioCuePlayer
+from audio.fake import FakeAudioPlayer
+from audio.player import AudioPlayer
+
+RUN = ["ATTRACT", "REGISTERED", "ARM", "COUNTDOWN",
+       "RUN_SEG_1", "RUN_SEG_2", "RUN_SEG_3", "FINISHED", "RESULT"]
+
+
+@pytest.fixture
+def audio_cfg():
+    return loader.load_game().audio
+
+
+@pytest.fixture
+def player():
+    p = FakeAudioPlayer()
+    p.start()
+    return p
+
+
+# ---------------------------------------------------------------------------
+# What plays when
+# ---------------------------------------------------------------------------
+
+def test_a_clean_run_sounds_right(player, audio_cfg):
+    cues = AudioCuePlayer(player, audio_cfg)
+    for state in RUN:
+        cues.set_state(state)
+
+    assert player.cues_played == [
+        "countdown.wav", "sector.wav", "sector.wav", "victory.wav"
+    ], "wrong one-shots, or wrong order, through a clean run"
+
+
+def test_the_run_track_survives_both_checkpoints(player, audio_cfg):
+    """The whole point of holding the bed across states.
+
+    Re-naming the same file at RUN_SEG_2 and RUN_SEG_3 must not restart it —
+    a track that jumps back to bar one every time someone crosses a checkpoint
+    is worse than no music.
+    """
+    cues = AudioCuePlayer(player, audio_cfg)
+    for state in RUN:
+        cues.set_state(state)
+
+    assert player.music_starts.count("game.wav") == 1, "run track restarted"
+    assert player.restarts_avoided >= 2
+
+
+def test_a_state_with_no_music_entry_keeps_the_bed(player):
+    """Silence has to be asked for by name, or every unlisted state would
+    punch a hole in the soundtrack."""
+    cues = AudioCuePlayer(player, {"music": {"ATTRACT": "ambient.wav"},
+                                   "cues": {}})
+    cues.set_state("ATTRACT")
+    cues.set_state("SOME_STATE_NOBODY_CONFIGURED")
+    assert player.music == "ambient.wav"
+
+
+def test_silence_is_a_real_instruction(player):
+    cues = AudioCuePlayer(player, {"music": {"A": "bed.wav", "B": "silence"}})
+    cues.set_state("A")
+    assert player.music == "bed.wav"
+    cues.set_state("B")
+    assert player.music is None
+
+
+def test_re_entering_a_state_does_not_re_fire_its_cue(player, audio_cfg):
+    cues = AudioCuePlayer(player, audio_cfg)
+    cues.set_state("RUN_SEG_2")
+    cues.set_state("RUN_SEG_2")
+    assert player.cues_played == ["sector.wav"]
+
+
+def test_config_keys_are_case_insensitive(player):
+    cues = AudioCuePlayer(player, {"music": {"attract": "bed.wav"}})
+    cues.set_state("ATTRACT")
+    assert player.music == "bed.wav"
+
+
+def test_mute_stops_the_bed_and_restores_it(player, audio_cfg):
+    cues = AudioCuePlayer(player, audio_cfg)
+    cues.set_state("ATTRACT")
+    cues.set_muted(True)
+    assert player.music is None
+    cues.set_state("RUN_SEG_1")
+    assert player.music is None, "muted audio still started a track"
+    cues.set_muted(False)
+    assert player.music == "game.wav", "unmuting did not restore the bed"
+
+
+# ---------------------------------------------------------------------------
+# Every failure mode is silence, never an exception
+# ---------------------------------------------------------------------------
+
+def test_a_broken_player_cannot_end_a_run(audio_cfg):
+    class _Exploding:
+        def play_music(self, *a, **k): raise RuntimeError("sound card on fire")
+        def play_cue(self, *a, **k): raise RuntimeError("sound card on fire")
+        def stop_all(self, *a, **k): raise RuntimeError("sound card on fire")
+        def status(self): raise RuntimeError("sound card on fire")
+
+    cues = AudioCuePlayer(_Exploding(), audio_cfg)
+    for state in RUN:
+        cues.set_state(state)          # must not raise
+    cues.stop()
+    assert cues.status()["muted"] is False
+
+
+def test_no_mixer_means_silence_not_a_crash(tmp_path):
+    """A box with no sound card still runs a full day of games."""
+    p = AudioPlayer(sounds_dir=tmp_path, enabled=True)
+    p._available = False               # as if start() had failed
+    p.play_music("anything.wav")
+    p.play_cue("anything.wav")
+    p.stop_music()
+    p.stop_all()
+    p.stop()
+    assert p.available is False
+
+
+def test_disabled_in_config_never_touches_the_device(tmp_path):
+    p = AudioPlayer(sounds_dir=tmp_path, enabled=False)
+    assert p.start() is False
+    assert p.status()["error"] == "disabled in config"
+
+
+def test_a_missing_file_is_logged_once_and_silent(tmp_path):
+    p = AudioPlayer(sounds_dir=tmp_path)
+    p._available = True                # pretend the mixer is up
+    p._mixer = object()                # any use of it would raise
+    assert p._resolve("nope.wav") is None
+    assert p._resolve("nope.wav") is None
+    assert p.status()["missing"] == ["nope.wav"]
+
+
+def test_a_filename_cannot_escape_the_sounds_directory(tmp_path):
+    """The names come from a hand-edited config file."""
+    (tmp_path / "sounds").mkdir()
+    secret = tmp_path / "secret.wav"
+    secret.write_bytes(b"RIFF")
+    p = AudioPlayer(sounds_dir=tmp_path / "sounds")
+    assert p._resolve("../secret.wav") is None
+    assert p._resolve("/etc/passwd") is None
+
+
+# ---------------------------------------------------------------------------
+# The shipped config and the shipped files agree
+# ---------------------------------------------------------------------------
+
+def test_every_sound_the_config_names_exists(audio_cfg):
+    """A cue pointing at a file nobody shipped is silent at a venue, and the
+    first anyone hears of it is the moment it does not play.
+
+    Audio is not carried in git — it is scp'd to the box — so a fresh clone has
+    none and there is nothing to check. Skipping is right there: asserting
+    would fail every clean checkout and CI run, which teaches people to ignore
+    this test. Once ANY audio is present the check is real again, which is the
+    state the box is actually in.
+    """
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent / audio_cfg.sounds_dir
+    present = [p for p in root.glob("*") if p.suffix.lower() in
+               (".wav", ".mp3", ".ogg", ".flac")] if root.is_dir() else []
+    if not present:
+        pytest.skip("no audio present (fresh checkout) — "
+                    "run tools/gen_placeholder_sounds.py or scp the real files")
+    missing = [n for n in audio_cfg.filenames() if not (root / n).is_file()]
+    assert not missing, f"config names sounds that are not in {root}: {missing}"
+
+
+def test_cues_are_wav_and_beds_may_be_compressed(audio_cfg):
+    """Different jobs, different formats.
+
+    A cue is decoded into RAM at startup and must fire the instant a checkpoint
+    goes by, so it stays .wav. The bed streams and runs for minutes, so forcing
+    .wav there would mean 5 GB for an 8-hour ambient track.
+    """
+    playable = (".wav", ".mp3", ".ogg")
+    bad_cues = [n for n in audio_cfg.cue_files() if not n.lower().endswith(".wav")]
+    assert not bad_cues, f"one-shots should be .wav so they fire instantly: {bad_cues}"
+
+    bad_music = [n for n in audio_cfg.music_files()
+                 if not n.lower().endswith(playable)]
+    assert not bad_music, f"bed format needs a decoder that may not exist: {bad_music}"
+
+
+def test_the_bed_is_not_shipped_as_wav(audio_cfg):
+    """A long .wav bed is the mistake this whole split exists to prevent."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent / audio_cfg.sounds_dir
+    for name in audio_cfg.music_files():
+        f = root / name
+        if f.is_file() and f.suffix.lower() == ".wav":
+            assert f.stat().st_size < 20_000_000, (
+                f"{name} is a {f.stat().st_size/1e6:.0f} MB wav — "
+                f"encode the bed as .mp3 or .ogg")

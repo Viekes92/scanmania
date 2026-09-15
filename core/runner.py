@@ -110,6 +110,8 @@ class GameRunner:
         # Latched by power_down(). Nothing may re-light the container after the
         # operator has been told it is safe to cut the breaker.
         self._powered_down: bool = False
+        # The soundtrack. Set by __main__ after construction, like .lights.
+        self.audio: Any = None
         self._countdown_step: int = 0
         self._countdown_total: int = 0
         # monotonic_ns at which the ramp reaches GO, or None outside COUNTDOWN.
@@ -368,6 +370,25 @@ class GameRunner:
         except Exception as exc:
             log.error("light cue for %s failed: %s", state, exc)
 
+    def _cue_audio(self, state: str) -> None:
+        """
+        Point the soundtrack at a state. Same contract as _cue_lights.
+
+        Called from every path that changes self.state, for the same reason:
+        _do_reset_to_attract() does not go through dispatch(), and routing this
+        only through dispatch would leave the attract bed unplayed after a
+        force reset.
+
+        Audio is decoration. It is wrapped here as well as inside the cue
+        player because a sound must never be able to end a run.
+        """
+        if self.audio is None or self._powered_down:
+            return
+        try:
+            self.audio.set_state(state)
+        except Exception as exc:
+            log.error("audio cue for %s failed: %s", state, exc)
+
     async def blackout(self) -> None:
         """
         Everything off: lasers dark, hazer zeroed.
@@ -398,6 +419,11 @@ class GameRunner:
                 self.lights.stop()
             except Exception as exc:
                 log.warning("stopping light cues failed: %s", exc)
+        if self.audio is not None:
+            try:
+                self.audio.stop()
+            except Exception as exc:
+                log.warning("stopping audio failed: %s", exc)
         hazer = getattr(self, "hazer", None)
         if hazer is not None and hasattr(hazer, "blackout"):
             # Zeroes haze and the maze lights but leaves the ENTRANCE lit —
@@ -487,6 +513,12 @@ class GameRunner:
                 self.lights.stop()
             except Exception as exc:
                 log.warning("power_down: stopping light cues failed: %s", exc)
+        if self.audio is not None:
+            try:
+                self.audio.stop()
+                report.append({"step": "audio stopped", "ok": True, "detail": ""})
+            except Exception as exc:
+                log.warning("power_down: stopping audio failed: %s", exc)
         hazer = getattr(self, "hazer", None)
         if hazer is not None and hasattr(hazer, "blackout"):
             hazer.blackout()
@@ -602,6 +634,11 @@ class GameRunner:
                     self.lights.reset()
                 except Exception as exc:
                     log.warning("could not re-arm light cues: %s", exc)
+            if self.audio is not None and hasattr(self.audio, "reset"):
+                try:
+                    self.audio.reset()
+                except Exception as exc:
+                    log.warning("could not re-arm audio cues: %s", exc)
             log.warning("FORCE RESET after a power down — the box is live again "
                         "(haze stays off until the GM turns it back on)")
 
@@ -613,6 +650,7 @@ class GameRunner:
 
         if new_state != old_state:
             self._cue_lights(new_state)
+            self._cue_audio(new_state)
 
         # Flight recorder. insert_event() had zero callers, so every disputed
         # bust opened a run detail showing an empty timeline — which reads as
@@ -722,6 +760,7 @@ class GameRunner:
         # force the state directly.
         self.state = ATTRACT
         self._cue_lights(ATTRACT)
+        self._cue_audio(ATTRACT)
         await self._execute_side_effects(
             [PlayShow("attract"), ResetStopwatch(), BroadcastState()],
             old_state, ATTRACT,

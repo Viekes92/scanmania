@@ -789,6 +789,18 @@
         <div id="inputsInfo" style="font-size:13px; color:var(--muted)">Loading…</div>
       </div>
 
+      <div class="card" id="audioCard">
+        <div class="card-title">Audio &mdash; soundtrack</div>
+        <div id="audioInfo" style="font-size:13px;color:var(--muted);">Loading&hellip;</div>
+        <div style="margin-top:10px;">
+          <button class="btn btn-default" id="btnAudioMute"
+                  style="font-size:11px;padding:4px 12px;">Mute</button>
+          <button class="btn btn-default" id="btnAudioRefresh"
+                  style="font-size:11px;padding:4px 12px;margin-left:6px;">Refresh</button>
+        </div>
+        <div id="audioFiles" style="margin-top:12px;font-size:12px;"></div>
+      </div>
+
       <div class="card" id="hazerCard">
         <div class="card-title">DMX &mdash; Art-Net universe</div>
         <div id="dmxPatch" style="font-size:12px;color:var(--muted);
@@ -1373,6 +1385,8 @@
           break;
         case "hardware":
           loadHardware();  // initial load for structure (cameras, pico)
+          refreshAudio();
+
           // Live coil updates come via WS at 10Hz — no polling needed
           break;
         case "runs":        loadRuns(true); break;
@@ -1446,6 +1460,71 @@
         body: JSON.stringify(body),
       });
     }
+
+    /* ---------------------------------------------------------------------
+       Audio. Status, a mute, and an audition button per file.
+
+       Auditioning matters more than it looks: "is this .wav actually reaching
+       the speakers" is otherwise only answerable by waiting for a player to
+       reach the state that fires it.
+    --------------------------------------------------------------------- */
+    async function refreshAudio() {
+      const info  = document.getElementById("audioInfo");
+      const files = document.getElementById("audioFiles");
+      const mute  = document.getElementById("btnAudioMute");
+      if (!info) return;
+      let a;
+      try {
+        a = await apiFetch("/api/admin/audio");
+      } catch (e) {
+        info.textContent = "unavailable: " + e.message;
+        return;
+      }
+      if (!a.configured) { info.textContent = "not configured"; return; }
+
+      info.textContent = a.available
+        ? `device: ${a.device || "system default"} \u2014 now playing: ${a.music || "silence"}`
+          + (a.muted ? "  (MUTED)" : "")
+        : `silent \u2014 ${a.error || "no audio device"}`;
+      mute.textContent = a.muted ? "Unmute" : "Mute";
+
+      files.textContent = "";
+      (a.loaded_cues || []).forEach(name => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;margin:3px 0;";
+        const b = document.createElement("button");
+        b.className = "btn btn-default";
+        b.style.cssText = "font-size:10px;padding:2px 8px;";
+        b.textContent = "Play";
+        b.addEventListener("click", async () => {
+          try { await apiPost("/api/admin/audio", { play: name }); }
+          catch (e) { info.textContent = "play failed: " + e.message; }
+        });
+        const label = document.createElement("span");
+        label.textContent = name;          // filenames are config, still not innerHTML
+        row.appendChild(b); row.appendChild(label);
+        files.appendChild(row);
+      });
+      (a.missing || []).forEach(name => {
+        const row = document.createElement("div");
+        row.style.cssText = "color:var(--red);margin:3px 0;";
+        row.textContent = "missing: " + name;
+        files.appendChild(row);
+      });
+    }
+
+    (function () {
+      const mute = document.getElementById("btnAudioMute");
+      const refresh = document.getElementById("btnAudioRefresh");
+      if (!mute) return;
+      mute.addEventListener("click", async () => {
+        const muting = mute.textContent === "Mute";
+        try { await apiPost("/api/admin/audio", { muted: muting }); }
+        catch (e) { /* surfaced by the refresh below */ }
+        refreshAudio();
+      });
+      refresh.addEventListener("click", refreshAudio);
+    })();
 
     /* ---------------------------------------------------------------------
        End-of-day shutdown.

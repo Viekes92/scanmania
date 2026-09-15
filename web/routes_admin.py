@@ -266,6 +266,12 @@ class MasterStopwatchBody(BaseModel):
     action: str = Field(pattern=r"^(start|stop|reset)$")
 
 
+class AudioBody(BaseModel):
+    """Mute the soundtrack, or audition one file through the real device."""
+    muted: bool | None = None
+    play: str | None = Field(default=None, max_length=120)
+
+
 class ShutdownBody(BaseModel):
     """End-of-day shutdown. `confirm` must be the literal string SHUTDOWN.
 
@@ -1258,6 +1264,47 @@ def register_routes(
         else:
             raise HTTPException(status_code=400, detail="send on=, or name= and level=")
         return await _lights_status()
+
+    def _audio():
+        r = _runner()
+        return getattr(r, "audio", None) if r else None
+
+    @router.get("/api/admin/audio", dependencies=[Depends(_require_admin)])
+    async def admin_audio_status():
+        """What the soundtrack is doing, and which files did not load."""
+        cues = _audio()
+        if cues is None:
+            return {"configured": False, "available": False,
+                    "error": "audio not configured"}
+        try:
+            st = cues.status()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        st["configured"] = True
+        return st
+
+    @router.post("/api/admin/audio", dependencies=[Depends(_require_admin)])
+    async def admin_audio_set(body: AudioBody):
+        """
+        Mute/unmute, and audition a file.
+
+        Auditioning goes through the real player rather than the cue map, which
+        is the only way to answer "is this file actually reaching the speakers"
+        without waiting for a player to reach that state.
+        """
+        cues = _audio()
+        if cues is None:
+            raise HTTPException(status_code=503, detail="audio not configured")
+        if body.muted is not None:
+            cues.set_muted(body.muted)
+        if body.play:
+            player = getattr(cues, "_player", None)
+            if player is None:
+                raise HTTPException(status_code=503, detail="no audio player")
+            # A cue, not the bed: auditioning must not knock the running
+            # soundtrack off whatever it is doing.
+            player.play_cue(body.play)
+        return await admin_audio_status()
 
     @router.post("/api/admin/shutdown", dependencies=[Depends(_require_admin)])
     async def admin_shutdown(body: ShutdownBody):

@@ -1314,3 +1314,61 @@ def test_no_systemd_means_no_false_promise_of_a_halt():
         assert r._schedule_halt() is None
     finally:
         subprocess.Popen, shutil.which = orig_popen, orig_which
+
+
+@pytest.mark.asyncio
+async def test_state_changes_drive_the_soundtrack(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """The audio hook has to hang off the same place as the light hook.
+
+    _do_reset_to_attract() does not go through dispatch(), so wiring this only
+    into dispatch would leave the attract bed unplayed after a force reset —
+    the exact bug the light cues already had once.
+    """
+    from audio.cues import AudioCuePlayer
+    from audio.fake import FakeAudioPlayer
+
+    player = FakeAudioPlayer()
+    player.start()
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.audio = AudioCuePlayer(player, {
+        "music": {"ATTRACT": "ambient.wav", "RUN_SEG_1": "game.wav"},
+        "cues": {"RUN_SEG_2": "sector.wav"},
+    })
+
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await _drain(r, iterations=5, pause=0)
+    assert player.music == "ambient.wav", "attract bed never started"
+
+    await r.dispatch(GmForceReset())
+    await _drain(r, iterations=5, pause=0)
+    assert player.music == "ambient.wav", "bed lost after a force reset"
+
+    for attr in ("_arm_timeout_task", "_result_timeout_task",
+                 "_max_run_task", "_count_in_task", "_show_task"):
+        r._cancel_task(attr)
+
+
+@pytest.mark.asyncio
+async def test_power_down_silences_the_container(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """A dark container that is still playing music is not shut down."""
+    from audio.cues import AudioCuePlayer
+    from audio.fake import FakeAudioPlayer
+
+    player = FakeAudioPlayer()
+    player.start()
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.hazer = _FakeDmx()
+    r.audio = AudioCuePlayer(player, {"music": {"ATTRACT": "ambient.wav"}})
+
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await _drain(r, iterations=5, pause=0)
+    result = await r.power_down(poweroff=False, snapshot=False)
+
+    assert player.music is None, "still playing after a power down"
+    assert any(s["step"] == "audio stopped" for s in result["steps"])

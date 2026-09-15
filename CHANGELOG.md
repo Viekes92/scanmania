@@ -9,6 +9,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Sound.** A looping music bed plus one-shot cues, both keyed by FSM state in
+  `audio:` in `game.yaml`, playing `.wav` files from `sounds/`. Swap a sound by
+  dropping a file in under the same name, or by pointing the config at a new
+  one; `Admin → Hardware → Audio` lists what loaded, what is missing, and gives
+  each file a Play button.
+
+  The bed is **held across states that do not name one**, which is what carries
+  one track through `RUN_SEG_1 → 2 → 3` rather than restarting it at every
+  checkpoint — naming the same file again is a no-op. `silence` is how a state
+  asks for quiet. Cues fire once on entering a state: count-in, a hit at each
+  checkpoint, victory, defeat.
+
+  Decoration, and built so it can never be anything else: a missing file, an
+  absent `pygame`, a mixer that will not start, a sound card that is not there
+  — every one degrades to silence and a log line rather than raising onto the
+  game path. Cue sounds are decoded at startup because the game path may only
+  call `play()`, and a filename cannot resolve outside `sounds/`. `.wav` only,
+  so no decoder can be missing at a venue.
+
+  **Audio is gitignored**, not carried in the repo: a single ambient bed is
+  14 MB and the repo is cloned and pulled far more often than the music
+  changes. `tools/push_sounds.sh` copies it to the box (rsync where available)
+  and `deploy.sh` leaves it alone — git does not touch ignored files, so the
+  audio on the box survives every deploy. A fresh checkout therefore has no
+  sound and runs silent; `tools/gen_placeholder_sounds.py` writes stand-in
+  tones, and the config-vs-files test skips rather than failing, since a test
+  that fails on every clean checkout is one people learn to ignore.
+
+  Formats split by job: **cues stay `.wav`** (decoded into RAM at startup, must
+  fire the instant a checkpoint goes by, and too short for compression to be
+  worth anything), while **the bed may be `.mp3` or `.ogg`** because it streams
+  and runs for minutes — an 8-hour ambient track is 5 GB as `.wav` and 14 MB as
+  a 10-minute `.mp3` loop. The bed loops forever, so length only ever buys
+  variety. Bed tracks are opened once at startup (`verify_music`) so a codec the
+  box cannot decode shows up in the boot log instead of as silence mid-show.
+
+  Audible where you actually work: **not** part of `--fake-all` (every other
+  fake stands in for hardware a laptop lacks; a sound card it has), and on by
+  default in `tools/fake_run.py`, which grew `--pace` because a run that
+  completes in 300 ms collapses the whole soundtrack into one noise and exits
+  before the victory cue finishes. `--fake-audio` and `--silent` opt out.
+
 - **End-of-day shutdown** (admin portal → Dashboard → End of day, or
   `tools/shutdown.py`). Saves first, darkens second, because a shutdown must
   never be what loses a day's runs: a run still in progress is settled as

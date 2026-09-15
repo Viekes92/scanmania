@@ -123,6 +123,39 @@ class MemoryDB:
 # networking — just pure event injection)
 # ---------------------------------------------------------------------------
 
+# Set from --silent before the runner is constructed.
+_SILENT = False
+
+
+def _make_audio(cfg):
+    """
+    Wire up the soundtrack, or return None.
+
+    On by default: the whole point of driving a run from the CLI is to see —
+    and now hear — what the container does. --silent turns it off, and so does
+    a box with no sound card, all by itself.
+    """
+    acfg = getattr(cfg.game, "audio", None)
+    if acfg is None or not acfg.enabled or _SILENT:
+        return None
+    try:
+        from audio.cues import AudioCuePlayer
+        from audio.player import AudioPlayer
+        sounds = Path(__file__).resolve().parent.parent / acfg.sounds_dir
+        player = AudioPlayer(sounds_dir=sounds,
+                             music_volume=acfg.music_volume,
+                             cue_volume=acfg.cue_volume,
+                             device=acfg.device)
+        if not player.start(preload=acfg.filenames()):
+            log.info("Audio: silent (%s)", player.status().get("error"))
+            return None
+        log.info("Audio: on — you should hear this run")
+        return AudioCuePlayer(player, acfg)
+    except Exception as exc:
+        log.warning("Audio: unavailable (%s)", exc)
+        return None
+
+
 class StandaloneRunner:
     """
     Tiny runner that wires the FSM to the fake backends and lets the script
@@ -139,6 +172,13 @@ class StandaloneRunner:
         self.transition = transition
         self.watcher    = FakeStateWatcher()
         self.run_id: str | None = None
+        self.audio      = _make_audio(cfg)
+        # Seconds to dwell after each state change. 0 keeps the original
+        # behaviour: fire everything and print the row. Anything above 0 is
+        # for listening/watching, where a run that finishes in 300 ms is
+        # useless — the cues overlap into one noise and the last one is cut
+        # off by the process exiting.
+        self.pace = 0.0
 
     async def inject(self, event) -> None:
         """Inject an event into the FSM and execute side effects."""
@@ -152,7 +192,16 @@ class StandaloneRunner:
 
         if old_state != new_state:
             log.info("FSM: %s → %s  (event=%s)", old_state, new_state, type(event).__name__)
+            if self.audio is not None:
+                # Same hook the real runner uses, so this script hears exactly
+                # what the container would.
+                try:
+                    self.audio.set_state(new_state)
+                except Exception as exc:
+                    log.warning("audio cue failed: %s", exc)
             self.watcher.on_state(new_state)
+            if self.pace:
+                await asyncio.sleep(self.pace)
 
     async def _apply(self, fx) -> None:
         """Execute a side effect. Only the effects relevant to the CLI script."""
@@ -270,12 +319,16 @@ async def main(args: argparse.Namespace) -> None:
         datefmt="%H:%M:%S",
     )
 
+    global _SILENT
+    _SILENT = bool(getattr(args, "silent", False))
+
     log.info("Loading config…")
     cfg = load_all()
 
     log.info("Creating in-memory DB and runner…")
     db     = MemoryDB()
     runner = StandaloneRunner(cfg, db)
+    runner.pace = max(0.0, float(getattr(args, "pace", 0.0) or 0.0))
 
     # Seed a player
     player_id = str(uuid.uuid4())
@@ -320,6 +373,11 @@ async def main(args: argparse.Namespace) -> None:
         record = {"run_id": run_id, "note": "no DB record — run may not have reached RUN state"}
 
     print(json.dumps(record, indent=2, default=str))
+    if runner.audio is not None:
+        # The victory/defeat cue fires on the last transition. Exiting straight
+        # after it truncates the one sound the run was building towards.
+        await asyncio.sleep(max(2.5, runner.pace))
+        runner.audio.stop()
     log.info("Done.")
 
 
@@ -353,6 +411,21 @@ Examples
         "--beam",
         default="b01",
         help="Beam ID to bust on (busted scenario only). Default: b01.",
+    )
+    parser.add_argument(
+        "--pace",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
+        help="Dwell this long in each state. Use with audio to actually hear "
+             "the run (try --pace 3). Default 0: as fast as possible.",
+    )
+    parser.add_argument(
+        "--silent",
+        action="store_true",
+        help="Do not play the soundtrack. Audio is on by default — the point "
+             "of driving a run from here is to see AND hear what the container "
+             "does.",
     )
     parser.add_argument(
         "-v", "--verbose",

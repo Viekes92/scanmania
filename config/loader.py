@@ -274,6 +274,38 @@ class LeaderboardConfig:
 
 
 @dataclass
+class AudioConfig:
+    """The container's soundtrack. Everything here degrades to silence."""
+    enabled: bool = True
+    device: str = ""
+    sounds_dir: str = "sounds"
+    music_volume: float = 0.6        # 0.0-1.0
+    cue_volume: float = 0.9          # 0.0-1.0
+    fade_ms: int = 400               # crossfade on a bed change. 0-5000 ms.
+    # FSM state -> filename. A state absent from `music` keeps whatever is
+    # playing; "silence" is how you ask for quiet.
+    music: dict[str, str] = field(default_factory=dict)
+    cues: dict[str, str] = field(default_factory=dict)
+
+    @staticmethod
+    def _real(names) -> list[str]:
+        return sorted({n for n in names
+                       if n and n.lower() not in ("silence", "none", "off")})
+
+    def cue_files(self) -> list[str]:
+        """One-shots. Decoded into RAM at startup, so keep these short .wav."""
+        return self._real(self.cues.values())
+
+    def music_files(self) -> list[str]:
+        """Bed tracks. These stream, so a long one belongs in .mp3."""
+        return self._real(self.music.values())
+
+    def filenames(self) -> list[str]:
+        """Every real file named here."""
+        return self._real(list(self.music.values()) + list(self.cues.values()))
+
+
+@dataclass
 class GameConfig:
     mode: str
     max_run_ms: int
@@ -299,6 +331,8 @@ class GameConfig:
     # Grace after a maze shape change before newly-lit channels can report a
     # break. They are physically still coming on. Sane range 100-500 ms.
     preset_settle_ms: int = 250
+    # The soundtrack. Absent from game.yaml means silence, not an error.
+    audio: AudioConfig = field(default_factory=AudioConfig)
 
 
 @dataclass
@@ -545,6 +579,39 @@ def load_beams(path: Path | None = None) -> BeamsConfig:
     )
 
 
+def _parse_audio(d: dict) -> AudioConfig:
+    """
+    Read the audio block. Never raises: a bad value falls back to the default.
+
+    Sound is decoration. A typo in a volume must not stop the box booting into
+    a playable state at a venue.
+    """
+    def _vol(key: str, default: float) -> float:
+        try:
+            return max(0.0, min(1.0, float(d.get(key, default))))
+        except (TypeError, ValueError):
+            log.warning("config: audio.%s is not a number — using %s", key, default)
+            return default
+
+    def _names(key: str) -> dict[str, str]:
+        raw = d.get(key) or {}
+        if not isinstance(raw, dict):
+            log.warning("config: audio.%s must be a mapping — ignoring", key)
+            return {}
+        return {str(k).upper(): str(v) for k, v in raw.items() if v is not None}
+
+    return AudioConfig(
+        enabled=bool(d.get("enabled", True)),
+        device=str(d.get("device", "") or ""),
+        sounds_dir=str(d.get("sounds_dir", "sounds") or "sounds"),
+        music_volume=_vol("music_volume", 0.6),
+        cue_volume=_vol("cue_volume", 0.9),
+        fade_ms=_ranged(d.get("fade_ms", 400), 0, 5_000, 400, "audio.fade_ms"),
+        music=_names("music"),
+        cues=_names("cues"),
+    )
+
+
 def load_game() -> GameConfig:
     d = _load_yaml("game.yaml")
     ci = d.get("count_in", {})
@@ -559,6 +626,7 @@ def load_game() -> GameConfig:
         arm_timeout_ms=_ranged(d.get("arm_timeout_ms", 180000),
                                10_000, 3_600_000, 180000, "game.arm_timeout_ms"),
         boot_to_master=bool(d.get("boot_to_master", True)),
+        audio=_parse_audio(d.get("audio") or {}),
         assisted_timeout_ms=_ranged(d.get("assisted_timeout_ms", 60000),
                                     10_000, 300_000, 60000, "game.assisted_timeout_ms"),
         registered_timeout_ms=_ranged(d.get("registered_timeout_ms", 180000),

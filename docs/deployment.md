@@ -79,6 +79,46 @@ curl -s localhost:8000/api/admin/status | head -c 200
 Then calibrate — see `plan.md` §19 and ADR 0009. Nothing detects anything until
 `config/beams.json` has a `mazes` block.
 
+## Audio
+
+The soundtrack lives in `/opt/scanmania/sounds/`, mapped to FSM states by
+`audio:` in `config/game.yaml`. Swap a sound by overwriting the file and keeping
+the name, or by pointing the config at a new name. See `sounds/README.md`.
+
+**Audio is gitignored, so `deploy.sh` does not carry it.** Push it separately:
+
+```bash
+./tools/push_sounds.sh          # from the laptop; rsync if the box has it
+ssh root@172.16.0.10 'systemctl restart scanmania'
+```
+
+That is a feature, not a gap: git leaves ignored files alone, so the audio on
+the box survives every deploy untouched. It also means **the box is the only
+copy** — keep the masters somewhere else as well.
+
+Cues (`.wav`) are decoded into RAM at startup; bed tracks (`.mp3`/`.ogg`) are
+opened once at startup to prove they decode. Both failures show in the boot log
+and in the admin panel rather than as silence mid-show.
+
+Audio is decoration and never fatal: no sound card, no `pygame`, a missing file
+-- each is silence and a log line, and the box still runs a full day of games.
+Check what actually loaded at **Admin -> Hardware -> Audio**, which lists the
+loaded cues, the missing ones, and gives each file a Play button so you can
+prove a sound reaches the speakers without waiting for a run to reach that
+state.
+
+To pin the output (so a plugged-in HDMI cannot steal the sound mid-tour), list
+the devices and put the name in `audio.device`:
+
+```bash
+aplay -L | grep -v '^ '        # device names ALSA knows
+```
+
+`pygame` is pinned in `requirements.txt` and its wheels bundle SDL2, so no
+extra apt packages are normally needed. If pip has to build it from source,
+install `libsdl2-dev libsdl2-mixer-dev` first -- or set `audio.enabled: false`
+and run the box silent until it can be sorted.
+
 ## Shutting down for the day
 
 **Admin portal -> Dashboard -> End of day -> Shut down.** This is how to close

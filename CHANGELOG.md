@@ -134,6 +134,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The GM switch is a work-light override**, not a level: solid on for loading
   and unloading, suspending the cue; off hands the lights back to the show.
 
+### Fixed — round-2 audit (10 reviewers)
+
+Five Critical, the rest High and Medium. The two that mattered most were both
+"the box does not work", not edge cases.
+
+- **No run could start on real hardware.** ARM never pointed vision at the
+  maze, so preflight read whichever preset the attract show last applied and
+  faulted every time. Confirmed in the NUC journal; invisible in tests because
+  `vision/fake.py` reports a healthy dot count regardless.
+- **One network blip killed vision until restart.** `wait_for` cancels the
+  future, not the thread, so a parked reader stayed parked; a repeating outage
+  drained the shared pool in ~2 minutes and healthy cameras then only queued.
+  Each camera owns a retirable single-worker executor now.
+- **The shutdown lied and then re-lit the maze.** `apply_all_off` reports a
+  failed write by returning False, which was read as success; and three of
+  seven timers were cancelled, so a surviving one walked the FSM to RESET and
+  replayed the attract show ~30 s after "container is dark".
+- **Any box behind origin could not deploy.** `deploy.sh` pushed local config
+  before pulling, so the push was always a non-fast-forward.
+- **MASTER MODE left the lasers on and the room dark** — no blackout in the
+  transition, and no `master` light cue, in the one mode that means a human is
+  walking inside.
+- Run records: FORCE RESET mid-run left the row `in_progress` and later stamped
+  it with a false reason; aborted runs were recorded as busted on a dot nobody
+  adjudicated.
+- Detection: a break re-fired ~6×/s and starved the assisted safety abort;
+  auto-masked dots counted dark forever and tipped the detector into a
+  permanent fault; a dead camera was invisible to the stall gate; the settle
+  window was shorter than a reconcile cycle, so a failed relay write busted the
+  player.
+- Security: every gated admin route was an unthrottled password oracle;
+  request bodies were read before auth with no size cap; the CSRF allowlist was
+  derived from the attacker-controlled `Host` header; raising a light mid-run
+  could wash out the dots and force a bust.
+- Data: `snapshot_interval_min: 0` also disabled the PII purge; the corrupt-DB
+  runbook left the WAL behind and re-corrupted the restore; the leaderboard
+  never refreshed at the operating-day rollover, so the street display showed
+  yesterday's board all morning.
+
+Full detail in the commit messages for `a408f03`, `c19edf2`, `d0b0306`,
+`49741dd` and the follow-ups.
+
 ### Fixed
 
 - **A failed boot probe left the box unable to leave MASTER.** `boot_to_master`

@@ -105,7 +105,7 @@ snapshot_keep: 48
 # Those lasers are physically still coming on, so a dark reading means nothing
 # yet. Channels lit in both the old and new shape are NOT paused — they keep
 # being watched straight through the transition. Sane range 100-500 ms.
-preset_settle_ms: 250
+preset_settle_ms: 800
 
 # ---------------------------------------------------------------------------
 # Audio — the container's soundtrack.

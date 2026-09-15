@@ -143,21 +143,28 @@ shows:
     # The opposite read: every horizontal lit and held, so the maze looks
     # barred. Solid rather than flashing for the same reason as clean — the
     # shape is the message, and a flash hides it half the time.
-    loop: false
+    # Held by a single-step loop for the same reason as `clean` above.
+    loop: true
     description: "busted \u2014 horizontals solid, the maze reads as barred"
     steps:
     - preset: horizontal
-      hold_ms: 15000
+      hold_ms: 5000
   clean:
     # Solid, not flashing, and not looping. One step, then the show task ends
     # and the coils simply stay where it left them (StopShow is documented to
     # leave them alone, and the reconciler holds the desired state), so this
     # holds until RESULT hands over to the attract show.
-    loop: false
+    # loop: true with ONE step, so the hold length stops mattering. It was a
+    # single 15000 ms step chosen to match result_display_ms — two numbers in
+    # two files that silently had to agree, and raising result_display_ms to
+    # its documented 30000 ceiling would have ended the show halfway through
+    # the result screen. Re-applying an identical preset is idempotent; the
+    # coils never move, so this is not relay wear.
+    loop: true
     description: "clean run \u2014 verticals solid, the maze reads as passable"
     steps:
     - preset: vertical
-      hold_ms: 15000
+      hold_ms: 5000
   main_game:
     segments:
     - maze_1

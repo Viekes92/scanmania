@@ -52,7 +52,16 @@ class PresetResolver:
         self._mazes = mazes_config
         # Ordered list of board ids, determines channel→board mapping
         self._board_ids: list[str] = [b.id for b in hardware_config.relay_boards]
-        self._channels_per_board: int = 16  # always 16 for Waveshare boards
+        # From config, not a literal. hardware.yaml carries `channels` per board
+        # and it was parsed and then ignored — so swapping in an 8-channel unit
+        # and updating the config still emitted 16-coil writes, the board
+        # answered Modbus exception 02, and the reconciler retried the same
+        # illegal write every 500 ms forever.
+        widths = {b.channels for b in hardware_config.relay_boards
+                  if getattr(b, "channels", None)}
+        self._channels_per_board: int = widths.pop() if len(widths) == 1 else 16
+        if len(widths) > 0:
+            log.warning("relay boards report mixed channel counts — assuming 16")
 
         # Desired state: board_id → [bool]*16; initialised to all-off
         self._desired: dict[str, list[bool]] = {

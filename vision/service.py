@@ -75,6 +75,12 @@ class VisionService:
         # Baselines are seeded per maze, in set_maze(). Nothing is watched until
         # a preset is applied, so there is nothing to seed here.
 
+        # Evidence capture is wired but its consumer is still a stub
+        # (_handle_save_break_evidence logs and returns), and feeding it costs
+        # 10 frames x 1920x1080x3 per camera — about 474 MB resident across
+        # eight cameras, permanently, for data nothing reads. Off until the
+        # save path exists; flip this when it does.
+        self._evidence_enabled = False
         self._evidence = EvidenceCapture()
 
         self._streams: dict[str, CameraStream] = {}
@@ -116,7 +122,9 @@ class VisionService:
             # Frames are flowing again. The watchdog clears the flag.
             self._clear_stall(camera_id)
 
-        self._evidence.push_frame(frame, timestamp_ns, camera_id)
+        if self._evidence_enabled:
+
+            self._evidence.push_frame(frame, timestamp_ns, camera_id)
         # Route by camera: a beam's ROI is only meaningful in its own
         # camera's frame. Without this, four cameras sample every beam four
         # times, three of them against coordinates that mean nothing.

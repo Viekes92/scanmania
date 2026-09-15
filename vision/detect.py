@@ -145,6 +145,9 @@ class DotDetector:
         # Dots already announced as broken, so one body standing in a beam is
         # one event rather than six a second.
         self._reported_dark: set[int] = set()
+        # Presets already reported as having no capture, so the attract show
+        # cannot flood the journal.
+        self._no_capture_warned: set[str] = set()
 
     # ------------------------------------------------------------------
     # Which maze is lit
@@ -170,8 +173,16 @@ class DotDetector:
         self._reported_dark = set()
         rois = self._cfg.mazes.get(preset) if preset else None
         if rois is None:
-            if preset:
-                log.warning("no ROI capture for preset '%s' — watching nothing", preset)
+            # Once per preset, not once per call. _apply_maze runs on EVERY
+            # show step, and the attract show alternates all_on/blackout every
+            # 400-500 ms — so this logged ~2.5 WARNING lines a second, about
+            # 216k a day, all day. journald's rate limiter then started
+            # dropping OTHER messages, which meant the relay-failure and
+            # vision-stall lines you actually need were the ones discarded.
+            if preset and preset not in self._no_capture_warned:
+                self._no_capture_warned.add(preset)
+                log.warning("no ROI capture for preset '%s' — watching nothing "
+                            "(logged once per preset)", preset)
             return
 
         for cam_id, cap in rois.cameras.items():

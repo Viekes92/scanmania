@@ -578,6 +578,95 @@ def load_beams(path: Path | None = None) -> BeamsConfig:
     )
 
 
+# The FSM hard-codes this at RampComplete. game.yaml tells the operator that
+# count_in.preset "MUST match the preset that will be active at GO", but the GO
+# preset is not in config at all, so nothing could check it — and a mismatch
+# captures the baseline against one maze shape and then lights another, which
+# poisons every dot whose lit neighbours differ. Busts and misses, both.
+_GO_PRESET = "maze_1"
+
+
+def _clean_channels(raw, name: str) -> list[int] | str:
+    """
+    Validate a preset's channel list.
+
+    It had no type, range or duplicate check at all, and the two failure paths
+    were both bad: an out-of-range channel resolved to a silently dark board,
+    and `channels: all` (a plausible typo for '*') raised TypeError out of
+    resolve(), killing whatever task was applying the preset and freezing the
+    lasers on the previous step.
+    """
+    if isinstance(raw, str):
+        if raw == "*":
+            return raw
+        log.error("config: preset %s channels=%r is not a list or '*' — "
+                  "treating as empty", name, raw)
+        return []
+    if not isinstance(raw, list):
+        log.error("config: preset %s channels must be a list — treating as empty",
+                  name)
+        return []
+    out: list[int] = []
+    for c in raw:
+        if not isinstance(c, int) or isinstance(c, bool):
+            log.error("config: preset %s has a non-integer channel %r — skipped",
+                      name, c)
+            continue
+        if c < 1:
+            log.error("config: preset %s channel %d is below 1 — skipped", name, c)
+            continue
+        if c in out:
+            log.warning("config: preset %s lists channel %d twice", name, c)
+            continue
+        out.append(c)
+    return out
+
+
+def _clean_hold_ms(raw, name: str) -> int:
+    """
+    Bound a show step's hold.
+
+    Only the admin API bounded this (50 ms-60 s), so a hand-edited mazes.yaml —
+    the documented way to change shows, and the file that is routinely modified
+    on the box — bypassed it. hold_ms: 0 on a looping show spins apply_preset as
+    fast as Modbus accepts, starving the loop the stopwatch shares; a quoted
+    "500" reached asyncio.sleep(str) and killed the show task silently.
+    """
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        log.error("config: show %s hold_ms=%r is not a number — using 300", name, raw)
+        return 300
+    return _ranged(v, 50, 60_000, 300, f"show {name} hold_ms")
+
+
+def _check_count_in_preset(preset: str) -> None:
+    if preset != _GO_PRESET:
+        log.error("config: count_in.preset=%r but the FSM lights %r at GO — "
+                  "the baseline will be captured against the wrong maze shape",
+                  preset, _GO_PRESET)
+
+
+def _check_settle_vs_reconcile(settle_ms: int) -> None:
+    """
+    The settle window must outlast a reconcile cycle plus a write round trip.
+
+    ApplyPreset deliberately ignores its return value because "reconciliation
+    repairs failures" — but the reconciler runs every 500 ms and then needs a
+    read and a write. With a 250 ms settle the detector re-armed while a failed
+    relay write was still unrepaired: the dots for the segment that never fired
+    read dark, stayed under max_simultaneous_breaks so they were NOT suppressed
+    as a hardware fault, and the player was busted for a relay that did not
+    close.
+    """
+    from iobackend.reconcile import _RECONCILE_INTERVAL_S
+    floor_ms = int(_RECONCILE_INTERVAL_S * 1000) + 250
+    if settle_ms < floor_ms:
+        log.error("config: game.preset_settle_ms=%d is below the %d ms a "
+                  "reconcile cycle needs — a failed relay write will bust the "
+                  "player instead of being repaired", settle_ms, floor_ms)
+
+
 def _one_of(value, allowed: tuple, default: str, key: str) -> str:
     """
     Coerce to one of `allowed`, or fall back loudly.
@@ -652,6 +741,9 @@ def _parse_audio(d: dict) -> AudioConfig:
 
 def load_game() -> GameConfig:
     d = _load_yaml("game.yaml")
+    _ci = d.get("count_in", {}) or {}
+    _check_count_in_preset(_ci.get("preset", "maze_1"))
+    _check_settle_vs_reconcile(int(d.get("preset_settle_ms", 800) or 800))
     ci = d.get("count_in", {})
     pulses = [CountInPulse(on_ms=p[0], off_ms=p[1]) for p in ci.get("pulses", [])]
     lb = d.get("leaderboard", {})
@@ -699,9 +791,8 @@ def load_mazes() -> MazesConfig:
     d = _load_yaml("mazes.yaml")
     presets = {}
     for name, p in d.get("presets", {}).items():
-        ch = p["channels"]
         presets[name] = PresetConfig(
-            channels=ch if isinstance(ch, str) else list(ch),
+            channels=_clean_channels(p.get("channels", []), name),
             description=p.get("description", ""),
         )
     shows = {}
@@ -711,7 +802,7 @@ def load_mazes() -> MazesConfig:
             steps = [
                 ShowStep(
                     preset=st.get("preset", "blackout"),
-                    hold_ms=st.get("hold_ms", 300),
+                    hold_ms=_clean_hold_ms(st.get("hold_ms", 300), name),
                 )
                 for st in s["steps"]
             ]

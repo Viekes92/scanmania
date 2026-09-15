@@ -66,6 +66,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **The kiosk never read its own overrides.** `kiosk.sh` documents
+  `SCANMANIA_OUT_IN` / `SCANMANIA_OUT_OUT` / `SCANMANIA_ROTATE_OUT` as settings
+  in `/etc/default/scanmania`, but `scanmania-kiosk.service` had no
+  `EnvironmentFile`, so which page landed on which panel was hard-coded in
+  practice and editing the documented file changed nothing.
+
+- **A missing panel stole the other panel's role.** An unconnected `OUT_IN`
+  fell back to "the first connected output" — which is the screen `OUT_OUT`
+  had already resolved to. With one panel cabled, asking for the outdoor page
+  on it still launched the in-container page. Each role now resolves
+  independently, and positional assignment only applies when neither
+  configured output is connected.
+
 - **The kiosk served a cached frontend after a deploy.** The screens are
   single-file HTML with no build step, so no filename carries a content hash.
   Chromium kept the previous build in disk cache across restarts: after a deploy

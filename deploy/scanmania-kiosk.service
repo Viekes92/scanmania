@@ -15,6 +15,12 @@ Type=simple
 User=root
 WorkingDirectory=/opt/scanmania
 Environment=DISPLAY=:0
+
+# kiosk.sh documents SCANMANIA_OUT_IN / SCANMANIA_OUT_OUT / SCANMANIA_ROTATE_OUT
+# as overrides in /etc/default/scanmania, but without this line the unit never
+# read that file: which page landed on which panel was hard-coded in practice.
+# Optional so a box without the file still starts.
+EnvironmentFile=-/etc/default/scanmania
 ExecStart=/opt/scanmania/kiosk.sh
 Restart=always
 RestartSec=5

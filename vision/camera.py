@@ -39,8 +39,66 @@ _RECONNECT_MIN_S = 2.0
 _RECONNECT_MAX_S = 30.0
 
 
+# A SHARED pool was the wrong shape here, and dangerously so.
+#
+# asyncio.wait_for cancels the FUTURE, not the thread: a worker parked in a
+# blocking cap.read() against a camera whose TCP session is up but silent stays
+# parked. With one shared pool of 24 and a repeating failure loop — a PoE or
+# VLAN outage, which is routine over a tour — every camera burned a worker
+# every few seconds until the pool was exhausted in about two minutes. After
+# that run_in_executor only QUEUED, so the HEALTHY cameras' reads never started
+# either, timed out, reconnected, and queued more work. Vision died completely
+# and never recovered when the network came back; only a restart fixed it.
+#
+# Now each camera owns a single-worker executor. A parked thread can starve
+# only its own camera, never its neighbours, and the executor is RETIRED on
+# timeout so the camera immediately gets a fresh working thread.
+_RETIRE_LIMIT = 40          # abandoned threads per camera before we call it broken
+
+
+class _CameraExecutor:
+    """A single worker for one camera, replaceable when its thread is lost."""
+
+    def __init__(self, cam_id: str) -> None:
+        self._cam_id = cam_id
+        self._pool = self._new_pool()
+        self.retired = 0
+
+    def _new_pool(self) -> ThreadPoolExecutor:
+        return ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix=f"cam-{self._cam_id}")
+
+    @property
+    def pool(self) -> ThreadPoolExecutor:
+        return self._pool
+
+    def retire(self, cap=None) -> None:
+        """
+        Abandon the current worker and start a fresh one.
+
+        The old thread is still inside cap.read(); it will end when OpenCV's own
+        socket timeout fires. Releasing the capture from THIS thread while that
+        read is in flight is not thread-safe, so the release is queued onto the
+        retiring executor instead: its single worker runs it after the parked
+        read returns, which is exactly the ordering we need.
+        """
+        self.retired += 1
+        old = self._pool
+        if cap is not None:
+            try:
+                old.submit(cap.release)
+            except Exception:
+                pass
+        old.shutdown(wait=False)
+        self._pool = self._new_pool()
+        if self.retired == _RETIRE_LIMIT:
+            log.error("CameraStream '%s': %d abandoned reader threads — this "
+                      "camera is not recovering; check the link or restart",
+                      self._cam_id, self.retired)
+
+
 def _camera_pool() -> ThreadPoolExecutor:
-    """One shared pool for every camera, sized to the camera count."""
+    """Kept for callers outside the stream; cameras use their own executors."""
     global _CAMERA_POOL
     with _CAMERA_POOL_LOCK:
         if _CAMERA_POOL is None:
@@ -50,9 +108,7 @@ def _camera_pool() -> ThreadPoolExecutor:
         return _CAMERA_POOL
 
 
-# Two per camera: one parked in a blocking read that timed out, one for its
-# replacement. Without the headroom a timed-out read would starve its own retry.
-_CAMERA_POOL_SIZE = 24
+_CAMERA_POOL_SIZE = 8
 
 _STALL_THRESHOLD_MS = 300   # frame gap above this → STALLED
 _DRIFT_THRESHOLD_PX = 2.0  # phase correlation shift above this → CAMERA_MOVED
@@ -149,6 +205,7 @@ class CameraStream:
         self._on_drift = on_drift    # (camera_id: str, drift_px: float) → None
 
         self._cap: cv2.VideoCapture | None = None
+        self._exec = _CameraExecutor(camera_config.id)
         self._last_frame_ns: int | None = None
         self._last_frame: np.ndarray | None = None
         self._stalled: bool = False
@@ -189,6 +246,11 @@ class CameraStream:
             # made the NEXT run fail to connect.
             self._release()
 
+    @property
+    def abandoned_threads(self) -> int:
+        """Reader threads lost to timeouts. Non-zero means a flaky link."""
+        return self._exec.retired
+
     def _release(self) -> None:
         cap, self._cap = self._cap, None
         if cap is not None:
@@ -223,11 +285,17 @@ class CameraStream:
         # times out while merely QUEUED and marks boards DEGRADED, so camera
         # traffic could take the maze and the stop button down without a single
         # network fault.
-        pool = _camera_pool()
+        pool = self._exec.pool
 
-        cap = await asyncio.wait_for(
-            loop.run_in_executor(pool, self._open_capture), timeout=_OPEN_TIMEOUT_S
-        )
+        try:
+            cap = await asyncio.wait_for(
+                loop.run_in_executor(pool, self._open_capture),
+                timeout=_OPEN_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            # The worker is still inside the connect. Abandon it and take a
+            # fresh thread, or this camera can never retry.
+            self._exec.retire()
+            raise
         if not cap.isOpened():
             # Assign before the check, or this capture leaks: run()'s release
             # only ever saw the PREVIOUS value.
@@ -243,9 +311,18 @@ class CameraStream:
             # forever: no exception, so the reconnect below is never reached and
             # the worker is gone for the life of the process. The deadline turns
             # that into an ordinary reconnect.
-            ret, frame = await asyncio.wait_for(
-                loop.run_in_executor(pool, cap.read), timeout=_READ_TIMEOUT_S
-            )
+            try:
+                ret, frame = await asyncio.wait_for(
+                    loop.run_in_executor(pool, cap.read),
+                    timeout=_READ_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                # Hand the capture to the retiring worker to release, so the
+                # release runs after the parked read returns rather than racing
+                # it, and drop our reference so _release() cannot double-free.
+                self._cap = None
+                self._exec.retire(cap)
+                pool = self._exec.pool
+                raise
             if not ret or frame is None:
                 raise RuntimeError("cap.read() returned False — stream ended or dropped")
 

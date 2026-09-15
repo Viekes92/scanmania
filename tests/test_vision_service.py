@@ -132,3 +132,56 @@ async def test_stall_reaches_the_fsm_and_drops_to_manual(runner):
     await runner.dispatch(VisionStalled())
 
     assert runner.context.detection_mode == DetectionMode.manual
+
+
+# ---------------------------------------------------------------------------
+# Audit round 2 — the camera reader pool
+# ---------------------------------------------------------------------------
+
+def test_a_lost_reader_thread_cannot_starve_the_other_cameras():
+    """asyncio.wait_for cancels the future, not the thread.
+
+    A worker parked in a blocking cap.read() against a silent camera stays
+    parked. With one shared pool, a repeating failure loop — a PoE or VLAN
+    outage — burned every worker in about two minutes, after which the HEALTHY
+    cameras' reads only queued, timed out, and queued more. Vision died and
+    never recovered without a restart.
+    """
+    from vision.camera import _CameraExecutor
+
+    cams = [_CameraExecutor(f"SM-CAM-1{i}") for i in range(4)]
+    pools_before = [c.pool for c in cams]
+
+    # One camera loses its thread over and over, as in a real outage.
+    for _ in range(20):
+        cams[0].retire()
+
+    assert cams[0].retired == 20
+    assert cams[0].pool is not pools_before[0], "no fresh worker after retiring"
+    for c, before in zip(cams[1:], pools_before[1:]):
+        assert c.pool is before, "a neighbour's executor was disturbed"
+        assert c.retired == 0
+    for c in cams:
+        c.pool.shutdown(wait=False)
+
+
+def test_retiring_releases_the_capture_on_the_abandoned_worker():
+    """Releasing from the loop thread while a read is parked is not
+    thread-safe, so the release is queued behind it on the same worker."""
+    import time
+    from vision.camera import _CameraExecutor
+
+    released = []
+
+    class _Cap:
+        def release(self):
+            released.append(True)
+
+    ex = _CameraExecutor("SM-CAM-11")
+    ex.retire(_Cap())
+    for _ in range(50):
+        if released:
+            break
+        time.sleep(0.01)
+    assert released, "the capture was never released by the retiring worker"
+    ex.pool.shutdown(wait=False)

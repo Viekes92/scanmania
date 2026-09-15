@@ -1372,3 +1372,106 @@ async def test_power_down_silences_the_container(
 
     assert player.music is None, "still playing after a power down"
     assert any(s["step"] == "audio stopped" for s in result["steps"])
+
+
+# ===========================================================================
+# Audit round 2 — regressions
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_arm_points_vision_at_the_maze_before_preflight(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """Preflight reads the detector's maze, so ARM must set it first.
+
+    ARM's effects are [ReadyBlink, BeamPreflightCheck] with no ApplyPreset
+    between them, and ReadyBlink writes coils through the resolver directly.
+    Without _apply_maze here the detector was still aimed at whatever the
+    attract show last applied — all_on / blackout — neither of which has an ROI
+    capture, so stats()["total"] was 0 and EVERY arm failed preflight on real
+    hardware. The test suite missed it because vision/fake.py reports a healthy
+    dot count no matter which preset is set.
+    """
+    from core.events import ReadyBlink
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r._current_preset = "all_on"          # as the attract show leaves it
+    await r._handle_ready_blink(ReadyBlink())
+    assert r._current_preset == fake_config.game.count_in.preset, (
+        "ARM did not point vision at the maze; preflight will read an "
+        "uncalibrated preset and fault")
+
+
+@pytest.mark.asyncio
+async def test_power_down_fails_when_the_coil_write_fails(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """apply_all_off reports failure by RETURNING False, not by raising.
+
+    Treating any non-exception as success meant a relay board that did not
+    answer still printed "all coils off" and the operator was told it was safe
+    to cut the breaker with a board latched on.
+    """
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.hazer = _FakeDmx()
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+
+    async def _failed_write(*a, **k):
+        return False                      # exactly what a dead board produces
+    r._resolver.apply_all_off = _failed_write
+
+    result = await r.power_down(poweroff=True, snapshot=False)
+    lasers = [s for s in result["steps"] if s["step"] == "lasers off"][0]
+    assert lasers["ok"] is False, "a failed coil write was reported as success"
+    assert result["ok"] is False
+    assert result["halting"] is False, "halted the box with coils possibly live"
+
+
+@pytest.mark.asyncio
+async def test_power_down_cancels_every_transition_timer(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """A surviving timer walks the FSM to RESET and replays the attract show.
+
+    ABORTED -> RESULT -> RESET re-lights all 45 segments about 30 s after the
+    operator was told the container was dark.
+    """
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.hazer = _FakeDmx()
+    r._schedule_halt = lambda: "halting"
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+
+    async def _never():
+        await asyncio.sleep(3600)
+    for attr in ("_result_timeout_task", "_arm_timeout_task",
+                 "_registered_timeout_task", "_assisted_task"):
+        setattr(r, attr, asyncio.create_task(_never(), name=attr))
+
+    await r.power_down(poweroff=True, snapshot=False)
+    for attr in ("_result_timeout_task", "_arm_timeout_task",
+                 "_registered_timeout_task", "_assisted_task"):
+        assert getattr(r, attr) is None, f"{attr} survived the power down"
+
+
+@pytest.mark.asyncio
+async def test_nothing_can_relight_the_maze_after_power_down(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """The latch has to cover the coil path, not just lights and audio."""
+    from core.events import ApplyPreset, PlayShow
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.hazer = _FakeDmx()
+    r._schedule_halt = lambda: "halting"
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await r.power_down(poweroff=True, snapshot=False)
+
+    await r._handle_apply_preset(ApplyPreset("all_on"))
+    await r._handle_play_show(PlayShow("attract"))
+    await _drain(r, iterations=3, pause=0)
+
+    for board in fake_io.all_boards():
+        assert not any(await board.read_coils()), (
+            f"{board.board_id} was re-energised after the operator was told "
+            f"the container was dark")

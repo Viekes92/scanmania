@@ -45,7 +45,13 @@ die() { printf '\n\033[31mABORT: %s\033[0m\n' "$*" >&2; exit 1; }
 # the box. Preserve it by committing; anything else means someone edited code
 # here and a pull would clobber it.
 say "Checking for local changes"
-dirty_other="$(git status --porcelain -- . ':(exclude)config' | head -20)"
+# Tracked modifications only. --porcelain also lists UNTRACKED files, so any
+# stray file outside config/ blocked every deploy — including tools/laser.py,
+# the operator's own reference file that CLAUDE.md says never to commit, and
+# any xwd dump or scratch script left on the box. The escape was to commit the
+# file (breaking that rule) or delete it. An untracked file cannot be clobbered
+# by a fast-forward pull, so it is not a reason to refuse.
+dirty_other="$(git status --porcelain --untracked-files=no -- . ':(exclude)config' | head -20)"
 [ -n "$dirty_other" ] && {
     printf '%s\n' "$dirty_other"
     die "uncommitted changes outside config/ — commit or stash them first"
@@ -64,15 +70,36 @@ if [ "$local_head" != "$remote" ] && ! git merge-base --is-ancestor "$local_head
     die "this box has diverged from origin/main — resolve by hand before deploying"
 fi
 
+# Commit local config, then REBASE ONTO ORIGIN BEFORE PUSHING.
+#
+# This used to commit and push straight away, before the pull further down.
+# Whenever the box was behind origin — which is the whole reason anyone runs
+# this script — the push was a non-fast-forward and was rejected, and the
+# script died blaming the network. Retrying never helped: any box carrying show
+# tuning became un-deployable until someone rebased it by hand at the venue.
+#
+# Pulling first is what makes the push a fast-forward. --rebase, not merge, so
+# the box never writes a merge commit nobody will review.
+CONFIG_COMMITTED=0
 if ! git diff --quiet -- config || [ -n "$(git ls-files --others --exclude-standard config)" ]; then
-    echo "Live config changed on this box — committing before pull:"
+    echo "Live config changed on this box — committing:"
     git --no-pager diff --stat -- config
     git add config
     git commit -q -m "config: live tuning from $(hostname)"
+    CONFIG_COMMITTED=1
+
+    if [ "$local_head" != "$remote" ]; then
+        echo "Box is behind origin — rebasing the config commit on top before pushing."
+        if ! git rebase -q origin/main; then
+            git rebase --abort 2>/dev/null || true
+            git reset -q --soft "$local_head"
+            die "config conflicts with origin/main — resolve by hand before deploying"
+        fi
+    fi
+
     if ! git push -q origin HEAD:main; then
-        # Undo the local commit so the box is left exactly as it was found,
-        # rather than diverged and permanently un-deployable.
-        git reset -q --soft "$local_head"
+        # Leave the box exactly as it was found rather than diverged.
+        git reset -q --hard "$local_head"
         die "could not push local config; nothing was changed — retry when the network is back"
     fi
     echo "Pushed."

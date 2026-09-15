@@ -453,19 +453,42 @@ class GameRunner:
         """
         report: list[dict] = []
 
-        async def step(name: str, coro, detail: str = "") -> None:
+        async def step(name: str, coro, detail: str = "") -> bool:
+            """
+            Run one step. A step fails by RAISING **or** by returning False.
+
+            apply_all_off() reports a failed board write with a False return,
+            not an exception — so treating any non-exception as success meant a
+            relay board that did not answer still printed "all coils off" and
+            the operator was told it was safe to cut the breaker with a board
+            latched on. blackout() already got this right; this did not.
+            """
             try:
                 result = await coro
-                report.append({"step": name, "ok": True,
-                               "detail": detail or (result if isinstance(result, str) else "")})
             except Exception as exc:
                 log.error("power_down: %s failed: %s", name, exc)
                 report.append({"step": name, "ok": False, "detail": str(exc)})
+                return False
+            ok = result is not False
+            report.append({
+                "step": name, "ok": ok,
+                "detail": (detail or (result if isinstance(result, str) else ""))
+                          if ok else "the hardware did not confirm this",
+            })
+            return ok
 
         log.warning("POWER DOWN requested — saving, then darkening the container")
 
-        # 1. Stop anything that writes coils on a timer, or step 3 races it.
-        for attr in ("_show_task", "_count_in_task", "_max_run_task"):
+        # 1. Stop every timer that can drive a transition — not just the ones
+        #    that write coils. A surviving _result_timeout_task walks
+        #    ABORTED -> RESULT -> RESET, and _do_reset_to_attract() replays the
+        #    attract show, re-lighting the whole maze ~30 s after the operator
+        #    was told the container was dark. _arm_timeout_task and
+        #    _registered_timeout_task reach RESET the same way.
+        for attr in ("_show_task", "_count_in_task", "_max_run_task",
+                     "_result_timeout_task", "_arm_timeout_task",
+                     "_registered_timeout_task", "_assisted_task",
+                     "_self_test_task"):
             self._cancel_task(attr)
         self._show_name = None
 
@@ -797,6 +820,21 @@ class GameRunner:
     # Side effect handlers
     # ------------------------------------------------------------------
 
+    def _refuse_after_power_down(self, what: str) -> bool:
+        """
+        True when the container has been darkened and must stay dark.
+
+        power_down() latches this before it drives the coils off. Guarding only
+        the light and audio cues was not enough: a timer that survived the
+        shutdown could still reach PlayShow/ApplyPreset and re-energise all 45
+        segments while the operator was walking away from a box they had been
+        told was safe.
+        """
+        if self._powered_down:
+            log.warning("refusing %s — the container has been powered down", what)
+            return True
+        return False
+
     async def _handle_apply_preset(self, effect: ApplyPreset) -> None:
         """Apply a named preset via the io backend. Cancels any running show or count-in."""
         log.info("[SideEffect] ApplyPreset(%r)", effect.preset_name)
@@ -808,6 +846,8 @@ class GameRunner:
         # while the detector still held the old dot set — and a slow board could
         # stretch that past the hysteresis window and bust a player for the maze
         # changing shape at a checkpoint.
+        if self._refuse_after_power_down(f"ApplyPreset({effect.preset_name!r})"):
+            return
         self._apply_maze(effect.preset_name)
         if self._resolver and self.io:
             try:
@@ -836,6 +876,8 @@ class GameRunner:
     async def _handle_play_show(self, effect: PlayShow) -> None:
         """Start an animated show (sequence of presets with timing)."""
         log.info("[SideEffect] PlayShow(%r)", effect.show_name)
+        if self._refuse_after_power_down(f"PlayShow({effect.show_name!r})"):
+            return
         # Cancel any currently playing show
         self._cancel_task("_show_task")
 
@@ -1117,8 +1159,19 @@ class GameRunner:
         log.info("[SideEffect] ReadyBlink")
         if not self._resolver or not self.config or not self.io:
             return
+        if self._refuse_after_power_down("ReadyBlink"):
+            return
         preset = self.config.game.count_in.preset
         blink_ms = self.config.game.count_in.ready_blink_ms
+        # Point vision at the maze BEFORE preflight reads it. ARM's effects are
+        # [ReadyBlink, BeamPreflightCheck] with no ApplyPreset between them, and
+        # this handler writes coils through the resolver directly — so without
+        # this line the detector was still aimed at whatever the attract show
+        # last applied (all_on / blackout), neither of which has an ROI capture.
+        # stats()["total"] was therefore 0 and preflight failed on every arm:
+        # the game could not start a run on real hardware at all. Invisible in
+        # tests because vision/fake.py reports a healthy dot count regardless.
+        self._apply_maze(preset)
         try:
             await self._resolver.apply_preset(preset, self.io)
             await asyncio.sleep(blink_ms / 1000.0)

@@ -42,6 +42,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **The attract pulse did not run after a force reset.** RESET is transient: the
+  runner sets `self.state = ATTRACT` directly and executes its own side effects
+  rather than going through `dispatch()`. The light-cue hook lived only in
+  `dispatch`, so the player's last known state stayed RESET — a state with no
+  cue — and fell through to all-off. Nothing looked broken: the FSM was in
+  ATTRACT, the WebSocket said ATTRACT, and the room was simply dark. The hook is
+  now a single `_cue_lights()` helper called from every path that changes the
+  state, including that hop.
+
 - **Fades were jumpy because short moves did not fade at all.** The per-tick
   step was derived from full 0-255 travel and applied whatever the distance, so
   the attract pulse — twelve levels, 14 to 2 — completed in a single tick. Fades

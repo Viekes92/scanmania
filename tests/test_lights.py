@@ -300,3 +300,47 @@ def test_duty_can_be_retuned_live():
     d = _duty(haze_burst_s=2.0, haze_interval_s=90.0)
     d.set_duty(burst_s=5.0, interval_s=30.0)
     assert d.duty["burst_s"] == 5.0 and d.duty["interval_s"] == 30.0
+
+
+# ---------------------------------------------------------------------------
+# The cue must follow EVERY state change
+# ---------------------------------------------------------------------------
+
+def test_a_state_the_player_never_heard_about_leaves_the_room_dark(dmx):
+    """
+    Why the attract pulse did not run after a force reset.
+
+    RESET is transient: the runner sets self.state = ATTRACT directly and
+    executes its own side effects rather than going through dispatch(). The cue
+    hook lived only in dispatch, so the player's last known state stayed RESET —
+    a state with no cue — and fell through to all-off. Nothing looked broken:
+    the FSM was in ATTRACT, the WS said ATTRACT, and the room was simply dark.
+    """
+    p = LightCuePlayer(dmx, CUES)
+    p.set_work_lights(False)
+    p.set_state("RESET")                       # no cue for this
+    # Target, not level: leaving a non-run state FADES to dark, so the level
+    # follows over fade_ms. Only COUNTDOWN and the RUN states snap.
+    assert dmx.lights_state()["left"]["target"] == 0
+
+    p.set_state("ATTRACT")                     # the hop the runner must report
+    assert dmx.lights_state()["left"]["target"] > 0
+
+
+def test_the_attract_cue_alternates_the_two_sides(dmx):
+    """Left and right must not move together — the whole point of the pulse."""
+    cue = CUES["attract"]["steps"]
+    a, b = cue[0], cue[1]
+    assert (a["left"] > a["right"]) != (b["left"] > b["right"]), \
+        "the two steps must swap which side is brighter"
+
+
+def test_work_lights_off_in_attract_starts_the_cue_not_darkness(dmx):
+    p = LightCuePlayer(dmx, CUES)
+    p.set_state("ATTRACT")
+    p.set_work_lights(True)
+    assert dmx.light_level("left") == 255
+    p.set_work_lights(False)
+    # Without a running loop the player applies the cue's first step, which is
+    # enough to prove it chose the cue rather than all-off.
+    assert dmx.lights_state()["left"]["target"] == CUES["attract"]["steps"][0]["left"]

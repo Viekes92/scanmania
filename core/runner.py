@@ -344,6 +344,27 @@ class GameRunner:
             self._db_fault = f"could not open run row: {exc}"
             log.error("could not write the in-progress run row: %s", exc)
 
+    def _cue_lights(self, state: str) -> None:
+        """
+        Point the room lights at a state.
+
+        Must be called from EVERY path that changes self.state, not just
+        dispatch(). _do_reset_to_attract() sets the state directly and executes
+        its own side effects, so routing this only through dispatch left the
+        player stuck on RESET after a force reset — no cue for that state, so
+        the room went dark and the attract pulse never started.
+
+        COUNTDOWN and the RUN states are forced dark inside the player whatever
+        the cue says: ambient light raises the reading inside every dot's ROI,
+        and a broken beam that still reads above break_ratio is a MISSED break.
+        """
+        if self.lights is None:
+            return
+        try:
+            self.lights.set_state(state)
+        except Exception as exc:
+            log.error("light cue for %s failed: %s", state, exc)
+
     async def blackout(self) -> None:
         """
         Everything off: lasers dark, hazer zeroed.
@@ -398,16 +419,8 @@ class GameRunner:
 
         log.debug("FSM %s --[%s]--> %s", old_state, type(event).__name__, new_state)
 
-        # Room lights follow the state: dim pulse in ATTRACT, dark for the run,
-        # a flash on a clean finish. COUNTDOWN and the RUN states are forced
-        # dark inside the player regardless of cue or GM override — ambient
-        # light raises the reading inside every dot's ROI, and a broken beam
-        # that still reads above break_ratio is a MISSED break.
-        if self.lights is not None and new_state != old_state:
-            try:
-                self.lights.set_state(new_state)
-            except Exception as exc:
-                log.error("light cue for %s failed: %s", new_state, exc)
+        if new_state != old_state:
+            self._cue_lights(new_state)
 
         # Flight recorder. insert_event() had zero callers, so every disputed
         # bust opened a run detail showing an empty timeline — which reads as
@@ -516,6 +529,7 @@ class GameRunner:
         # If the FSM doesn't handle _AttractTick (it won't in default tables),
         # force the state directly.
         self.state = ATTRACT
+        self._cue_lights(ATTRACT)
         await self._execute_side_effects(
             [PlayShow("attract"), ResetStopwatch(), BroadcastState()],
             old_state, ATTRACT,

@@ -142,6 +142,9 @@ class DotDetector:
         self._recent_break_times: collections.deque[int] = collections.deque()
         self._stalled: bool = False
         self._fault_reported: bool = False
+        # Dots already announced as broken, so one body standing in a beam is
+        # one event rather than six a second.
+        self._reported_dark: set[int] = set()
 
     # ------------------------------------------------------------------
     # Which maze is lit
@@ -164,6 +167,7 @@ class DotDetector:
         self._capture_size = {}
         self._size_warned = set()
         self._fault_reported = False
+        self._reported_dark = set()
         rois = self._cfg.mazes.get(preset) if preset else None
         if rois is None:
             if preset:
@@ -318,16 +322,34 @@ class DotDetector:
     def _clear_ratio(self) -> float:
         return self._cfg.detection.clear_ratio
 
+    @property
+    def in_fault(self) -> bool:
+        """True while the detector is currently suppressing on a mass-dark."""
+        return self._fault_reported
+
     def _decide(self, timestamp_ns: int) -> None:
         """Act on the COUNT of dark dots, not on which ones."""
+        # See _reported_dark below: a break is announced once per dot, not once
+        # per frame, or a player standing in a beam produces ~6 events/second.
+        # auto_masked dots are NOT sampled any more (process_frame skips them),
+        # so is_dark is frozen at whatever it was when they were masked — True.
+        # Counting them here meant a masked dot stayed dark forever, kept
+        # counting toward max_simultaneous_breaks, and eventually tipped the
+        # detector into a permanent mass-dark fault. stats() already excludes
+        # them; this did not.
         dark = [st for cam in self._states.values()
-                for st in cam.values() if st.is_dark]
+                for st in cam.values()
+                if st.is_dark and not getattr(st, "auto_masked", False)]
 
         if not dark:
+            self._reported_dark.clear()
             if self._fault_reported:
                 log.info("DotDetector: dots recovered")
                 self._fault_reported = False
             return
+        # Drop dots that have cleared, so the same dot can legitimately break
+        # again later in the run.
+        self._reported_dark &= {id(st) for st in dark}
 
         # A body blocks a handful. Dozens at once is the maze changing, a relay
         # not firing, or a camera glitch — never a player. Calling that a break
@@ -351,6 +373,21 @@ class DotDetector:
 
         # Report the darkest dot — the one a body is most squarely blocking.
         worst = min(dark, key=lambda st: st.last_ratio)
+
+        # Announce a given dot ONCE, not once per frame.
+        #
+        # Nothing latched this, so a player standing in a beam produced a fresh
+        # BreakConfirmed roughly six times a second for as long as they stood
+        # there (the global rate limit was the only cap). In assisted mode —
+        # the shipped default — the break does not disarm detection, and every
+        # event re-ran StopStopwatch, which cancels and recreates the assisted
+        # decision timer. The documented 60 s auto-ABORT could therefore never
+        # fire: the game sat in a RUN state with a frozen clock and an
+        # in_progress row until a human intervened.
+        key = id(worst)
+        if key in self._reported_dark:
+            return
+        self._reported_dark.add(key)
         self._confirm_break(worst, timestamp_ns)
 
     def _can_emit_break(self, timestamp_ns: int) -> bool:

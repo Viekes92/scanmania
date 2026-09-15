@@ -110,6 +110,10 @@ class GameRunner:
         # Latched by power_down(). Nothing may re-light the container after the
         # operator has been told it is safe to cut the breaker.
         self._powered_down: bool = False
+        # Set when a vision stall forced detection to manual, so recovery can
+        # put back exactly what it took and nothing else.
+        self._auto_dropped_to_manual: bool = False
+        self._mode_before_stall: str | None = None
         # The soundtrack. Set by __main__ after construction, like .lights.
         self.audio: Any = None
         self._countdown_step: int = 0
@@ -702,6 +706,16 @@ class GameRunner:
             )
         if new_state != "REGISTERED":
             self._cancel_task("_registered_timeout_task")
+
+        # Any state that ends a run must drop the run budget with it.
+        #
+        # _max_run_deadline_ns was cleared only in _do_reset_to_attract(), and
+        # MasterModeExit -> SELF_TEST -> ATTRACT never passes through RESET. So
+        # after a GM used MASTER mid-run, the next player inherited a deadline
+        # already in the past: remaining_ms computed to 0 and their run aborted
+        # the instant it started, in front of the queue.
+        if new_state not in RUN_STATES and new_state != "COUNTDOWN":
+            self._max_run_deadline_ns = None
 
         # Clear the assisted decision deadline once the decision landed.
         if new_state not in RUN_STATES or not self.context.pending_break:
@@ -1683,7 +1697,24 @@ class GameRunner:
                 _, stalled, camera_ids = event_tuple
                 if stalled:
                     log.warning("vision stalled on %s — dropping to manual", camera_ids)
+                    # Remember what we are taking, so recovery can put back
+                    # exactly that and nothing else.
+                    if self.context.detection_mode != "manual":
+                        self._mode_before_stall = self.context.detection_mode
+                        self._auto_dropped_to_manual = True
                     await self.put_event(VisionStalled())
+                elif self._auto_dropped_to_manual:
+                    # The recovery tuple was read and thrown away, so one
+                    # 300 ms frame gap — a single keyframe hiccup on one of
+                    # eight cameras — left the box in manual for the rest of
+                    # the day, vision not policing runs, with a permanent fault
+                    # on the console that teaches operators to ignore faults.
+                    self._auto_dropped_to_manual = False
+                    if self.context.detection_mode == "manual":
+                        self.context.detection_mode = self._mode_before_stall or "assisted"
+                        log.warning("vision recovered — detection back to %s",
+                                    self.context.detection_mode)
+                        metrics.emit("vision.recovered", 1.0)
             else:
                 log.warning("vision_listener: unknown event kind %r", kind)
 

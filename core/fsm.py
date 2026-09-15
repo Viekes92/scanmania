@@ -126,6 +126,10 @@ def _bust_effects(ctx: FSMContext) -> list:
 def _abort_effects(ctx: FSMContext) -> list:
     """Side effects for GmAbort or MaxRunExceeded transitions."""
     effects: list = [
+        # The maze stayed fully lit through ABORTED and RESULT — about 16 s at
+        # the shipped result_display_ms — with the player still walking out of
+        # it. The GmAbort path blacks out; these did not.
+        ApplyPreset("blackout"),
         StopStopwatch(),
         DisarmDetection(),
     ]
@@ -133,6 +137,13 @@ def _abort_effects(ctx: FSMContext) -> list:
         effects += [
             SaveRun(outcome=RunOutcome.aborted, run_id=ctx.run_id),
         ]
+    # Clear the pending break BEFORE the row is written. _handle_save_run falls
+    # back to ctx.pending_break for busting_beam_id, so an ABORTED run was being
+    # recorded as busted on a dot no human ever adjudicated — and the GM
+    # console's confirm/veto overlay, which keys purely off pending_break, hung
+    # over the result screen with both buttons inert.
+    ctx.pending_break = None
+    ctx.assisted_halt_elapsed_ms = None
     effects.append(BroadcastState())
     return effects
 
@@ -504,7 +515,23 @@ def _handle_global(state: str, event: Any, ctx: FSMContext) -> tuple[str, list] 
 
     # GmForceReset — the ultimate escape hatch, works from any state including FAULT.
     if etype is GmForceReset:
-        return RESET, _reset_effects()
+        effects = []
+        # Settle the run row. It is opened pessimistically at GO with
+        # outcome='in_progress', and every other exit from a RUN state saves
+        # it. This one did not, so a mid-run force reset left the row reading
+        # "still in progress" in the day's export and history until the next
+        # boot, where close_orphaned_runs() then stamped it with a reason that
+        # was not true — nobody had restarted anything.
+        if ctx.run_id and state in RUN_STATES:
+            effects.append(SaveRun(outcome=RunOutcome.aborted, run_id=ctx.run_id))
+        # And disarm, or the baseline manager stays frozen: arm() freezes it and
+        # only disarm() unfreezes, so the ATTRACT rolling EMA silently stopped
+        # tracking drift for the rest of the session.
+        if state in RUN_STATES or state in (COUNTDOWN, ARM):
+            effects.append(DisarmDetection())
+        ctx.pending_break = None
+        ctx.assisted_halt_elapsed_ms = None
+        return RESET, effects + _reset_effects()
 
     # GmVoid — mark run voided; stay in current state.
     # Only after the run row exists. Voiding mid-run wrote a row first, and the
@@ -544,7 +571,13 @@ def _handle_global(state: str, event: Any, ctx: FSMContext) -> tuple[str, list] 
 
     # MasterModeEngage — from any state. Stop everything, hand control to the admin.
     if etype is MasterModeEngage:
-        effects: list = [StopStopwatch(), DisarmDetection()]
+        # Blackout FIRST. MASTER is the mode whose entire purpose is that the
+        # GM walks into the container, and without this the coils kept whatever
+        # the run had lit — with the reconciler re-asserting it every 500 ms,
+        # so it could not even drift dark. The sibling GmAbort has always
+        # blacked out; this did not. It looked safe only because _desired
+        # happens to start all-off at boot.
+        effects: list = [ApplyPreset("blackout"), StopStopwatch(), DisarmDetection()]
         # The runner clears run_id on entering MASTER, so without this the run
         # simply vanishes — no clean, no busted, no aborted, no DB row at all.
         # One mis-tap should not erase a player's run.

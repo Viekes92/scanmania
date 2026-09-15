@@ -29,6 +29,10 @@ log = logging.getLogger(__name__)
 
 # How often the watchdog checks for a frame gap. Must be well under
 # detection.stall_threshold_ms so the crossing is noticed promptly.
+# A camera gets this long to produce its first frame before the watchdog
+# calls it stalled. Generous: RTSP connect plus the first keyframe.
+_FIRST_FRAME_GRACE_MS = 30_000
+
 _WATCHDOG_INTERVAL_S = 0.1
 
 
@@ -89,7 +93,18 @@ class VisionService:
         self._stall_counts: dict[str, int] = {}
         self._stall_threshold_ms = config.beams.detection.stall_threshold_ms
         self._last_emitted_stall: bool | None = None
+        # monotonic_ns each stream was started, so a camera that never
+        # delivers a first frame can be told apart from one still starting.
+        self._started_ns: dict[str, int] = {}
         self._fault_reason: str | None = None
+        # A detector fault used to latch until the process restarted, and
+        # preflight treats it as a hard problem — so ONE transient mass-dark
+        # burst (a slow relay write outrunning preset_settle_ms) made every
+        # subsequent arm go ARM -> FAULT, escapable only by FORCE RESET, which
+        # lands straight back in ARM -> FAULT. It clears once the detector has
+        # been seeing normally for this long.
+        self._fault_since_ns: int | None = None
+        self._fault_clear_after_s: float = 30.0
 
     # ------------------------------------------------------------------
     # Camera callbacks — these run on the event loop thread
@@ -166,10 +181,44 @@ class VisionService:
             for cam_id, stream in self._streams.items():
                 last = stream.last_frame_ns
                 if last is None:
-                    continue  # never delivered a frame yet; startup, not a stall
+                    # Not a stall during startup — but a camera that has NEVER
+                    # delivered is exactly as blind as one that stopped, and
+                    # this branch made it invisible to the gate preflight
+                    # reads. One dead PoE port meant ~20 dots silently unwatched
+                    # while the console reported no stall, and a player ran
+                    # clean through that quarter of the maze all day.
+                    started = self._started_ns.get(cam_id)
+                    if started is not None and (
+                            (now_ns - started) / 1_000_000 > _FIRST_FRAME_GRACE_MS):
+                        self._mark_stall(cam_id)
+                    continue
                 gap_ms = (now_ns - last) / 1_000_000
                 if gap_ms > self._stall_threshold_ms:
                     self._mark_stall(cam_id)
+
+    def _expire_fault(self) -> str | None:
+        """
+        Forget a detector fault once the detector has been healthy for a while.
+
+        Latching forever turned a one-off transient into a dead box for the
+        rest of the session. Clearing it the instant dots recover would be too
+        eager — a flapping detector would look fine between bursts — so it has
+        to stay quiet for a settle window first.
+        """
+        if self._fault_reason is None:
+            return None
+        if self._detector is not None and getattr(self._detector, "in_fault", False):
+            self._fault_since_ns = time.monotonic_ns()
+            return self._fault_reason
+        if self._fault_since_ns is None:
+            return self._fault_reason
+        healthy_s = (time.monotonic_ns() - self._fault_since_ns) / 1e9
+        if healthy_s >= self._fault_clear_after_s:
+            log.info("vision: detector fault cleared after %.0f s healthy (%s)",
+                     healthy_s, self._fault_reason)
+            self._fault_reason = None
+            self._fault_since_ns = None
+        return self._fault_reason
 
     # ------------------------------------------------------------------
     # Detector callbacks
@@ -194,6 +243,9 @@ class VisionService:
             raise RuntimeError(
                 "VisionService: no cameras configured — check hardware.yaml")
 
+        _start_ns = time.monotonic_ns()
+        for cid in self._streams:
+            self._started_ns[cid] = _start_ns
         tasks = [
             asyncio.create_task(s.run(), name=f"camera_{cid}")
             for cid, s in self._streams.items()
@@ -274,6 +326,7 @@ class VisionService:
         """
         log.error("vision fault: %s", reason)
         self._fault_reason = reason
+        self._fault_since_ns = time.monotonic_ns()
         if self._last_emitted_stall is not True:
             self._last_emitted_stall = True
             self._queue.put_nowait(("stall", True, [reason]))
@@ -337,7 +390,7 @@ class VisionService:
         st["cameras_live"] = sum(
             1 for c in cams.values() if not c.get("stalled", True))
         st["cameras_total"] = len(self._streams)
-        st["fault"] = self._fault_reason
+        st["fault"] = self._expire_fault()
         return st
 
     # ------------------------------------------------------------------

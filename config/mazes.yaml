@@ -5,6 +5,62 @@ presets:
   all_on:
     channels: '*'
     description: every relay on
+  # Generated from the type field in beams.json (V-left, V-right vs
+  # H-top-left, H-center, H-top-right) — regenerate if the wiring moves.
+  # Used by the outcome shows: a clean run lights the verticals so the maze
+  # reads as a corridor you could walk through, a bust lights the
+  # horizontals so it reads as barred.
+  vertical:
+    channels:
+    - 2
+    - 4
+    - 7
+    - 9
+    - 12
+    - 14
+    - 18
+    - 20
+    - 23
+    - 25
+    - 28
+    - 30
+    - 34
+    - 36
+    - 39
+    - 41
+    - 44
+    - 46
+    description: the 18 vertical segments — 'you got through'
+  horizontal:
+    channels:
+    - 1
+    - 3
+    - 5
+    - 6
+    - 8
+    - 10
+    - 11
+    - 13
+    - 15
+    - 17
+    - 19
+    - 21
+    - 22
+    - 24
+    - 26
+    - 27
+    - 29
+    - 31
+    - 33
+    - 35
+    - 37
+    - 38
+    - 40
+    - 42
+    - 43
+    - 45
+    - 47
+    description: the 27 horizontal segments — 'you were stopped'
   maze_1:
     channels:
     - 3
@@ -22,49 +78,41 @@ presets:
     - 34
     - 35
     - 36
-    - 38
     - 40
     - 42
     - 43
-    - 44
     - 45
-    - 46
     - 47
     description: test
   maze_2:
     channels:
-    - 1
     - 2
     - 3
     - 4
-    - 5
-    - 10
-    - 12
-    - 15
+    - 8
+    - 13
+    - 14
     - 18
-    - 19
+    - 21
     - 23
     - 24
     - 27
     - 30
     - 33
     - 34
-    - 35
     - 36
     - 40
-    - 42
+    - 41
     - 43
+    - 44
     - 45
-    - 46
     - 47
     description: "second maze \u2014 CP1 to CP2"
   maze_3:
     channels:
-    - 1
     - 2
     - 3
     - 4
-    - 5
     - 12
     - 14
     - 15
@@ -78,9 +126,9 @@ presets:
     - 37
     - 39
     - 40
-    - 44
+    - 43
     - 45
-    - 47
+    - 46
     description: "third maze \u2014 CP2 to END"
 shows:
   attract:
@@ -92,21 +140,24 @@ shows:
       hold_ms: 300
     loop: true
   bust:
-    loop: true
-    description: "rapid flash \u2014 plays on BUSTED"
+    # The opposite read: every horizontal lit and held, so the maze looks
+    # barred. Solid rather than flashing for the same reason as clean — the
+    # shape is the message, and a flash hides it half the time.
+    loop: false
+    description: "busted \u2014 horizontals solid, the maze reads as barred"
     steps:
-    - preset: all_on
-      hold_ms: 150
-    - preset: blackout
-      hold_ms: 150
+    - preset: horizontal
+      hold_ms: 15000
   clean:
-    loop: true
-    description: "celebration \u2014 plays on FINISHED (clean run)"
+    # Solid, not flashing, and not looping. One step, then the show task ends
+    # and the coils simply stay where it left them (StopShow is documented to
+    # leave them alone, and the reconciler holds the desired state), so this
+    # holds until RESULT hands over to the attract show.
+    loop: false
+    description: "clean run \u2014 verticals solid, the maze reads as passable"
     steps:
-    - preset: all_on
-      hold_ms: 400
-    - preset: blackout
-      hold_ms: 100
+    - preset: vertical
+      hold_ms: 15000
   main_game:
     segments:
     - maze_1
@@ -118,71 +169,116 @@ shows:
     - preset: all_on
       hold_ms: 200
     loop: true
-
-# ---------------------------------------------------------------------------
-# Room light cues — DMX ch4 (left) and ch5 (right), 1-channel white, 0-255.
-#
-# Keyed by FSM state, lower-case. Each step sets levels and holds for `ms`;
-# `loop: true` repeats until the state changes. `fade: false` snaps instead of
-# fading, which is what makes a flash read as a flash.
-#
-# The entrance (ch3) is never in a cue — it is always_on in hardware.yaml and
-# the DMX layer refuses to dim it.
-#
-# COUNTDOWN and the RUN states are NOT listed and cannot be: the container must
-# be dark for detection to be trustworthy, so they are forced off in code.
-# ---------------------------------------------------------------------------
 light_cues:
-  attract:
-    description: "slow alternating pulse, very dim — the room is idle"
-    loop: true
+  # MASTER, SELF_TEST and RESET were absent, and LightCuePlayer falls through to
+  # all-off for a state it does not recognise. It looked fine only because the
+  # work-lights override starts on at boot: once the GM turned work lights off
+  # for the first show and later tapped MASTER MODE to walk the maze, the room
+  # went dark around them. MASTER is the one mode that means "a human is inside".
+  master:
+    description: "GM is in the container — full working light"
     steps:
-      - {left: 14, right: 2,  ms: 1600}
-      - {left: 2,  right: 14, ms: 1600}
+      - {left: 255, right: 255, ms: 0}
 
-  registered:
-    description: "player signed in — both sides up a little, waiting"
-    loop: true
-    steps:
-      - {left: 30, right: 30, ms: 1200}
-      - {left: 12, right: 12, ms: 1200}
-
-  arm:
-    description: "on the plate — steady low, about to go dark"
-    steps:
-      - {left: 20, right: 20, ms: 0}
-
-  finished:
-    description: "clean run — celebratory flash, then hold bright"
-    steps:
-      - {left: 255, right: 255, ms: 90,  fade: false}
-      - {left: 0,   right: 0,   ms: 90,  fade: false}
-      - {left: 255, right: 255, ms: 90,  fade: false}
-      - {left: 0,   right: 0,   ms: 90,  fade: false}
-      - {left: 255, right: 255, ms: 90,  fade: false}
-      - {left: 0,   right: 0,   ms: 90,  fade: false}
-      - {left: 200, right: 200, ms: 0}
-
-  busted:
-    description: "busted — one hard snap, then sullen low"
-    steps:
-      - {left: 255, right: 255, ms: 140, fade: false}
-      - {left: 0,   right: 0,   ms: 260, fade: false}
-      - {left: 40,  right: 40,  ms: 0}
-
-  aborted:
-    description: "aborted — plain lights up, no drama"
+  self_test:
+    description: "boot probe — up, so the box is not dark while it checks"
     steps:
       - {left: 120, right: 120, ms: 0}
 
-  result:
-    description: "score on screen — bright enough to walk out by"
+  reset:
+    description: "transient on the way to attract — hold, do not blink"
     steps:
-      - {left: 180, right: 180, ms: 0}
+      - {left: 60, right: 60, ms: 0}
 
-  fault:
-    description: "something is wrong — slow throb so it is obvious from outside"
+  attract:
+    description: "slow alternating pulse, very dim \u2014 the room is idle"
     loop: true
     steps:
-      - {left: 200, right: 200, ms: 700}
-      - {left: 40,  right: 40,  ms: 700}
+    - left: 14
+      right: 2
+      ms: 1600
+    - left: 2
+      right: 14
+      ms: 1600
+  registered:
+    description: "player signed in \u2014 both sides up a little, waiting"
+    loop: true
+    steps:
+    - left: 30
+      right: 30
+      ms: 1200
+    - left: 12
+      right: 12
+      ms: 1200
+  arm:
+    description: "on the plate \u2014 steady low, about to go dark"
+    steps:
+    - left: 20
+      right: 20
+      ms: 0
+  finished:
+    description: "clean run \u2014 celebratory flash, then hold bright"
+    steps:
+    - left: 255
+      right: 255
+      ms: 90
+      fade: false
+    - left: 0
+      right: 0
+      ms: 90
+      fade: false
+    - left: 255
+      right: 255
+      ms: 90
+      fade: false
+    - left: 0
+      right: 0
+      ms: 90
+      fade: false
+    - left: 255
+      right: 255
+      ms: 90
+      fade: false
+    - left: 0
+      right: 0
+      ms: 90
+      fade: false
+    - left: 200
+      right: 200
+      ms: 0
+  busted:
+    description: "busted \u2014 one hard snap, then sullen low"
+    steps:
+    - left: 255
+      right: 255
+      ms: 140
+      fade: false
+    - left: 0
+      right: 0
+      ms: 260
+      fade: false
+    - left: 40
+      right: 40
+      ms: 0
+  aborted:
+    description: "aborted \u2014 plain lights up, no drama"
+    steps:
+    - left: 120
+      right: 120
+      ms: 0
+  result:
+    description: "score on screen \u2014 bright enough to walk out by"
+    steps:
+    - left: 180
+      right: 180
+      ms: 0
+  fault:
+    description: "something is wrong \u2014 slow throb so it is obvious from outside"
+    loop: true
+    steps:
+    - left: 200
+      right: 200
+      ms: 700
+    - left: 40
+      right: 40
+      ms: 700

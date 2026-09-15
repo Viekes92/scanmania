@@ -1141,7 +1141,14 @@ class GameRunner:
                             "message": f"vision stats unavailable: {exc}"})
                 vs = {}
             if vs:
-                if not vs.get("total"):
+                # Only when a maze is actually lit. At idle — MASTER, ATTRACT —
+                # no maze is armed and the detector is watching nothing BY
+                # DESIGN, so reporting "detection is blind" made the fault list
+                # non-empty for most of the day. Booting into MASTER put it on
+                # screen at every startup. Same trap as the 'assisted' line
+                # above: a permanent fault teaches operators to ignore faults.
+                # An armed maze with no dots is still a real, run-ending fault.
+                if vs.get("maze") and not vs.get("total"):
                     out.append({"subsystem": "vision",
                                 "message": f"maze '{vs.get('maze')}' has no "
                                            f"calibrated dots — detection is blind"})

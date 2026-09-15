@@ -141,21 +141,42 @@ for unit in "${SERVICES[@]}"; do
 done
 
 "$VENV/bin/python" - <<'PY' || failed=1
-import json, os, sys, urllib.request
+import hashlib, json, os, sys, time, urllib.request
 
+URL = "http://127.0.0.1:8000/api/admin/status"
 pw = os.environ.get("SCANMANIA_ADMIN_PASSWORD", "")
+hdr = {"X-Admin-Password": hashlib.sha256(pw.encode()).hexdigest()} if pw else {}
 try:
-    import hashlib
-    hdr = {"X-Admin-Password": hashlib.sha256(pw.encode()).hexdigest()} if pw else {}
-    req = urllib.request.Request("http://127.0.0.1:8000/api/admin/status", headers=hdr)
-    d = json.load(urllib.request.urlopen(req, timeout=10))
+    d = json.load(urllib.request.urlopen(
+        urllib.request.Request(URL, headers=hdr), timeout=10))
 except Exception as exc:
     print(f"  api                          UNREACHABLE ({exc})")
     sys.exit(1)
 
 print(f"  {'api':<28} ok — state={d.get('state')}")
-for f in d.get("faults") or []:
-    print(f"    FAULT {f.get('subsystem')}: {f.get('message')}")
+
+
+def faults_of(doc):
+    return [(f.get("subsystem"), f.get("message")) for f in (doc.get("faults") or [])]
+
+
+# Eight RTSP cameras do not finish connecting in the time it takes uvicorn to
+# answer, so a status read taken the instant the service comes back ALWAYS
+# reported cameras missing. A fault printed by every deploy is a fault nobody
+# reads, so give the transient ones time to clear before believing them.
+pending = faults_of(d)
+deadline = time.monotonic() + 45
+while pending and time.monotonic() < deadline:
+    time.sleep(3)
+    try:
+        d = json.load(urllib.request.urlopen(
+            urllib.request.Request(URL, headers=hdr), timeout=10))
+    except Exception:
+        break
+    pending = faults_of(d)
+
+for sub, msg in pending:
+    print(f"    FAULT {sub}: {msg}")
 PY
 
 if [ "$failed" -ne 0 ]; then

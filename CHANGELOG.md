@@ -66,6 +66,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **The fault list was never empty at idle.** "detection is blind" fired
+  whenever no maze was armed — which is MASTER and ATTRACT, i.e. most of the
+  day, and now every boot, since the box boots into MASTER. The detector
+  watching nothing with no maze lit is the design, not a fault. It is reported
+  only when a maze is actually lit, where zero dots is genuinely run-ending.
+
+- **Every deploy printed a camera fault.** The health check read
+  `/api/admin/status` the instant uvicorn answered, and eight RTSP cameras have
+  not connected by then. It now waits up to 45 s for transient faults to clear
+  before believing them. A fault printed on every deploy is one nobody reads.
+
 - **The kiosk never read its own overrides.** `kiosk.sh` documents
   `SCANMANIA_OUT_IN` / `SCANMANIA_OUT_OUT` / `SCANMANIA_ROTATE_OUT` as settings
   in `/etc/default/scanmania`, but `scanmania-kiosk.service` had no

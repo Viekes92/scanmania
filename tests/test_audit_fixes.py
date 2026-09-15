@@ -16,7 +16,7 @@ import pytest
 import config.loader as loader
 from core.events import (
     GmForceReset, MasterModeEngage, StopPressed, SaveRun,
-    RunOutcome, RUN_SEG_3, BUSTED, FINISHED, MASTER, ATTRACT, RESET,
+    RunOutcome, RUN_SEG_3, BUSTED, FINISHED, MASTER, ATTRACT, RESET, FAULT,
 )
 from core.fsm import FSMContext, transition
 from persist.db import day_bounds
@@ -218,6 +218,36 @@ def test_boot_into_master_does_not_start_the_attract_show():
     from core.events import SelfTestPass, SELF_TEST, PlayShow
     _, fx = transition(SELF_TEST, SelfTestPass(), FSMContext(boot_to_master=True))
     assert not [e for e in fx if isinstance(e, PlayShow)]
+
+
+def test_a_failed_boot_probe_also_consumes_the_boot_flag():
+    """The flag means "this is the boot", not "the boot succeeded".
+
+    Only the pass path used to clear it, so a boot whose probe failed — the PoE
+    switch coming up after the NUC, which is the whole reason the self test
+    retries — left it set for the rest of the session. Every later
+    MasterModeExit then re-ran the probe, passed, saw the flag and returned to
+    MASTER: the GM's EXIT button looked dead.
+    """
+    from core.events import SelfTestFail, SelfTestPass, SELF_TEST, ATTRACT as _ATTRACT
+    ctx = FSMContext(boot_to_master=True)
+    assert transition(SELF_TEST, SelfTestFail(reason="boards"), ctx)[0] == FAULT
+    assert ctx.boot_to_master is False
+    # The GM fixes the hardware and leaves MASTER: they must reach game mode.
+    assert transition(SELF_TEST, SelfTestPass(), ctx)[0] == _ATTRACT
+
+
+def test_exiting_master_reaches_game_mode_after_a_failed_boot():
+    """End to end over the path an operator actually walks on a bad morning."""
+    from core.events import (BootComplete, SelfTestFail, SelfTestPass,
+                             MasterModeEngage, MasterModeExit, ATTRACT as _ATTRACT)
+    ctx = FSMContext(boot_to_master=True)
+    state, _ = transition("BOOT", BootComplete(), ctx)
+    state, _ = transition(state, SelfTestFail(reason="boards unreachable"), ctx)
+    state, _ = transition(state, GmForceReset(), ctx)          # only way out of FAULT
+    state, _ = transition(_ATTRACT, MasterModeEngage(), ctx)   # GM checks the box
+    state, _ = transition(state, MasterModeExit(), ctx)        # re-runs the probe
+    assert transition(state, SelfTestPass(), ctx)[0] == _ATTRACT
 
 
 def test_force_reset_is_the_way_out_of_the_boot_master_state():

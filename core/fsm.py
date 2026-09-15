@@ -178,6 +178,14 @@ def _self_test_handlers() -> dict:
         return ATTRACT, [PlayShow("attract"), BroadcastState()]
 
     def on_fail(state, event: SelfTestFail, ctx):
+        # Consume the flag here too. It means "this is the boot", not "the boot
+        # succeeded", and only the pass path used to clear it — so a boot whose
+        # probe failed (the PoE switch coming up after the NUC, which is exactly
+        # what the self-test retry exists for) left it set for the rest of the
+        # session. Every later MasterModeExit then re-ran the probe, passed, saw
+        # the flag still set and returned to MASTER: the GM's EXIT button looked
+        # dead. FORCE RESET still escaped, but only if someone knew to try it.
+        ctx.boot_to_master = False
         return FAULT, [BroadcastState()]
 
     return {

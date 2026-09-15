@@ -112,7 +112,15 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
   is `.mp3`/`.ogg`** — it streams, and an 8-hour ambient track as `.wav` is
   5 GB. Both are checked at startup (`verify_music`), so a codec the box cannot
   decode is a boot-log line rather than silence discovered mid-show.
-- **Recalibrating:** stop the game (`systemctl stop scanmania-kiosk scanmania` — kiosk first, or its `Wants=` drags the game back up), run `tools/capture.py`, open port 8090. Light a maze, tune each camera, capture, repeat, write. Verify on `/admin/beams`.
+- **Recalibrating — two different jobs.** *Geometry* (the container was moved,
+  the dots drifted): **Admin → Calibration → Check**, then Save. It runs inside
+  the game, lights each maze, re-finds every dot and re-measures its baseline,
+  reusing the per-camera thresholds untouched. Needs MASTER MODE, house lights
+  off, nobody inside; it is a dry run until you press Save, backs up
+  `beams.json`, and refuses a result that loses more than a quarter of the dots.
+  *Tuning* (a camera's exposure changed, dots are not being found at all) still
+  needs the full tool below — there is no substitute for watching each stage.
+- **Retuning:** stop the game (`systemctl stop scanmania-kiosk scanmania` — kiosk first, or its `Wants=` drags the game back up), run `tools/capture.py`, open port 8090. Light a maze, tune each camera, capture, repeat, write. Verify on `/admin/beams`.
 - **Module docstrings:** every module opens with its one job, inputs, outputs, and invariants (3–6 lines). No exceptions.
 
 ## Things that look wrong but aren't

@@ -302,6 +302,12 @@ class AudioBody(BaseModel):
     play: str | None = Field(default=None, max_length=120)
 
 
+class RecalibrateBody(BaseModel):
+    """Re-find the dot ROIs. Dry run unless apply is set."""
+    apply: bool = Field(default=False)
+    mazes: list[str] | None = Field(default=None)
+
+
 class ShutdownBody(BaseModel):
     """End-of-day shutdown. `confirm` must be the literal string SHUTDOWN.
 
@@ -1366,6 +1372,24 @@ def register_routes(
             # soundtrack off whatever it is doing.
             player.play_cue(body.play)
         return await admin_audio_status()
+
+    @router.post("/api/admin/recalibrate", dependencies=[Depends(_require_admin)])
+    async def admin_recalibrate(body: RecalibrateBody):
+        """
+        Re-find the dot ROIs from the live cameras.
+
+        For "the container has been moved and the dots have drifted". It does
+        not re-tune — the per-camera thresholds stay as they were — so it is
+        the geometry half of what tools/capture.py does, and the half that
+        actually changes when a box is trucked.
+
+        Dry run unless apply=true: the answer to "do I need to recalibrate?"
+        should not itself overwrite the calibration.
+        """
+        runner = _runner()
+        if runner is None or not hasattr(runner, "recalibrate"):
+            raise HTTPException(status_code=503, detail="runner not available")
+        return await runner.recalibrate(mazes=body.mazes, apply=body.apply)
 
     @router.post("/api/admin/shutdown", dependencies=[Depends(_require_admin)])
     async def admin_shutdown(body: ShutdownBody):

@@ -9,6 +9,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Recalibration from the admin panel** (Calibration → Check / Save). After the
+  container is moved, the dots drift — and they do not drift together: a dot is
+  where a *beam lands*, so a settled mount or a flexed ceiling moves each one by
+  its own amount. There is no offset to apply, so this genuinely re-finds every
+  ROI from the live cameras, maze by maze, and re-measures each baseline with
+  the same `sample_circle()` the runtime compares against.
+
+  It re-detects geometry only: the per-camera thr/tophat/min_area were tuned by
+  hand against this container's lighting and are carried forward untouched. A
+  move changes where the dots are, not what a dot looks like — tuning is still
+  `tools/capture.py` with the game stopped.
+
+  It runs *inside* the game process, which is why it needs nothing stopped: the
+  game already holds the RTSP streams and the relay boards, which is exactly
+  what a capture needs and exactly why the standalone tool demands exclusivity.
+
+  Guarded, because it can replace a working calibration: MASTER MODE only, an
+  ambient check that refuses if the cameras see anything with every laser off
+  (house lights on, or a door open onto a sunlit yard), a dry run by default,
+  a `beams.json` backup before writing, and a refusal to save a result that
+  loses more than a quarter of the dots — far more likely to be someone
+  standing in the maze than a real change of that size.
+
+  `find_dots`/`stages` moved from `tools/capture.py` to `vision/dots.py` so
+  there is ONE implementation. `tools/` is not a package, so nothing in the
+  running game could import it, and a second copy would have drifted from the
+  one the calibration was made with.
+
+### Added
+
 - **Sound.** A looping music bed plus one-shot cues, both keyed by FSM state in
   `audio:` in `game.yaml`, playing `.wav` files from `sounds/`. Swap a sound by
   dropping a file in under the same name, or by pointing the config at a new

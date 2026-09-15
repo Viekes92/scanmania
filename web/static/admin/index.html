@@ -842,6 +842,26 @@
         <div id="inputsInfo" style="font-size:13px; color:var(--muted)">Loading…</div>
       </div>
 
+      <div class="card" id="recalCard">
+        <div class="card-title">Calibration &mdash; re-find the dots</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5;">
+          After the container has been moved. Lights each maze in turn, re-finds
+          every dot from the live cameras, and re-measures its baseline. It does
+          <b>not</b> re-tune thresholds &mdash; a move changes where the dots
+          are, not what a dot looks like; tuning is still
+          <code>tools/capture.py</code> with the game stopped.
+          <br><br>
+          Needs <b>MASTER MODE</b>, the house lights <b>off</b>, and nobody in
+          the container. Check first, save only if the numbers look right.
+        </div>
+        <div style="margin-top:12px;">
+          <button class="btn btn-default" id="btnRecalCheck">Check (changes nothing)</button>
+          <button class="btn btn-warn" id="btnRecalApply"
+                  style="margin-left:8px;display:none;">Save this calibration</button>
+        </div>
+        <div id="recalOut" style="margin-top:12px;font-size:12px;line-height:1.7;"></div>
+      </div>
+
       <div class="card" id="audioCard">
         <div class="card-title">Audio &mdash; soundtrack</div>
         <div id="audioInfo" style="font-size:13px;color:var(--muted);">Loading&hellip;</div>
@@ -1521,6 +1541,64 @@
         body: JSON.stringify(body),
       });
     }
+
+    /* ---------------------------------------------------------------------
+       Recalibration. Check is a dry run; Save only appears once a check has
+       come back clean, so the destructive button cannot be the first thing
+       anyone clicks.
+    --------------------------------------------------------------------- */
+    (function () {
+      const check = document.getElementById("btnRecalCheck");
+      const save  = document.getElementById("btnRecalApply");
+      const out   = document.getElementById("recalOut");
+      if (!check) return;
+
+      function line(text, tone) {
+        const d = document.createElement("div");
+        d.style.color = tone === "bad" ? "var(--red-text)"
+                      : tone === "dim" ? "var(--muted)" : "var(--text)";
+        d.textContent = text;                 // operator-visible, never innerHTML
+        out.appendChild(d);
+      }
+
+      function render(r) {
+        out.textContent = "";
+        (r.notes || []).forEach(n => line(n, r.ok ? "dim" : "bad"));
+        Object.entries(r.mazes || {}).forEach(([maze, d]) => {
+          if (d.error) { line(`${maze}: ${d.error}`, "bad"); return; }
+          line(`${maze}: ${d.total_was} \u2192 ${d.total_now} dots`);
+          Object.entries(d.cameras || {}).forEach(([cam, c]) => {
+            const moved = c.delta === 0 ? "same count"
+                        : (c.delta > 0 ? `+${c.delta}` : `${c.delta}`);
+            line(`    ${cam}  ${c.was} \u2192 ${c.now}  (${moved})`
+                 + (c.blind ? `  ${c.blind} with no baseline` : ""),
+                 c.blind || c.delta < 0 ? "bad" : "dim");
+          });
+        });
+        save.style.display = (r.ok && !r.applied) ? "" : "none";
+      }
+
+      async function run(apply) {
+        const btn = apply ? save : check;
+        const was = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = apply ? "Saving\u2026" : "Lighting each maze\u2026";
+        out.textContent = "";
+        line("This takes about a minute \u2014 each maze is lit and sampled "
+             + "over several seconds.", "dim");
+        try {
+          render(await apiPost("/api/admin/recalibrate", { apply: apply }));
+        } catch (e) {
+          out.textContent = "";
+          line("failed: " + e.message, "bad");
+        }
+        btn.disabled = false;
+        btn.textContent = was;
+      }
+
+      check.addEventListener("click", () => run(false));
+      save.addEventListener("click", () => run(true));
+    })();
 
     /* ---------------------------------------------------------------------
        Audio. Status, a mute, and an audition button per file.

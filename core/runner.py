@@ -835,6 +835,154 @@ class GameRunner:
     # Side effect handlers
     # ------------------------------------------------------------------
 
+    async def recalibrate(self, mazes: list[str] | None = None,
+                          apply: bool = False) -> dict:
+        """
+        Re-find every dot ROI from the live cameras, maze by maze.
+
+        This is the "the container has been moved" operation. It does NOT
+        re-tune: the per-camera thr/tophat/min_area were set by hand against
+        this container's lighting and are carried forward untouched. A move
+        changes where the dots ARE; it does not change what a dot looks like.
+        Tuning still belongs in tools/capture.py with the game stopped.
+
+        Dry run by default. With apply=False it reports what it WOULD write and
+        changes nothing, which is the form to use after a move to answer "do I
+        actually need to recalibrate?" without betting the day's calibration on
+        the answer.
+
+        Refuses unless the box is in MASTER. A recapture lights each maze in
+        turn and takes several seconds per shape; doing that around a player is
+        not something an accidental click should be able to cause.
+        """
+        from vision.recalibrate import (_MAX_AMBIENT_BLOBS, ambient_blobs,
+                                        recapture_maze)
+
+        report: dict = {"ok": False, "applied": False, "mazes": {}, "notes": []}
+
+        if self.state != "MASTER":
+            report["notes"].append(
+                f"refused: the box is in {self.state}. Recalibration lights each "
+                f"maze for several seconds — put it in MASTER MODE first.")
+            return report
+
+        streams = getattr(self.vision, "_streams", None) or {}
+        if not streams:
+            report["notes"].append("refused: no camera streams (vision is not running)")
+            return report
+
+        existing = {}
+        try:
+            existing = (self.config.beams.mazes or {}) if self.config else {}
+        except Exception:
+            existing = {}
+
+        params = {cid: (blk or {}).get("params") or {}
+                  for maze in existing.values()
+                  for cid, blk in (maze.get("cameras") or {}).items()}
+
+        targets = mazes or [m for m in ("maze_1", "maze_2", "maze_3")]
+
+        # Ambient gate. Every ROI captured with the house lights on is wrong,
+        # and the person who left them on is the same person clicking this.
+        if self._resolver and self.io:
+            await self._resolver.apply_all_off(self.io)
+        await asyncio.sleep(0.8)
+        amb = await ambient_blobs(streams, params)
+        worst = max(amb.values()) if amb else 0
+        if worst > _MAX_AMBIENT_BLOBS:
+            report["ambient"] = amb
+            report["notes"].append(
+                f"refused: {worst} blobs visible with every laser OFF (limit "
+                f"{_MAX_AMBIENT_BLOBS}). House lights on, or a door open — "
+                f"recalibrating now would map reflections as dots.")
+            return report
+        report["ambient"] = amb
+
+        settle = getattr(getattr(self.config, "game", None), "preset_settle_ms", 800)
+        for maze in targets:
+            try:
+                if self._resolver and self.io:
+                    await self._resolver.apply_preset(maze, self.io)
+                await asyncio.sleep(max(1.0, settle / 1000.0))
+                prev = ((existing.get(maze) or {}).get("cameras") or {})
+                cams = await recapture_maze(streams, params, previous=prev)
+            except Exception as exc:
+                log.error("recalibrate: %s failed: %s", maze, exc)
+                report["mazes"][maze] = {"error": str(exc)}
+                continue
+
+            per_cam = {}
+            for cid, blk in cams.items():
+                was = len((prev.get(cid) or {}).get("dots") or [])
+                now = len(blk["dots"])
+                blind = sum(1 for d in blk["dots"] if not d["baseline"])
+                per_cam[cid] = {"was": was, "now": now, "blind": blind,
+                                "delta": now - was}
+            report["mazes"][maze] = {"cameras": per_cam,
+                                     "total_was": sum(c["was"] for c in per_cam.values()),
+                                     "total_now": sum(c["now"] for c in per_cam.values()),
+                                     "_candidate": cams}
+
+        if self._resolver and self.io:
+            await self._resolver.apply_all_off(self.io)
+
+        # Believability gate. A recapture that loses a quarter of the dots is
+        # far more likely to be someone standing in the maze, a door open, or a
+        # camera that dropped out than a real change of that size — and saving
+        # it would replace a working calibration with a broken one.
+        lost = [f"{m}: {d['total_was']} -> {d['total_now']}"
+                for m, d in report["mazes"].items()
+                if "_candidate" in d and d["total_was"]
+                and d["total_now"] < d["total_was"] * 0.75]
+        if lost:
+            report["notes"].append(
+                "NOT saved: dot count fell by more than a quarter (" +
+                "; ".join(lost) + "). Check nobody is in the container and the "
+                "lasers are all on, then run it again.")
+            apply = False
+
+        report["ok"] = bool(report["mazes"]) and not lost
+        if apply and report["ok"]:
+            applied = await self._write_calibration(report)
+            report["applied"] = applied
+            if applied:
+                report["notes"].append("saved; detection reloaded")
+
+        for d in report["mazes"].values():
+            d.pop("_candidate", None)
+        return report
+
+    async def _write_calibration(self, report: dict) -> bool:
+        """Back up beams.json, write the new ROIs, reload detection."""
+        import json
+        import shutil
+        from pathlib import Path
+        try:
+            path = Path(self._config_dir) / "beams.json" if getattr(
+                self, "_config_dir", None) else Path("config/beams.json")
+            doc = json.loads(path.read_text())
+            # The only copy of a working calibration is the one on disk.
+            backup = path.with_suffix(f".json.bak-{int(time.time())}")
+            shutil.copy2(path, backup)
+            doc.setdefault("mazes", {})
+            for maze, d in report["mazes"].items():
+                if "_candidate" in d:
+                    doc["mazes"].setdefault(maze, {})["cameras"] = d["_candidate"]
+            tmp = path.with_suffix(".json.new")
+            tmp.write_text(json.dumps(doc, indent=2))
+            tmp.replace(path)
+            log.warning("recalibrate: wrote %s (previous kept at %s)", path, backup)
+        except Exception as exc:
+            log.error("recalibrate: could not write beams.json: %s", exc)
+            report["notes"].append(f"write failed: {exc}")
+            return False
+        try:
+            await self.reload_config()
+        except Exception as exc:
+            report["notes"].append(f"saved, but reload failed ({exc}) — restart the service")
+        return True
+
     def _refuse_after_power_down(self, what: str) -> bool:
         """
         True when the container has been darkened and must stay dark.

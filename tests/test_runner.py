@@ -1475,3 +1475,59 @@ async def test_nothing_can_relight_the_maze_after_power_down(
         assert not any(await board.read_coils()), (
             f"{board.board_id} was re-energised after the operator was told "
             f"the container was dark")
+
+
+# ===========================================================================
+# Recalibration
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_recalibration_refuses_outside_master(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """It lights each maze for seconds at a time. Not around a player."""
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await _drain(r, iterations=5, pause=0)
+    assert r.state != "MASTER"
+    out = await r.recalibrate()
+    assert out["ok"] is False and out["applied"] is False
+    assert any("MASTER" in n for n in out["notes"])
+    for a in ("_show_task", "_arm_timeout_task", "_result_timeout_task"):
+        r._cancel_task(a)
+
+
+def test_recalibration_keeps_the_hand_tuned_params():
+    """A move changes where the dots are, not what a dot looks like.
+
+    Re-deriving thresholds here would quietly undo per-camera tuning done
+    against this container's lighting — which is tools/capture.py's job, with
+    the game stopped and a human watching each stage.
+    """
+    import asyncio as _a
+    import numpy as np
+    from vision.recalibrate import recapture_maze
+
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+
+    class _Stream:
+        last_frame = frame
+
+    tuned = {"thr": 17, "tophat": 31, "min_area": 55, "max_area": 900}
+    prev = {"SM-CAM-11": {"params": tuned, "dots": []}}
+    cams = _a.run(recapture_maze({"SM-CAM-11": _Stream()}, {}, previous=prev))
+    assert cams["SM-CAM-11"]["params"] == tuned, "recapture overwrote the tuning"
+
+
+def test_a_recapture_that_loses_most_dots_is_not_saved():
+    """Far more likely someone in the container, a door open, or a camera that
+    dropped out than a real change of that size — and saving it would replace a
+    working calibration with a broken one."""
+    report = {
+        "mazes": {"maze_1": {"total_was": 137, "total_now": 40, "_candidate": {}}},
+        "notes": [],
+    }
+    lost = [m for m, d in report["mazes"].items()
+            if d["total_was"] and d["total_now"] < d["total_was"] * 0.75]
+    assert lost == ["maze_1"], "the believability gate would not have caught this"

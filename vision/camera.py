@@ -247,6 +247,14 @@ class CameraStream:
             self._release()
 
     @property
+    def last_frame(self):
+        """The most recent decoded frame, or None. Read-only view for callers
+        that need to look at what this camera is seeing right now — the
+        in-process recalibration, which is why it no longer needs the game
+        stopped."""
+        return self._last_frame
+
+    @property
     def abandoned_threads(self) -> int:
         """Reader threads lost to timeouts. Non-zero means a flaky link."""
         return self._exec.retired

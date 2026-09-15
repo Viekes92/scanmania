@@ -1,827 +1,509 @@
 <!DOCTYPE html>
 <!--
-  web/static/display_out/index.html — Outdoor display (HDMI 2).
+  web/static/display_out/index.html — the public-facing screen (HDMI-2).
 
-  The crowd-puller. Faces the street. Designed as a visual object.
-  - Background: back-cam MJPEG feed (full-screen). Not wired yet — plan.md §18.
-    Falls back to dark background gracefully if the stream is unavailable.
-  - Overlay: stopwatch (top-right), leaderboard (idle), state overlays
-  - ATTRACT:  leaderboard prominent, game name, MJPEG in background
-  - RUN:      stopwatch counts up, leaderboard fades back
-  - BUST:     "BUSTED" text overlay briefly
-  - FINISHED: rank and time overlay ("Rank #3 — 1:23.456")
+  PORTRAIT, 9:16. Deliberately: people photograph it with a phone, and a
+  portrait frame is what they can actually post. The physical panel has to be
+  rotated and X told about it — see docs/deployment.md. The layout still works
+  landscape, it just loses the tall middle.
 
-  Stopwatch interpolated at 60 fps with requestAnimationFrame.
-  WebSocket /ws for live state updates.
-  No external dependencies. No buttons. Chromium kiosk mode.
+  Reading order is fixed top to bottom: logo, the running clock, the stage
+  (camera feed when the back cam lands — plan.md §18), then the leaderboard and
+  the sponsor lockup along the bottom. That bottom strip is the part that ends
+  up in the photo, so it never moves.
+
+  Brand tokens and the Proxima Nova faces come from /static/shared/brand.css.
+
+  The stopwatch is interpolated between broadcasts and hard-corrected on every
+  message (invariant 2). Nothing here computes a duration from wall clock.
 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SCANMANIA — Outdoor</title>
-  <link rel="icon" href="data:,">
+  <title>ScanMania — Public display</title>
+  <link rel="stylesheet" href="/static/shared/brand.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     html, body {
-      width: 100vw;
-      height: 100vh;
-      overflow: hidden;
-      background: #000;
-      color: #fff;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      user-select: none;
-    }
-
-    /* -----------------------------------------------------------------------
-       MJPEG background — fills the entire screen
-    ----------------------------------------------------------------------- */
-    #mjpegBg {
-      position: fixed;
-      inset: 0;
-      width: 100%;
       height: 100%;
-      object-fit: cover;
-      /* MJPEG is an <img> that keeps updating */
-      z-index: 0;
-      opacity: 1;
-      transition: opacity 0.4s;
+      background: var(--sm-black);
+      color: #fff;
+      font-family: var(--sm-font);
+      overflow: hidden;
+      cursor: none;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* Fallback: when MJPEG fails, the body bg (#000) shows through */
-    #mjpegBg.hidden { opacity: 0; }
+    /* Portrait artwork. Landscape panels get the horizontal cut instead, so a
+       mis-rotated screen still looks deliberate rather than stretched. */
+    .sm-lasers { background-image: url("/static/shared/scanmania-design/lasers-v.png"); }
+    @media (orientation: landscape) {
+      .sm-lasers { background-image: url("/static/shared/scanmania-design/lasers-h.png"); }
+    }
 
-    /* Dark overlay over MJPEG for legibility — heavier at bottom for leaderboard */
-    #overlay {
-      position: fixed;
-      inset: 0;
-      background: linear-gradient(
-        to bottom,
-        rgba(0,0,0,0.55) 0%,
-        rgba(0,0,0,0.20) 40%,
-        rgba(0,0,0,0.45) 70%,
-        rgba(0,0,0,0.80) 100%
-      );
+    #stage {
+      position: relative;
       z-index: 1;
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      padding: 3.2vh 4vw;
+      gap: 1vh;
     }
 
-    /* All UI content sits above the overlay */
-    #ui {
-      position: fixed;
+    /* ---- header: logo + clock ------------------------------------------ */
+    .logo { width: min(74vw, 900px); display: block; margin: 0 auto; }
+
+    .clock {
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      font-size: clamp(44px, 13vw, 190px);
+      line-height: 1;
+      text-align: center;
+      margin-top: 0.6vh;
+    }
+    .clock .mm { color: var(--sm-blue); }
+    .clock .ss { color: var(--sm-red); }
+
+    /* ---- the middle: camera stage + overlays ---------------------------- */
+    #centre {
+      position: relative;
+      min-height: 0;               /* let the 1fr row actually shrink */
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    #mjpegBg {
+      position: absolute;
       inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      opacity: 0.85;
+    }
+    #mjpegBg.hidden { display: none; }
+
+    .overlay {
+      position: relative;
       z-index: 2;
-      pointer-events: none;
+      display: none;
+      text-align: center;
+      width: 100%;
     }
+    .overlay.visible { display: block; }
 
-    /* -----------------------------------------------------------------------
-       Stopwatch — top-right, always visible during a run
-    ----------------------------------------------------------------------- */
-    #stopwatch {
-      position: absolute;
-      top: 24px;
-      right: 32px;
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(40px, 6vw, 260px);
-      font-weight: 700;
-      /* The final time is the payoff the crowd is watching for. The .run class
-         used to be removed on FINISHED/BUSTED, dropping it back to the accent
-         at 2.67:1 nominal and ~1.2:1 in daylight. Keep the glyphs light. */
-      color: #e8f0fc;
-      text-shadow:
-        0 0 20px rgba(38, 79, 154, 0.8),
-        0 0 60px rgba(38, 79, 154, 0.4),
-        0 2px 16px rgba(0,0,0,0.9);
-      letter-spacing: 0.04em;
-      opacity: 0;
-      transition: opacity 0.3s, color 0.2s, text-shadow 0.2s;
-    }
-
-    #stopwatch.visible { opacity: 1; }
-
-    /* White stopwatch during active run for maximum contrast */
-    #stopwatch.run {
-      color: #ffffff;
-      text-shadow:
-        0 0 20px rgba(255, 255, 255, 0.5),
-        0 2px 16px rgba(0,0,0,0.9);
-    }
-
-    /* -----------------------------------------------------------------------
-       Game name — shown in ATTRACT
-    ----------------------------------------------------------------------- */
-    @keyframes attract-pulse-out {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0.6; }
-    }
-
-    #gameName {
-      position: absolute;
-      top: 28px;
-      left: 36px;
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(40px, 6vw, 80px);
+    .verdict {
       font-weight: 900;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: #5b8fd6;
-      text-shadow:
-        0 0 20px rgba(38, 79, 154, 0.8),
-        0 0 60px rgba(38, 79, 154, 0.4),
-        0 2px 20px rgba(0,0,0,0.8);
-      opacity: 0;
-      transition: opacity 0.4s;
+      font-size: clamp(48px, 17vw, 260px);
+      line-height: 0.9;
+      letter-spacing: -0.01em;
     }
+    .verdict.win  { color: var(--sm-blue); }
+    .verdict.lose { color: var(--sm-red); }
 
-    #gameName.visible {
-      opacity: 1;
-      animation: attract-pulse-out 3s ease-in-out infinite;
-    }
-
-    /* -----------------------------------------------------------------------
-       Leaderboard — shown when ATTRACT; fades during run
-    ----------------------------------------------------------------------- */
-    #leaderboard {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      padding: 24px 36px 36px;
-      background: linear-gradient(to top, rgba(0,0,0,0.90) 0%, transparent 100%);
-      opacity: 0;
-      transition: opacity 0.5s;
-    }
-
-    #leaderboard.visible   { opacity: 1; }
-    #leaderboard.faded     { opacity: 0.18; }
-
-    #lbTitle {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(20px, 3vw, 56px);
+    .sub {
       font-weight: 800;
-      letter-spacing: 0.25em;
-      text-transform: uppercase;
-      color: #5b8fd6;
-      text-shadow: 0 0 16px rgba(38,79,154,0.5);
-      margin-bottom: 14px;
+      font-size: clamp(20px, 5.4vw, 80px);
+      color: #fff;
+      margin-top: 1vh;
+      word-break: break-word;
     }
+    .sub.blue { color: var(--sm-blue); }
 
-    #lbRows {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .lb-row {
-      display: flex;
-      align-items: baseline;
-      gap: 16px;
-      font-size: clamp(22px, 3.2vw, 64px);
-    }
-
-    .lb-rank {
-      font-family: 'Courier New', Courier, monospace;
+    .cd-number {
       font-weight: 900;
-      width: 2.2em;
-      text-align: right;
-      flex-shrink: 0;
-      color: #5b8fd6;
-      text-shadow: 0 0 10px rgba(38,79,154,0.5);
+      font-size: clamp(120px, 46vw, 700px);
+      line-height: 0.85;
+      color: var(--sm-red);
+      font-variant-numeric: tabular-nums;
     }
 
-    .lb-rank-1 { color: gold;    text-shadow: 0 0 12px rgba(255,215,0,0.5); }
-    .lb-rank-2 { color: silver;  text-shadow: 0 0 10px rgba(192,192,192,0.4); }
-    .lb-rank-3 { color: #cd7f32; text-shadow: 0 0 10px rgba(205,127,50,0.4); }
+    #nextUpBanner {
+      display: none;
+      text-align: center;
+    }
+    #nextUpBanner.visible { display: block; }
+    .eyebrow {
+      font-weight: 700;
+      font-size: clamp(13px, 3vw, 40px);
+      letter-spacing: 0.34em;
+      text-transform: uppercase;
+      color: var(--sm-blue);
+    }
 
-    .lb-name {
-      flex: 1;
-      font-weight: 600;
-      color: #e8f0fc;
+    /* ---- footer: leaderboard + sponsor ---------------------------------
+       Fixed height and fixed position. This strip is what ends up in the
+       photo, so it must not jump when a name is longer or a row is missing. */
+    #footer {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 3vw;
+      padding-top: 1.5vh;
+    }
+
+    #leaderboard .title {
+      font-weight: 800;
+      font-size: clamp(13px, 3.2vw, 42px);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--sm-blue);
+      margin-bottom: 0.6vh;
+    }
+    .lb-row {
+      font-weight: 700;
+      font-size: clamp(14px, 3.6vw, 48px);
+      line-height: 1.32;
+      color: var(--sm-blue);
+      display: flex;
+      gap: 0.5em;
       white-space: nowrap;
+    }
+    .lb-row .pos { font-weight: 800; }
+    .lb-row .nm {
       overflow: hidden;
       text-overflow: ellipsis;
+      max-width: 46vw;
     }
-
-    .lb-time {
-      font-family: 'Courier New', Courier, monospace;
-      font-weight: 700;
-      color: #00ff88;
-      text-shadow: 0 0 10px rgba(0,255,136,0.4);
-      flex-shrink: 0;
+    .lb-row .tm {
+      margin-left: auto;
+      color: var(--sm-red);
+      font-variant-numeric: tabular-nums;
     }
+    .lb-row.top .nm { text-transform: uppercase; }
+    .lb-empty { color: var(--sm-dim); font-weight: 700;
+                font-size: clamp(13px, 3vw, 38px); }
 
-    /* -----------------------------------------------------------------------
-       Flash animations for overlays
-    ----------------------------------------------------------------------- */
-    @keyframes green-flash {
-      0%, 100% { background-color: rgba(0, 40, 10, 0.55); }
-      20%       { background-color: rgba(0, 160, 60, 0.70); }
-    }
+    #sponsor { width: min(26vw, 300px); display: block; }
 
-    @keyframes bust-flash {
-      0%, 100% { background-color: rgba(120, 0, 20, 0.65); }
-      20%       { background-color: rgba(200, 0, 20, 0.80); }
-    }
-
-    /* -----------------------------------------------------------------------
-       BUST overlay — full-screen red tint + "BUSTED"
-    ----------------------------------------------------------------------- */
-    #bustOverlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: rgba(120, 0, 20, 0.65);
-      opacity: 0;
-      transition: opacity 0.2s;
-      pointer-events: none;
-    }
-
-    #bustOverlay.visible { opacity: 1; animation: bust-flash 0.8s ease-in-out 3; }
-
-    #bustText {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(80px, 18vw, 220px);
-      font-weight: 900;
-      letter-spacing: 0.06em;
-      color: #ff0033;
-      text-shadow:
-        0 0 60px rgba(255, 0, 51, 0.9),
-        0 0 120px rgba(255, 0, 51, 0.5);
-    }
-
-    #bustTime {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(28px, 5vw, 64px);
-      color: rgba(255, 100, 120, 0.9);
-      margin-top: 16px;
-      text-shadow: 0 0 20px rgba(255,0,51,0.4);
-    }
-
-    /* -----------------------------------------------------------------------
-       FINISHED overlay — rank and time
-    ----------------------------------------------------------------------- */
-    #finishedOverlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0, 40, 10, 0.55);
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-
-    #finishedOverlay.visible { opacity: 1; animation: green-flash 0.5s ease-out forwards; }
-
-    #finishedRank {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(36px, 6vw, 80px);
-      font-weight: 900;
-      color: #5b8fd6;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      text-shadow:
-        0 0 30px rgba(38, 79, 154, 0.7),
-        0 0 80px rgba(38, 79, 154, 0.3);
-    }
-
-    #finishedClean {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(48px, 8vw, 110px);
-      font-weight: 900;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: #00ff88;
-      text-shadow:
-        0 0 40px rgba(0, 255, 136, 0.8),
-        0 0 100px rgba(0, 255, 136, 0.4);
-    }
-
-    #finishedTime {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(56px, 12vw, 160px);
-      font-weight: 900;
-      color: #ffffff;
-      letter-spacing: 0.06em;
-      text-shadow: 0 2px 30px rgba(0,0,0,0.7);
-    }
-
-    /* -----------------------------------------------------------------------
-       COUNTDOWN overlay — "GET READY" pulsing text centered on screen
-    ----------------------------------------------------------------------- */
-    @keyframes get-ready-pulse {
-      0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-      50%       { opacity: 0.55; transform: translate(-50%, -50%) scale(0.97); }
-    }
-
-    #countdownOverlay {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-
-    #countdownOverlay.visible {
-      opacity: 1;
-      animation: get-ready-pulse 1.2s ease-in-out infinite;
-    }
-
-    #countdownGetReady {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(56px, 12vw, 160px);
-      font-weight: 900;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: #5b8fd6;
-      text-shadow:
-        0 0 40px rgba(38, 79, 154, 0.8),
-        0 0 100px rgba(38, 79, 154, 0.4),
-        0 2px 24px rgba(0,0,0,0.9);
-    }
-
-    /* -----------------------------------------------------------------------
-       ABORTED overlay — orange tint + "RUN CANCELLED"
-    ----------------------------------------------------------------------- */
-    @keyframes aborted-flash {
-      0%, 100% { background-color: rgba(60, 20, 0, 0.65); }
-      20%       { background-color: rgba(130, 50, 0, 0.75); }
-    }
-
-    #abortedOverlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: rgba(60, 20, 0, 0.65);
-      opacity: 0;
-      transition: opacity 0.2s;
-      pointer-events: none;
-    }
-
-    #abortedOverlay.visible { opacity: 1; animation: aborted-flash 0.8s ease-in-out 2; }
-
-    #abortedText {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(52px, 11vw, 160px);
-      font-weight: 900;
-      letter-spacing: 0.06em;
-      color: #ff6600;
-      text-shadow:
-        0 0 60px rgba(255, 102, 0, 0.9),
-        0 0 120px rgba(255, 102, 0, 0.5);
-    }
-
-    #abortedTime {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(28px, 5vw, 64px);
-      color: rgba(255, 150, 80, 0.9);
-      margin-top: 16px;
-      text-shadow: 0 0 20px rgba(255,102,0,0.4);
-    }
-
-    /* -----------------------------------------------------------------------
-       Reconnect indicator — very dim, non-intrusive
-    ----------------------------------------------------------------------- */
-    /* Measured 1.26:1 on black and 1.05:1 over a live camera frame — the crowd
-       could not tell a stale screen from a live one. #ff8800 is 7.9:1, and the
-       text shadow keeps it readable over any frame the feed happens to show. */
+    /* ---- connection badge ----------------------------------------------- */
     #reconnect {
-      display: none;
       position: fixed;
-      bottom: 10px;
-      right: 14px;
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(24px, 2vw, 48px);
+      left: 1.4vw; top: 1.2vh;
+      z-index: 4;
+      display: none;
       font-weight: 700;
-      color: #ff8800;
-      text-shadow: 0 0 12px #000, 0 2px 4px #000;
-      letter-spacing: 1px;
-      z-index: 10;
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--sm-red);
+      border: 2px solid var(--sm-red);
+      padding: 4px 10px;
     }
     #reconnect.visible { display: block; }
   </style>
 </head>
 <body>
 
-  <!-- MJPEG background -->
-  <img id="mjpegBg" src="" alt="">
-  <script>
-    let lastLeaderboardSig = null;
-    // The background camera feed is not wired yet — see plan.md section 18. The
-    // back cam is a separate, non-detection camera; the ceiling cameras must
-    // never be shown here. Requesting a port nothing listens on fired a failed
-    // connection every 15 s for the whole tour, so nothing is requested until
-    // there is something to request. Set BACK_CAM_URL when it lands.
-    const BACK_CAM_URL = null;
-    if (BACK_CAM_URL) {
-      document.getElementById("mjpegBg").src = BACK_CAM_URL;
-    } else {
-      document.getElementById("mjpegBg").removeAttribute("src");
-    }
-  </script>
+<div class="sm-lasers"></div>
 
-  <!-- Dark overlay for legibility -->
-  <div id="overlay"></div>
+<div id="stage">
 
-  <!-- All UI elements -->
-  <div id="ui">
-    <!-- Game name (attract) -->
-    <div id="gameName">SCANMANIA</div>
+  <!-- header -->
+  <img class="logo" id="gameName" src="/static/shared/scanmania-design/sm-text-tp.png" alt="ScanMania">
+  <div class="clock" id="stopwatch"><span class="mm">00:</span><span class="ss">00.00</span></div>
 
-    <!-- Stopwatch (top-right) -->
-    <div id="stopwatch">00:00.000</div>
+  <!-- middle: camera stage, with state overlays on top -->
+  <div id="centre">
+    <img id="mjpegBg" class="hidden" alt="">
 
-    <!-- Next up banner (shown when player registered) -->
-    <div id="nextUpBanner" style="
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      opacity: 0;
-      transition: opacity 0.4s;
-      pointer-events: none;
-    ">
-      <div style="
-        font-family: 'Courier New', Courier, monospace;
-        font-size: clamp(28px, 4vw, 48px);
-        font-weight: 700;
-        letter-spacing: 0.25em;
-        text-transform: uppercase;
-        color: #6c8cae;
-        text-shadow: 0 2px 16px rgba(0,0,0,0.8);
-        margin-bottom: 12px;
-      ">NEXT UP</div>
-      <div id="nextUpName" style="
-        font-family: 'Courier New', Courier, monospace;
-        font-size: clamp(48px, 10vw, 120px);
-        font-weight: 900;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: #5b8fd6;
-        text-shadow:
-          0 0 40px rgba(38,79,154,0.8),
-          0 0 100px rgba(38,79,154,0.4),
-          0 2px 24px rgba(0,0,0,0.9);
-      ">—</div>
+    <div class="overlay" id="nextUpBanner">
+      <div class="eyebrow">Next up</div>
+      <div class="sub" id="nextUpName"></div>
     </div>
 
-    <!-- Leaderboard (bottom) -->
-    <div id="leaderboard">
-      <div id="lbTitle">// Top Runners</div>
-      <div id="lbRows"></div>
+    <div class="overlay" id="countdownOverlay">
+      <div class="cd-number" id="cdNumber">3</div>
     </div>
 
-    <!-- BUST overlay -->
-    <div id="bustOverlay">
-      <div id="bustText">BUSTED</div>
-      <div id="bustTime"></div>
+    <div class="overlay" id="bustOverlay">
+      <div class="verdict lose">BUSTED</div>
+      <div class="sub" id="bustTime"></div>
     </div>
 
-    <!-- FINISHED overlay -->
-    <div id="finishedOverlay">
-      <div id="finishedClean">CLEAN!</div>
-      <div id="finishedRank"></div>
-      <div id="finishedTime"></div>
+    <div class="overlay" id="finishedOverlay">
+      <div class="verdict win" id="finishedClean">CLEAN RUN</div>
+      <div class="sub" id="finishedTime"></div>
+      <div class="sub blue" id="finishedRank"></div>
     </div>
 
-    <!-- ABORTED overlay -->
-    <div id="abortedOverlay">
-      <div id="abortedText">RUN CANCELLED</div>
-      <div id="abortedTime"></div>
-    </div>
-
-    <!-- COUNTDOWN overlay -->
-    <div id="countdownOverlay">
-      <div id="countdownGetReady">GET READY</div>
+    <div class="overlay" id="abortedOverlay">
+      <div class="verdict lose">RUN ENDED</div>
+      <div class="sub" id="abortedTime"></div>
     </div>
   </div>
 
-  <!-- Dim reconnect indicator -->
-  <div id="reconnect">NO SIGNAL — CLOCK STOPPED</div>
+  <!-- footer -->
+  <div id="footer">
+    <div id="leaderboard">
+      <div class="title">Leaderboard</div>
+      <div id="lbRows"><div class="lb-empty">No runs yet</div></div>
+    </div>
+    <img id="sponsor" src="/static/shared/scanmania-design/cf.png" alt="Carrefour">
+  </div>
 
-  <script>
-    /* -----------------------------------------------------------------------
-       Outdoor display JS
+</div>
 
-       WebSocket message shape:
-       {
-         state:           "ATTRACT" | "RUN_SEG_1" | "BUSTED" | "FINISHED" | …,
-         elapsed_ms:      4321,
-         server_mono_now_ns: <integer nanoseconds>,
-         segment:         1 | 2 | 3,
-         rank:            null | 3,
-         player_nickname: "Joenne",
-         leaderboard:     [ { player_nickname, elapsed_ms }, … ]  (top 10)
-       }
-    ----------------------------------------------------------------------- */
-    "use strict";
+<div id="reconnect">Reconnecting</div>
 
-    const RUN_STATES  = new Set(["RUN_SEG_1", "RUN_SEG_2", "RUN_SEG_3"]);
-    const POST_STATES = new Set(["BUSTED", "FINISHED", "ABORTED", "RESULT"]);
+<script>
+  "use strict";
 
-    /* ---- DOM refs ---- */
-    const mjpegBg         = document.getElementById("mjpegBg");
-    const stopwatchEl     = document.getElementById("stopwatch");
-    const gameNameEl      = document.getElementById("gameName");
-    const leaderboard     = document.getElementById("leaderboard");
-    const lbRows          = document.getElementById("lbRows");
-    const bustOverlay     = document.getElementById("bustOverlay");
-    const bustTime        = document.getElementById("bustTime");
-    const finishedOverlay = document.getElementById("finishedOverlay");
-    const finishedClean   = document.getElementById("finishedClean");
-    const finishedRank    = document.getElementById("finishedRank");
-    const finishedTime    = document.getElementById("finishedTime");
-    const reconnectEl     = document.getElementById("reconnect");
-    const nextUpBanner    = document.getElementById("nextUpBanner");
-    const nextUpName      = document.getElementById("nextUpName");
-    const abortedOverlay  = document.getElementById("abortedOverlay");
-    const abortedTime     = document.getElementById("abortedTime");
-    const countdownOverlay = document.getElementById("countdownOverlay");
+  const RUN_STATES = new Set(["RUN_SEG_1", "RUN_SEG_2", "RUN_SEG_3"]);
+  const LB_ROWS = 5;
 
-    /* -----------------------------------------------------------------------
-       MJPEG fallback — if the stream image fails to load, hide it
-    ----------------------------------------------------------------------- */
-    mjpegBg.addEventListener("error", () => {
-      mjpegBg.classList.add("hidden");
+  /* The back cam is not wired yet — plan.md §18. It is a separate,
+     non-detection camera aimed at the play area; the ceiling cameras must
+     never be shown here, their view is a grid of dots. Requesting a port
+     nothing listens on fired a failed connection every 15 s for the whole
+     tour, so nothing is requested until there is something to request. */
+  const BACK_CAM_URL = null;
+
+  const stopwatch     = document.getElementById("stopwatch");
+  const mjpegBg       = document.getElementById("mjpegBg");
+  const nextUpBanner  = document.getElementById("nextUpBanner");
+  const nextUpName    = document.getElementById("nextUpName");
+  const countdownOv   = document.getElementById("countdownOverlay");
+  const cdNumber      = document.getElementById("cdNumber");
+  const bustOverlay   = document.getElementById("bustOverlay");
+  const bustTime      = document.getElementById("bustTime");
+  const finishedOv    = document.getElementById("finishedOverlay");
+  const finishedClean = document.getElementById("finishedClean");
+  const finishedTime  = document.getElementById("finishedTime");
+  const finishedRank  = document.getElementById("finishedRank");
+  const abortedOv     = document.getElementById("abortedOverlay");
+  const abortedTime   = document.getElementById("abortedTime");
+  const lbRows        = document.getElementById("lbRows");
+  const reconnect     = document.getElementById("reconnect");
+
+  const OVERLAYS = [nextUpBanner, countdownOv, bustOverlay, finishedOv, abortedOv];
+  function showOverlay(el) {
+    for (const o of OVERLAYS) o.classList.toggle("visible", o === el);
+  }
+
+  /* -----------------------------------------------------------------------
+     Stopwatch — see display_in for the reasoning. Invariant 2.
+  ----------------------------------------------------------------------- */
+  let swElapsedAtMsg = 0, swClientAtMsg = 0, swRunning = false, rafId = null;
+
+  function fmtParts(ms) {
+    if (ms == null || isNaN(ms)) ms = 0;
+    const total = Math.max(0, Math.floor(ms));
+    const m  = Math.floor(total / 60000);
+    const s  = Math.floor((total % 60000) / 1000);
+    const cs = Math.floor((total % 1000) / 10);
+    return [
+      String(m).padStart(2, "0") + ":",
+      String(s).padStart(2, "0") + "." + String(cs).padStart(2, "0"),
+    ];
+  }
+  function fmtFlat(ms) { const p = fmtParts(ms); return p[0] + p[1]; }
+
+  function setClock(el, ms) {
+    const [mm, ss] = fmtParts(ms);
+    let a = el.querySelector(".mm"), b = el.querySelector(".ss");
+    if (!a || !b) {
+      el.textContent = "";
+      a = document.createElement("span"); a.className = "mm";
+      b = document.createElement("span"); b.className = "ss";
+      el.append(a, b);
+    }
+    if (a.textContent !== mm) a.textContent = mm;
+    if (b.textContent !== ss) b.textContent = ss;
+  }
+
+  function interpolated() {
+    if (!swRunning) return swElapsedAtMsg;
+    return swElapsedAtMsg + (performance.now() / 1000 - swClientAtMsg) * 1000;
+  }
+  function tick() {
+    setClock(stopwatch, interpolated());
+    rafId = swRunning ? requestAnimationFrame(tick) : null;
+  }
+  function startInterpolation() { if (!rafId) rafId = requestAnimationFrame(tick); }
+  function stopInterpolation()  { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } }
+
+  /* -----------------------------------------------------------------------
+     Leaderboard
+  ----------------------------------------------------------------------- */
+  let lastLeaderboardSig = null;
+
+  function renderLeaderboard(entries) {
+    const top = (entries || []).slice(0, LB_ROWS);
+    lbRows.textContent = "";
+    if (!top.length) {
+      const d = document.createElement("div");
+      d.className = "lb-empty";
+      d.textContent = "No runs yet";
+      lbRows.append(d);
+      return;
+    }
+    top.forEach((e, i) => {
+      // Built with textContent, never innerHTML: a nickname is public input
+      // and this screen faces the street.
+      const row = document.createElement("div");
+      row.className = "lb-row" + (i === 0 ? " top" : "");
+      const pos = document.createElement("span"); pos.className = "pos";
+      pos.textContent = (i + 1) + ".";
+      const nm = document.createElement("span"); nm.className = "nm";
+      nm.textContent = e.player_nickname || "—";
+      const tm = document.createElement("span"); tm.className = "tm";
+      tm.textContent = e.elapsed_ms != null ? fmtFlat(e.elapsed_ms) : "";
+      row.append(pos, nm, tm);
+      lbRows.append(row);
     });
+  }
 
-    // If the stream loads (or recovers), show it
-    mjpegBg.addEventListener("load", () => {
-      mjpegBg.classList.remove("hidden");
-    });
-
-    // Retry only when there is something to retry, and drive it off frame
-    // freshness rather than the `hidden` class. A hung request never fires
-    // `error`, so `hidden` was never set and the retry never ran — and Chromium
-    // does not fire `error` on a multipart stream that dies after the first
-    // part, it just freezes on the last frame. Both cases looked intentional.
-    let lastFrameAt = 0;
-    mjpegBg.addEventListener("load", () => { lastFrameAt = Date.now(); });
-    setInterval(() => {
-      if (!BACK_CAM_URL) return;
-      if (Date.now() - lastFrameAt > 10000) {
-        mjpegBg.src = BACK_CAM_URL + (BACK_CAM_URL.includes("?") ? "&" : "?")
-                    + "t=" + Date.now();
+  async function seedLeaderboard() {
+    try {
+      const r = await fetch("/api/admin/leaderboard");
+      if (!r.ok) return;
+      const d = await r.json();
+      const rows = Array.isArray(d) ? d : (d.leaderboard || d.runs || []);
+      if (rows.length) {
+        lastLeaderboardSig = JSON.stringify(rows.slice(0, LB_ROWS));
+        renderLeaderboard(rows);
       }
-    }, 15000);
+    } catch (e) { /* the board simply stays empty */ }
+  }
 
-    /* -----------------------------------------------------------------------
-       Stopwatch interpolation
-    ----------------------------------------------------------------------- */
-    let swElapsedAtMsg = 0;
-    let swClientAtMsg  = 0;
-    let swRunning      = false;
-    let rafId          = null;
+  /* -----------------------------------------------------------------------
+     State
+  ----------------------------------------------------------------------- */
+  function applyState(msg) {
+    const state = msg.state || "ATTRACT";
 
-    function fmtMs(ms) {
-      const t = Math.max(0, Math.floor(ms));
-      const m = Math.floor(t / 60000);
-      const s = Math.floor((t % 60000) / 1000);
-      const l = t % 1000;
-      return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}.${String(l).padStart(3,"0")}`;
-    }
+    swElapsedAtMsg = msg.elapsed_ms || 0;
+    swClientAtMsg  = performance.now() / 1000;
 
-    function interpolated() {
-      if (!swRunning) return swElapsedAtMsg;
-      return swElapsedAtMsg + (performance.now() / 1000 - swClientAtMsg) * 1000;
-    }
+    if (RUN_STATES.has(state)) {
+      swRunning = true;
+      startInterpolation();
+      showOverlay(null);
 
-    function tick() {
-      stopwatchEl.textContent = fmtMs(interpolated());
-      rafId = requestAnimationFrame(tick);
-    }
+    } else {
+      swRunning = false;
+      stopInterpolation();
+      setClock(stopwatch, swElapsedAtMsg);
 
-    function startInterp() { if (!rafId) rafId = requestAnimationFrame(tick); }
-    function stopInterp()  { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } }
-
-    /* -----------------------------------------------------------------------
-       Leaderboard rendering
-    ----------------------------------------------------------------------- */
-    function renderLeaderboard(entries) {
-      if (!entries || !entries.length) {
-        lbRows.innerHTML = '<div class="lb-row" style="color:#6c8cae;">No runs yet.</div>';
-        return;
-      }
-      const top = entries.slice(0, 10);
-      lbRows.innerHTML = top.map((e, i) => {
-        const rank = i + 1;
-        const rankClass = rank <= 3 ? `lb-rank-${rank}` : "";
-        return `<div class="lb-row">
-          <span class="lb-rank ${rankClass}">${rank}</span>
-          <span class="lb-name">${escHtml(e.player_nickname || e.nickname || "—")}</span>
-          <span class="lb-time">${fmtMs(e.elapsed_ms)}</span>
-        </div>`;
-      }).join("");
-    }
-
-    function escHtml(s) {
-      return String(s)
-        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-    }
-
-    /* -----------------------------------------------------------------------
-       Apply server state
-    ----------------------------------------------------------------------- */
-    function applyState(msg) {
-      const state = msg.state || "ATTRACT";
-
-      swElapsedAtMsg = msg.elapsed_ms || 0;
-      swClientAtMsg  = performance.now() / 1000;
-
-      // Update leaderboard data whenever provided
-      // Only re-render when the data actually changed. This ran on every
-      // broadcast — 10x/second, forever — rebuilding ~70 DOM nodes via
-      // innerHTML for a list that changes a few times an hour, so the outdoor
-      // Chromium never idled. Also guard on length: the server ships an empty
-      // array before the first save, and `if (msg.leaderboard)` is true for [],
-      // which wiped the board the page had just seeded from the API.
-      if (Array.isArray(msg.leaderboard) && msg.leaderboard.length) {
-        const sig = JSON.stringify(msg.leaderboard);
-        if (sig !== lastLeaderboardSig) {
-          lastLeaderboardSig = sig;
-          renderLeaderboard(msg.leaderboard);
-        }
-      }
-
-      /* --- Clear overlays by default --- */
-      bustOverlay.classList.remove("visible");
-      finishedOverlay.classList.remove("visible");
-      abortedOverlay.classList.remove("visible");
-      countdownOverlay.classList.remove("visible");
-
-      /* --- Next-up banner: show when player registered, hide otherwise --- */
       if (state === "REGISTERED" || state === "ARM") {
         nextUpName.textContent = msg.player_nickname || "—";
-        nextUpBanner.style.opacity = "1";
-      } else {
-        nextUpBanner.style.opacity = "0";
-      }
-
-      /* --- Route by state --- */
-      if (state === "ATTRACT" || state === "REGISTERED" || state === "ARM") {
-        // Idle — show leaderboard prominently, game name
-        swRunning = false;
-        stopInterp();
-        stopwatchEl.textContent = "00:00.000";
-        stopwatchEl.classList.remove("visible");
-        stopwatchEl.classList.remove("run");
-        gameNameEl.classList.add("visible");
-        leaderboard.classList.add("visible");
-        leaderboard.classList.remove("faded");
+        showOverlay(nextUpBanner);
 
       } else if (state === "COUNTDOWN") {
-        swRunning = false;
-        stopInterp();
-        stopwatchEl.classList.remove("visible");
-        stopwatchEl.classList.remove("run");
-        gameNameEl.classList.add("visible");
-        leaderboard.classList.add("visible");
-        leaderboard.classList.add("faded");
-        countdownOverlay.classList.add("visible");
-
-      } else if (RUN_STATES.has(state)) {
-        // Run in progress — big stopwatch (white for contrast), leaderboard fades
-        swRunning = true;
-        startInterp();
-        stopwatchEl.classList.add("visible");
-        stopwatchEl.classList.add("run");
-        gameNameEl.classList.remove("visible");
-        leaderboard.classList.add("visible");
-        leaderboard.classList.add("faded");
+        cdNumber.textContent =
+          Math.max(1, Math.ceil((msg.countdown_remaining_ms ?? 0) / 1000));
+        showOverlay(countdownOv);
 
       } else if (state === "BUSTED") {
-        swRunning = false;
-        stopInterp();
-        stopwatchEl.textContent = fmtMs(swElapsedAtMsg);
-        stopwatchEl.classList.add("visible");
-        stopwatchEl.classList.remove("run");
-        gameNameEl.classList.remove("visible");
-        leaderboard.classList.remove("visible");
-        bustTime.textContent = fmtMs(swElapsedAtMsg);
-        bustOverlay.classList.add("visible");
+        bustTime.textContent = fmtFlat(swElapsedAtMsg);
+        showOverlay(bustOverlay);
 
-      } else if (state === "FINISHED") {
-        swRunning = false;
-        stopInterp();
-        stopwatchEl.textContent = fmtMs(swElapsedAtMsg);
-        stopwatchEl.classList.add("visible");
-        stopwatchEl.classList.remove("run");
-        gameNameEl.classList.remove("visible");
-        leaderboard.classList.remove("visible");
-        finishedRank.textContent = msg.rank != null ? `Rank #${msg.rank}` : "";
-        finishedTime.textContent = fmtMs(swElapsedAtMsg);
-        finishedOverlay.classList.add("visible");
+      } else if (state === "FINISHED" || state === "RESULT") {
+        const busted = msg.outcome === "busted";
+        finishedClean.textContent = busted ? "BUSTED" : "CLEAN RUN";
+        finishedClean.className = "verdict " + (busted ? "lose" : "win");
+        finishedTime.textContent = fmtFlat(swElapsedAtMsg);
+        finishedRank.textContent = msg.rank != null ? `RANK #${msg.rank}` : "";
+        showOverlay(finishedOv);
 
       } else if (state === "ABORTED") {
-        swRunning = false;
-        stopInterp();
-        stopwatchEl.textContent = fmtMs(swElapsedAtMsg);
-        stopwatchEl.classList.add("visible");
-        stopwatchEl.classList.remove("run");
-        gameNameEl.classList.remove("visible");
-        leaderboard.classList.remove("visible");
-        abortedTime.textContent = fmtMs(swElapsedAtMsg);
-        abortedOverlay.classList.add("visible");
-
-      } else if (state === "RESULT") {
-        swRunning = false;
-        stopInterp();
-        stopwatchEl.textContent = fmtMs(swElapsedAtMsg);
-        stopwatchEl.classList.add("visible");
-        stopwatchEl.classList.remove("run");
-        gameNameEl.classList.remove("visible");
-        leaderboard.classList.add("visible");
-        leaderboard.classList.add("faded");
-        // Show the finished overlay with rank if available
-        if (msg.rank != null || (msg.outcome && msg.outcome === "clean")) {
-          finishedRank.textContent = msg.rank != null ? `Rank #${msg.rank}` : "";
-          finishedTime.textContent = fmtMs(swElapsedAtMsg);
-          finishedOverlay.classList.add("visible");
-        }
+        abortedTime.textContent = fmtFlat(swElapsedAtMsg);
+        showOverlay(abortedOv);
 
       } else {
-        // RESET, FAULT, SELF_TEST, BOOT, MASTER
-        swRunning = false;
-        stopInterp();
-        stopwatchEl.classList.remove("visible");
-        stopwatchEl.classList.remove("run");
-        gameNameEl.classList.add("visible");
-        leaderboard.classList.add("visible");
-        leaderboard.classList.remove("faded");
+        showOverlay(null);
       }
     }
 
-    /* -----------------------------------------------------------------------
-       WebSocket
-    ----------------------------------------------------------------------- */
-    let ws    = null;
-    let delay = 1000;
-
-    function connect() {
-      const proto = location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(`${proto}://${location.host}/ws`);
-
-      ws.onopen = () => {
-        reconnectEl.classList.remove("visible");
-        delay = 1000;
-        // Fetch initial leaderboard
-        fetch("/api/admin/leaderboard")
-          .then(r => r.json())
-          .then(d => { if (d.leaderboard) renderLeaderboard(d.leaderboard); })
-          .catch(() => {});
-      };
-
-      ws.onmessage = (evt) => {
-        __noteMessage();
-        let msg;
-        try { msg = JSON.parse(evt.data); } catch { return; }
-        applyState(msg);
-      };
-
-      ws.onclose = () => {
-        // Invariant 2: the server owns the stopwatch. This is the public-facing
-        // screen — without this the crowd watches a run that never ends, timed
-        // against a browser clock with no server behind it.
-        swRunning = false;
-        stopInterp();
-        reconnectEl.classList.add("visible");
-        setTimeout(connect, delay);
-        delay = Math.min(delay * 2, 10000);
-      };
-
-      ws.onerror = () => ws.close();
+    // Only re-render when the data actually changed. This ran on every
+    // broadcast — 10x/second, forever — rebuilding the rows for a list that
+    // changes a few times an hour, so the outdoor Chromium never idled. Guard
+    // on length too: the server ships an empty array before the first save,
+    // and a bare truthiness check wiped the board the page had just seeded.
+    if (Array.isArray(msg.leaderboard) && msg.leaderboard.length) {
+      const sig = JSON.stringify(msg.leaderboard.slice(0, LB_ROWS));
+      if (sig !== lastLeaderboardSig) {
+        lastLeaderboardSig = sig;
+        renderLeaderboard(msg.leaderboard);
+      }
     }
+  }
 
-    connect();
-  
-    /* -----------------------------------------------------------------------
-       Stale-data watchdog
+  /* -----------------------------------------------------------------------
+     Back-cam feed. Retry is driven by frame freshness, not by an error
+     handler: a hung request never fires `error`, and Chromium does not fire
+     it for a multipart stream that dies after the first part — it just
+     freezes on the last frame. Both cases used to look intentional.
+  ----------------------------------------------------------------------- */
+  let lastFrameAt = 0;
+  mjpegBg.addEventListener("load",  () => {
+    lastFrameAt = Date.now();
+    mjpegBg.classList.remove("hidden");
+  });
+  mjpegBg.addEventListener("error", () => mjpegBg.classList.add("hidden"));
 
-       onclose is not enough. If the server's broadcaster task dies, or the path
-       half-opens, every socket stays "healthy" and the screen freezes silently
-       on its last frame — in front of a player, for as long as nobody notices.
-       Track time since the last message and force a reconnect when it lapses.
-    ----------------------------------------------------------------------- */
-    let __lastMsgAt = Date.now();
-    function __noteMessage() { __lastMsgAt = Date.now(); }
+  if (BACK_CAM_URL) {
+    mjpegBg.src = BACK_CAM_URL;
     setInterval(() => {
-      // The server broadcasts at 10 Hz; 3 s of silence is not a slow frame.
-      if (Date.now() - __lastMsgAt > 3000) {
-        try { if (ws && ws.readyState === WebSocket.OPEN) ws.close(); } catch (e) {}
+      if (Date.now() - lastFrameAt > 10000) {
+        mjpegBg.src = BACK_CAM_URL
+          + (BACK_CAM_URL.includes("?") ? "&" : "?") + "t=" + Date.now();
       }
-    }, 1000);
-  </script>
+    }, 15000);
+  } else {
+    mjpegBg.removeAttribute("src");
+  }
+
+  /* -----------------------------------------------------------------------
+     WebSocket
+  ----------------------------------------------------------------------- */
+  let ws = null;
+  let wsDelay = 1000;
+
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+    ws.onopen = () => {
+      wsDelay = 1000;
+      reconnect.classList.remove("visible");
+      seedLeaderboard();
+    };
+
+    ws.onmessage = (evt) => {
+      __noteMessage();
+      let msg;
+      try { msg = JSON.parse(evt.data); } catch { return; }
+      applyState(msg);
+    };
+
+    ws.onclose = () => {
+      // A frozen clock is honest. A running one is a lie.
+      swRunning = false;
+      stopInterpolation();
+      reconnect.classList.add("visible");
+      setTimeout(connect, wsDelay);
+      wsDelay = Math.min(wsDelay * 2, 10000);
+    };
+
+    ws.onerror = () => ws.close();
+  }
+
+  connect();
+
+  /* -----------------------------------------------------------------------
+     Stale-data watchdog — see display_in.
+  ----------------------------------------------------------------------- */
+  let __lastMsgAt = Date.now();
+  function __noteMessage() { __lastMsgAt = Date.now(); }
+  setInterval(() => {
+    if (Date.now() - __lastMsgAt > 3000) {
+      try { if (ws && ws.readyState === WebSocket.OPEN) ws.close(); } catch (e) {}
+    }
+  }, 1000);
+</script>
 </body>
 </html>

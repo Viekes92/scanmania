@@ -52,6 +52,10 @@ SCANMANIA_ADMIN_PASSWORD=<the password>
 # Operating day rolls over at this local hour. The leaderboard and the
 # end-of-day export both use it, so a session past midnight stays on one day.
 SCANMANIA_DAY_START_HOUR=9
+# The outdoor panel is mounted PORTRAIT — /display/out is designed 9:16 so the
+# screen photographs well on a phone. "left" or "right" depending on which way
+# it was physically turned; get it wrong and the picture is upside down.
+SCANMANIA_ROTATE_OUT=left
 ENVEOF
 chmod 600 /etc/default/scanmania
 

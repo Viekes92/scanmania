@@ -1,0 +1,80 @@
+/*
+  web/static/shared/brand.css — ScanMania brand tokens and the Proxima Nova faces.
+
+  Shared by /display/in and /display/out. The GM and admin consoles keep their
+  own look: they are working tools read at arm's length in a lit container, not
+  show surfaces, and they should not be restyled to match a public display.
+
+  Colours are sampled from the supplied artwork, not eyeballed:
+    #005AA9  blue   (SCAN, and the left half of the QR block)
+    #EC1C24  red    (MANIA, taglines, the running clock)
+
+  Font files are .otf with spaces in their paths, so every url() is
+  percent-encoded. They are loaded from disk on the NUC — no webfont CDN, since
+  a venue with no internet must still render correctly.
+*/
+
+@font-face {
+  font-family: "Proxima Nova";
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;   /* never flash a fallback face on a show screen */
+  src: url("/static/shared/scanmania-design/font/Proxima%20Nova/Proxima%20Nova.otf") format("opentype");
+}
+@font-face {
+  font-family: "Proxima Nova";
+  font-weight: 600;
+  font-style: normal;
+  font-display: block;
+  src: url("/static/shared/scanmania-design/font/Proxima%20Nova%20Semibold/Proxima%20Nova%20Semibold.otf") format("opentype");
+}
+@font-face {
+  font-family: "Proxima Nova";
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+  src: url("/static/shared/scanmania-design/font/Proxima%20Nova/Proxima%20Nova%20Bold.otf") format("opentype");
+}
+@font-face {
+  font-family: "Proxima Nova";
+  font-weight: 800;
+  font-style: normal;
+  font-display: block;
+  src: url("/static/shared/scanmania-design/font/Proxima%20Nova%20Extrabold/Proxima%20Nova%20Extrabold.otf") format("opentype");
+}
+@font-face {
+  font-family: "Proxima Nova";
+  font-weight: 900;
+  font-style: normal;
+  font-display: block;
+  src: url("/static/shared/scanmania-design/font/Proxima%20Nova%20Black/Proxima%20Nova%20Black.otf") format("opentype");
+}
+
+:root {
+  --sm-red:    #EC1C24;
+  --sm-blue:   #005AA9;
+  --sm-black:  #000000;
+  --sm-dim:    #6d7480;
+
+  --sm-font: "Proxima Nova", "Helvetica Neue", Arial, sans-serif;
+}
+
+/*
+  The laser overlay. Supplied as artwork rather than drawn, so the lines match
+  the printed collateral exactly. Sits above the black ground and below all
+  content, and never intercepts a click.
+*/
+.sm-lasers {
+  position: fixed;
+  inset: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.sm-stage {
+  position: relative;
+  z-index: 1;
+}

@@ -9,6 +9,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Both displays rebuilt to the brand design.** A shared
+  `web/static/shared/brand.css` carries the Proxima Nova faces and the tokens;
+  colours are sampled from the supplied artwork rather than eyeballed (red
+  `#EC1C24`, blue `#005AA9`). Fonts load from disk, not a CDN — a venue with no
+  internet must still render correctly. The laser lines are the supplied
+  artwork rather than drawn, so the screens match the printed collateral.
+
+- **`/display/out` is portrait, 9:16** — people photograph it with a phone, and
+  a portrait frame is what they can post. Logo, clock, camera stage, then the
+  leaderboard and sponsor lockup pinned along the bottom, because that strip is
+  what ends up in the photo and must not move when a name is longer. The panel
+  is mounted rotated and `kiosk.sh` now tells X
+  (`SCANMANIA_ROTATE_OUT`, default `left`), swapping width and height for the
+  Chromium window — there is no window manager, so the window is positioned from
+  explicit pixels and an unrotated size would have put the sponsor lockup
+  off-screen.
+
+- **The clock is two-tone** on both screens, as in the artwork: minutes in blue,
+  seconds in red, so the part that is actually moving is the part that reads
+  from across a container.
+
+
+### Added
+
 - **`iobackend/hazer.py` is now `iobackend/dmx.py`.** The name stopped being
   accurate when the room lights joined it. `HazerController` is `DmxController`,
   with an alias kept so an out-of-tree import does not break.

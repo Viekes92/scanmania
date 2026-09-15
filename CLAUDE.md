@@ -87,6 +87,23 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
 - **Detection cannot say which segment broke.** Correct, and deliberate. Calibration lights a whole maze and records what the cameras see; no dot is tied to a relay. A bust names the dot and the camera that saw it (`SM-CAM-13:d17`), which is what an operator needs to know where to look. See ADR 0009.
 - **`write_coils` writes the full 16-channel board every time.** Correct. One atomic transaction is what makes the maze snap rather than morph. Never loop single-coil writes.
 
+## Displays
+
+Both are single-file HTML with no build step, styled from
+`web/static/shared/brand.css` — Proxima Nova loaded from disk (no CDN: a venue
+with no internet must still render), red `#EC1C24`, blue `#005AA9`, both sampled
+from the supplied artwork. The laser lines are artwork, not drawn, so they match
+the printed collateral: `lasers-h.png` on `/display/in` (16:9), `lasers-v.png` on
+`/display/out` (9:16).
+
+`/display/out` is **portrait** — people photograph it with a phone. The panel is
+mounted rotated and `kiosk.sh` tells X (`SCANMANIA_ROTATE_OUT`, default `left`),
+swapping width and height for the Chromium window because there is no window
+manager to ask.
+
+Player nicknames are written with `textContent`, never `innerHTML`. They are
+public input and `/display/out` faces the street.
+
 ## Boot behaviour
 
 The box comes up in **MASTER MODE** with the house lights on and the lasers

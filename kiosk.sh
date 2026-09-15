@@ -15,6 +15,16 @@ OUT_IN=${SCANMANIA_OUT_IN:-HDMI-1}     # in-container stopwatch
 OUT_OUT=${SCANMANIA_OUT_OUT:-HDMI-2}   # outdoor feed + leaderboard
 MIN_HZ=${SCANMANIA_MIN_HZ:-50}         # a stopwatch at 30 Hz reads as stuttering
 
+# The outdoor panel is mounted portrait: /display/out is designed 9:16 because
+# people photograph it with a phone, and a portrait frame is what they can post.
+# X has to be told, or the page renders letterboxed inside a landscape desktop.
+#
+# "left" or "right" depending on which way the panel was turned. Get it wrong
+# and the picture is upside down, which is obvious the moment you look — set
+# SCANMANIA_ROTATE_OUT=right in /etc/default/scanmania to flip it. "normal"
+# disables rotation entirely.
+ROTATE_OUT=${SCANMANIA_ROTATE_OUT:-left}
+
 CHROME_FLAGS=(
   # --test-type is what suppresses the yellow "unsupported command-line flag:
   # --no-sandbox" infobar; --disable-infobars stopped covering that one and it
@@ -76,7 +86,16 @@ W_IN=${MODE_IN%x*}
 
 if [ -n "$OUT_OUT" ] && [ "$OUT_OUT" != "$OUT_IN" ]; then
   MODE_OUT=$(pick_mode "$OUT_OUT")
-  xrandr --output "$OUT_OUT" --mode "$MODE_OUT" --pos "${W_IN}x0"
+  xrandr --output "$OUT_OUT" --mode "$MODE_OUT" --pos "${W_IN}x0" \
+         --rotate "$ROTATE_OUT"
+  # A rotated output swaps width and height, and Chromium is positioned from
+  # explicit pixel values because there is no window manager to ask. Using the
+  # unrotated mode here put a 2560-wide window on a 1440-wide panel: the right
+  # third of the page, including the sponsor lockup, sat off-screen.
+  if [ "$ROTATE_OUT" = "left" ] || [ "$ROTATE_OUT" = "right" ]; then
+    MODE_OUT="${MODE_OUT#*x}x${MODE_OUT%x*}"
+  fi
+  echo "  $OUT_OUT rotated $ROTATE_OUT -> ${MODE_OUT}"
 fi
 sleep 1
 xrandr --query | grep ' connected'

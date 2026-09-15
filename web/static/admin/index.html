@@ -65,10 +65,6 @@
     html, body {
       height: 100%;
       background: var(--bg);
-      background-image:
-        linear-gradient(rgba(0, 90, 169,0.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 90, 169,0.06) 1px, transparent 1px);
-      background-size: 40px 40px;
       color: var(--text);
       font-family: var(--font);
       font-size: 14px;
@@ -85,11 +81,14 @@
     }
 
     #header {
+      /* Translucent so the laser plate reads through the
+         chrome. Data surfaces below stay opaque. */
+      backdrop-filter: blur(2px);
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 10px 20px;
-      background: var(--surface);
+      background: rgba(8, 13, 24, 0.78);
       border-bottom: 1px solid var(--border);
       position: sticky;
       top: 0;
@@ -113,7 +112,7 @@
       background-repeat: no-repeat;
       background-position: center;
       background-size: cover;
-      opacity: 0.16;
+      opacity: 0.24;
       pointer-events: none;
       z-index: 0;
     }
@@ -150,8 +149,11 @@
        Tab nav
     ----------------------------------------------------------------------- */
     #tabNav {
+      /* Translucent so the laser plate reads through the
+         chrome. Data surfaces below stay opaque. */
+      backdrop-filter: blur(2px);
       display: flex;
-      background: var(--surface);
+      background: rgba(8, 13, 24, 0.78);
       border-bottom: 2px solid var(--border);
       overflow-x: auto;
       scrollbar-width: none;
@@ -718,11 +720,12 @@
   <a href="#tabContent" class="skip-link">Skip to content</a>
 
   <!-- LOGIN OVERLAY -->
-  <div id="loginOverlay" style="position:fixed;inset:0;z-index:1000;background:#050507;background-image:linear-gradient(rgba(0, 90, 169,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(0, 90, 169,0.06) 1px,transparent 1px);background-size:40px 40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;">
+  <div id="loginOverlay" style="position:fixed;inset:0;z-index:1000;background:#050507 url('/static/shared/scanmania-design/lasers-h.png') center/cover no-repeat;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;">
+    <div aria-hidden="true" style="position:absolute;inset:0;background:rgba(5,5,7,0.72);"></div>
     <img src="/static/shared/scanmania-design/sm-text-tp.png" alt="ScanMania"
-         style="width:min(62vw,340px);height:auto;margin-bottom:4px;">
-    <div style="font-family:'Proxima Nova','Helvetica Neue',Arial,sans-serif;font-size:12px;letter-spacing:3px;color:#6c8cae;text-transform:uppercase;">Admin access</div>
-    <div style="display:flex;flex-direction:column;gap:12px;width:320px;">
+         style="width:min(62vw,340px);height:auto;margin-bottom:4px;position:relative;z-index:1;">
+    <div style="font-family:'Proxima Nova','Helvetica Neue',Arial,sans-serif;font-size:12px;letter-spacing:3px;color:#6c8cae;text-transform:uppercase;position:relative;z-index:1;">Admin access</div>
+    <div style="display:flex;flex-direction:column;gap:12px;width:320px;position:relative;z-index:1;">
       <input id="loginPwdInput" type="password" placeholder="password" style="width:100%;padding:14px 16px;background:#080d18;border:1px solid #0d1e3a;border-radius:8px;color:#e8f0fc;font-family:'Courier New',monospace;font-size:16px;caret-color:#005AA9;letter-spacing:2px;" autocomplete="current-password" aria-label="Admin password">
       <button id="loginBtn" style="width:100%;padding:14px;background:transparent;border:2px solid #005AA9;border-radius:8px;color:#5b8fd6;font-family:'Courier New',monospace;font-size:14px;font-weight:900;letter-spacing:4px;text-transform:uppercase;cursor:pointer;">LOGIN</button>
       <div id="loginErr" style="font-family:'Courier New',monospace;font-size:13px;color:#EC1C24;text-align:center;min-height:20px;"></div>

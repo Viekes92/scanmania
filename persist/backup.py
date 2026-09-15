@@ -33,6 +33,22 @@ def _timestamp_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
 
 
+def snapshot_dir() -> str:
+    """
+    Where snapshots go on this machine.
+
+    /var/backups/scanmania on the box; a temp directory on a developer Mac,
+    which has no such path and should not need sudo to run the game. This was
+    open-coded in three places and had already drifted into a shutdown path
+    that failed on a laptop for no reason worth debugging.
+    """
+    import sys
+    import tempfile
+    if sys.platform == "darwin":
+        return os.path.join(tempfile.gettempdir(), "scanmania-backups")
+    return "/var/backups/scanmania"
+
+
 async def export_snapshot(
     db: Database, output_dir: str = "/var/backups/scanmania"
 ) -> str:

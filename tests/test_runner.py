@@ -1061,3 +1061,116 @@ async def test_reload_config_does_not_start_a_show_when_none_playing(runner, fak
     assert runner._show_name is None
     await runner.reload_config(fake_config)
     assert runner._show_task is None
+
+
+# ===========================================================================
+# End-of-day power down
+# ===========================================================================
+
+class _FakeDmx:
+    """Records what a real DmxController would put on the wire."""
+
+    def __init__(self) -> None:
+        self.lights = {"left": 200, "right": 200, "entrance": 255}
+        self.haze = 128
+        self.blackout_calls = 0
+        self.power_down_calls = 0
+
+    def blackout(self) -> None:
+        self.blackout_calls += 1
+        self.haze = 0
+        self.lights["left"] = 0
+        self.lights["right"] = 0          # entrance deliberately untouched
+
+    def power_down(self) -> None:
+        self.power_down_calls += 1
+        for name in self.lights:
+            self.lights[name] = 0
+
+    def set_light(self, name, level, fade=True) -> None:
+        self.lights[name] = level
+
+
+@pytest.mark.asyncio
+async def test_power_down_saves_a_run_in_progress_before_going_dark(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """A shutdown must never be the thing that loses someone's run.
+
+    The operator presses this at the end of the day with a player still on the
+    course more often than anyone plans for.
+    """
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.hazer = _FakeDmx()
+    await db.upsert_player("p-eod", "Closer")
+
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await r.dispatch(PlayerRegistered(player_id="p-eod", nickname="Closer"))
+    await r.dispatch(PlateHigh())
+    await _drain(r, iterations=5, pause=0)
+    await r.dispatch(CountInRequested())
+    await r.dispatch(RampComplete())
+    run_id = r.context.run_id
+    from core.events import RUN_STATES
+    assert r.state in RUN_STATES and run_id
+
+    # Keep the in-memory connection open so the row can be read back; that the
+    # real close runs is a separate assertion on the report below.
+    closed = []
+    db.close = lambda: (closed.append(True), asyncio.sleep(0))[1]
+
+    report = await r.power_down(snapshot=False)
+
+    assert closed, "the database was not closed"
+    saved = await db.get_run(run_id)
+    assert saved is not None, "the in-flight run was not recorded"
+    assert saved["outcome"] == "aborted"
+    assert [s["step"] for s in report["steps"]][0] == "settle run in progress"
+
+
+@pytest.mark.asyncio
+async def test_power_down_leaves_the_container_dark(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """Lasers, haze and every light — including the always_on entrance.
+
+    Relay coils latch and an Art-Net node holds its last frame, so whatever
+    this leaves behind is what the container keeps once the breaker goes.
+    """
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    dmx = _FakeDmx()
+    r.hazer = dmx
+
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await r.power_down(snapshot=False)
+
+    for board in fake_io.all_boards():
+        assert not any(await board.read_coils()), f"{board.board_id} still energised"
+    assert dmx.haze == 0
+    assert dmx.lights == {"left": 0, "right": 0, "entrance": 0}
+    # The entrance goes out last, after the rest is already dark.
+    assert dmx.blackout_calls == 1 and dmx.power_down_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_power_down_latches_so_nothing_relights(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """Once the operator is told it is safe, no later cue may raise a light."""
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.hazer = _FakeDmx()
+
+    class _Cues:
+        def __init__(self): self.states = []
+        def set_state(self, s): self.states.append(s)
+        def set_work_lights(self, on): pass
+        def stop(self): pass
+
+    r.lights = _Cues()
+    await r.dispatch(BootComplete())
+    await r.power_down(snapshot=False)
+    before = len(r.lights.states)
+    r._cue_lights("ATTRACT")
+    assert len(r.lights.states) == before, "a cue ran after power down"

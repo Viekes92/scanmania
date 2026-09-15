@@ -418,13 +418,8 @@ async def async_main(args: argparse.Namespace) -> int:
     # (power cut, OOM kill) lost every run back to the last button press.
     snap_min = getattr(cfg.game, "snapshot_interval_min", 60)
     if snap_min > 0:
-        import tempfile
-        from persist.backup import rolling_snapshot_loop
-        snap_dir = (
-            os.path.join(tempfile.gettempdir(), "scanmania-backups")
-            if _sys.platform == "darwin"
-            else "/var/backups/scanmania"
-        )
+        from persist.backup import rolling_snapshot_loop, snapshot_dir
+        snap_dir = snapshot_dir()
         tasks.append(asyncio.create_task(
             rolling_snapshot_loop(
                 db, snap_dir,

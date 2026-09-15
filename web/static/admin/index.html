@@ -741,6 +741,28 @@
         </div>
       </div>
 
+      <div class="card" id="shutdownCard">
+        <div class="card-title">End of day</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
+          Saves everything first &mdash; settles a run still in progress, snapshots
+          and closes the database &mdash; then darkens the container: lasers, haze,
+          maze lights, and the entrance light last.
+          <br>Coils latch and the Art-Net node holds its last frame, so the box
+          stays dark once power is cut.
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;
+                      color:var(--muted);margin-bottom:12px;">
+          <input type="checkbox" id="shutdownHalt" checked>
+          Halt the NUC as well (cutting mains under a running filesystem is how
+          the database comes back corrupt)
+        </label>
+        <button class="btn btn-danger" id="btnShutdown">Shut down</button>
+        <button class="btn btn-default" id="btnShutdownCancel"
+                style="display:none;margin-left:8px;">Cancel</button>
+        <div id="shutdownReport" style="margin-top:12px;font-size:12px;
+             font-family:var(--font-mono,monospace);line-height:1.7;"></div>
+      </div>
+
     </div>
 
     <!-- === HARDWARE === -->
@@ -1422,6 +1444,81 @@
         body: JSON.stringify(body),
       });
     }
+
+    /* ---------------------------------------------------------------------
+       End-of-day shutdown.
+
+       Two taps, not a browser confirm(): a modal dialog blocks the page, and
+       this is the one control where the operator most needs to see the step
+       report that comes back. Arming also auto-disarms, so a card left open on
+       a laptop does not stay one stray click from darkening the container.
+    --------------------------------------------------------------------- */
+    (function () {
+      const btn    = document.getElementById("btnShutdown");
+      const cancel = document.getElementById("btnShutdownCancel");
+      const halt   = document.getElementById("shutdownHalt");
+      const out    = document.getElementById("shutdownReport");
+      if (!btn) return;
+
+      let armed = false;
+      let disarmTimer = null;
+
+      function disarm() {
+        armed = false;
+        clearTimeout(disarmTimer);
+        btn.textContent = "Shut down";
+        btn.disabled = false;
+        cancel.style.display = "none";
+      }
+
+      function line(text, ok) {
+        const div = document.createElement("div");
+        div.style.color = ok === false ? "var(--red)"
+                        : ok === true  ? "var(--muted)" : "var(--fg)";
+        div.textContent = text;              // operator-visible, never innerHTML
+        out.appendChild(div);
+      }
+
+      cancel.addEventListener("click", disarm);
+
+      btn.addEventListener("click", async () => {
+        if (!armed) {
+          armed = true;
+          btn.textContent = halt.checked
+            ? "Confirm \u2014 go dark and power off"
+            : "Confirm \u2014 go dark";
+          cancel.style.display = "";
+          disarmTimer = setTimeout(disarm, 10000);
+          return;
+        }
+        clearTimeout(disarmTimer);
+        armed = false;
+        btn.disabled = true;
+        btn.textContent = "Shutting down\u2026";
+        cancel.style.display = "none";
+        out.textContent = "";
+        try {
+          const r = await apiPost("/api/admin/shutdown",
+                                  { confirm: "SHUTDOWN", poweroff: halt.checked });
+          (r.steps || []).forEach(s => line(
+            (s.ok ? "\u2713 " : "\u2717 ") + s.step + (s.detail ? " \u2014 " + s.detail : ""),
+            s.ok));
+          if (r.ok) {
+            line(halt.checked
+              ? "Container is dark. The NUC is halting \u2014 wait for its light to go out, then cut the breaker."
+              : "Container is dark. The NUC is still running.");
+          } else {
+            line("Finished WITH PROBLEMS \u2014 walk the container before cutting power.", false);
+          }
+        } catch (e) {
+          line("Shutdown failed: " + e.message, false);
+          btn.disabled = false;
+          btn.textContent = "Shut down";
+          return;
+        }
+        btn.textContent = halt.checked ? "Powering off\u2026" : "Shut down complete";
+      });
+    })();
 
     /* Browser navigations (window.location, EventSource) cannot send headers,
        so downloads and the log stream authenticate with a short-lived one-shot

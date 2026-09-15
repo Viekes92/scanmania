@@ -266,6 +266,16 @@ class MasterStopwatchBody(BaseModel):
     action: str = Field(pattern=r"^(start|stop|reset)$")
 
 
+class ShutdownBody(BaseModel):
+    """End-of-day shutdown. `confirm` must be the literal string SHUTDOWN.
+
+    A typed confirmation rather than a bare POST: this darkens a container that
+    may still have people in it, and it is one request away from cutting mains.
+    """
+    confirm: str = Field(max_length=32)
+    poweroff: bool = Field(default=True)
+
+
 class DevTriggerBody(BaseModel):
     event: str = Field(max_length=64)
     beam_id: str = Field(default="b001", max_length=16)
@@ -598,11 +608,8 @@ def register_routes(
         dependencies=[Depends(_require_download_token)],
     )
     async def admin_snapshot():
-        import tempfile, sys
-        if sys.platform == "darwin":
-            backup_dir = os.path.join(tempfile.gettempdir(), "scanmania-backups")
-        else:
-            backup_dir = "/var/backups/scanmania"
+        from persist.backup import snapshot_dir
+        backup_dir = snapshot_dir()
         try:
             db_path = await export_snapshot(db, backup_dir)
         except OSError as exc:
@@ -1251,6 +1258,49 @@ def register_routes(
         else:
             raise HTTPException(status_code=400, detail="send on=, or name= and level=")
         return await _lights_status()
+
+    @router.post("/api/admin/shutdown", dependencies=[Depends(_require_admin)])
+    async def admin_shutdown(body: ShutdownBody):
+        """
+        End of day: save everything, then darken the container.
+
+        Admin-gated and confirmation-typed on purpose. The GM console has no
+        password, and this is not a button to put one mis-tap away from a
+        queue of people in a dark box.
+
+        With poweroff=true the NUC halts cleanly afterwards. That is the point
+        of the whole route: the operator's next move is the breaker, and
+        cutting mains under a running filesystem is how a box comes back with
+        a corrupt database instead of a day's runs.
+        """
+        if body.confirm != "SHUTDOWN":
+            raise HTTPException(status_code=400,
+                                detail="send confirm='SHUTDOWN' to proceed")
+        runner = _runner()
+        if runner is None or not hasattr(runner, "power_down"):
+            raise HTTPException(status_code=503, detail="runner not available")
+
+        result = await runner.power_down()
+
+        if body.poweroff:
+            async def _halt() -> None:
+                # Answer the browser first. The operator needs to SEE that the
+                # container went dark; a connection dropped by an immediate
+                # halt looks like a failed shutdown and invites a second try.
+                await asyncio.sleep(2.0)
+                log.warning("shutdown: halting the system now")
+                proc = await asyncio.create_subprocess_exec(
+                    "systemctl", "poweroff",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE)
+                _, err = await proc.communicate()
+                if proc.returncode != 0:
+                    log.error("shutdown: systemctl poweroff failed: %s",
+                              (err or b"").decode().strip())
+            asyncio.create_task(_halt(), name="poweroff")
+
+        result["poweroff"] = body.poweroff
+        return result
 
     @router.get("/api/admin/lights", dependencies=[Depends(_require_admin)])
     async def admin_lights_status():

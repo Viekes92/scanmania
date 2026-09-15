@@ -63,6 +63,7 @@ config/     YAML/JSON files — the only place to change hardware topology or ga
 tools/      Dev utilities: fake_run.py, capture.py (calibration), camshow.py and
             cam_probe.py (viewers), ramp.py, click_relays.py, deploy.sh.
             laser.py is the operator's own reference file — never modify it.
+            shutdown.py is the end-of-day close: save, then darken.
 tests/      Pure-logic modules are covered; every I/O boundary is not (see docs/testing.md).
             FSM tests are the most important — run them first.
 docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is not done.
@@ -74,7 +75,7 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
 - **Metric names:** `<domain>.<thing>.<verb|state>` snake_case — `relay.mismatch`, `run.completed`, `vision.stall`. Constants live in `core/metrics.py`; add new names there, not inline.
 - **Config keys:** add to the YAML/JSON file + a one-line comment with purpose and sane range + validation in `config/loader.py`.
 - **Commit format:** `<scope>: <what changed>` e.g. `fsm: handle false-start during COUNTDOWN`.
-- **DMX:** one universe, one owner — `iobackend/dmx.py`. Every Art-Net frame carries all 512 channels, so a second sender would zero the first one's work twice a second. Patch: ch1 hazer blower, ch2 haze, ch3 left, ch4 right, ch5 entrance. Run `python3 tools/dmxpatch.py` for the live sheet; it is generated from config, never hand-maintained. Haze is **duty-cycled** (`haze_burst_s` / `haze_interval_s`) because continuous output at any usable level is too much. Light levels come from `light_cues` in `mazes.yaml`, keyed by FSM state. The entrance is `always_on` and the DMX layer refuses to dim it, including on shutdown. COUNTDOWN and every RUN state are forced dark in code, over any cue and over the GM's work-light switch.
+- **DMX:** one universe, one owner — `iobackend/dmx.py`. Every Art-Net frame carries all 512 channels, so a second sender would zero the first one's work twice a second. Patch: ch1 hazer blower, ch2 haze, ch3 left, ch4 right, ch5 entrance. Run `python3 tools/dmxpatch.py` for the live sheet; it is generated from config, never hand-maintained. Haze is **duty-cycled** (`haze_burst_s` / `haze_interval_s`) because continuous output at any usable level is too much. Light levels come from `light_cues` in `mazes.yaml`, keyed by FSM state. The entrance is `always_on` and the DMX layer refuses to dim it — on every path except one: `DmxController.power_down()`, reached only from an explicit end-of-day shutdown request, where the operator is at the breaker and wants the box actually dark. `blackout()`, which is what a dying process calls, still leaves the entrance lit. COUNTDOWN and every RUN state are forced dark in code, over any cue and over the GM's work-light switch.
 - **Recalibrating:** stop the game (`systemctl stop scanmania-kiosk scanmania` — kiosk first, or its `Wants=` drags the game back up), run `tools/capture.py`, open port 8090. Light a maze, tune each camera, capture, repeat, write. Verify on `/admin/beams`.
 - **Module docstrings:** every module opens with its one job, inputs, outputs, and invariants (3–6 lines). No exceptions.
 

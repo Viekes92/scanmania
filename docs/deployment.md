@@ -79,6 +79,43 @@ curl -s localhost:8000/api/admin/status | head -c 200
 Then calibrate — see `plan.md` §19 and ADR 0009. Nothing detects anything until
 `config/beams.json` has a `mazes` block.
 
+## Shutting down for the day
+
+**Admin portal -> Dashboard -> End of day -> Shut down.** This is how to close
+the box, not `systemctl stop`. From a shell on the NUC:
+
+```bash
+python3 tools/shutdown.py                # go dark, then halt the NUC
+python3 tools/shutdown.py --no-poweroff  # go dark, leave the NUC running
+```
+
+It saves first and darkens second, in that order, because a shutdown must never
+be the thing that loses a day's runs:
+
+1. settles a run still in progress, recorded as `aborted` -- truthful, never
+   resumable (invariant 7)
+2. drains the fire-and-forget event rows still in flight (invariant 6 means
+   there usually are some)
+3. snapshots and closes the database
+4. lasers off
+5. haze and the maze lights off
+6. **the entrance light last**, so the operator can still see their way out
+
+Leave the NUC halt enabled. Cutting mains under a running filesystem is how the
+box comes back with a corrupt database instead of a day's runs, and the DB
+snapshot does not protect the filesystem it was written to. Wait for the NUC's
+power light to go out, then pull the breaker.
+
+Relay coils latch and an Art-Net node holds its last frame, so the container
+stays dark once power is cut. That cuts both ways: **a shutdown that reports a
+failed step has left something energised.** Walk the container before cutting
+power -- neither the portal nor the script will tell you it is safe when a step
+failed.
+
+The entrance light is `always_on` and the DMX layer refuses to dim it on every
+other path, including when the process dies. This is the one sanctioned
+exception, and it exists because the operator is standing at the breaker.
+
 ## Stopping the game
 
 **Kiosk first, or it drags the game back up within five seconds** via its

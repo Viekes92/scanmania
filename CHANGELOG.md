@@ -9,6 +9,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **End-of-day shutdown** (admin portal → Dashboard → End of day, or
+  `tools/shutdown.py`). Saves first, darkens second, because a shutdown must
+  never be what loses a day's runs: a run still in progress is settled as
+  `aborted`, the fire-and-forget event rows still in flight are drained, and
+  the database is snapshotted and closed — all before a single light drops.
+  Then lasers, then haze and the maze lights, and **the entrance last**, so the
+  operator can see their way out while the box goes down. Optionally halts the
+  NUC afterwards: cutting mains under a running filesystem is how the box comes
+  back with a corrupt database, and a DB snapshot does not protect the
+  filesystem it was written to.
+
+  `DmxController.power_down()` is the one sanctioned override of the
+  `always_on` entrance guard, reachable only from an explicit shutdown request.
+  `blackout()` — what a dying process calls — still leaves the entrance lit.
+  Every step reports its own outcome, and neither the portal nor the script
+  says it is safe to cut power when one failed: a coil that did not answer is a
+  coil that may still be energised.
+
 - **Both displays rebuilt to the brand design.** A shared
   `web/static/shared/brand.css` carries the Proxima Nova faces and the tokens;
   colours are sampled from the supplied artwork rather than eyeballed (red
@@ -65,6 +83,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   and unloading, suspending the cue; off hands the lights back to the show.
 
 ### Fixed
+
+- **A failed boot probe left the box unable to leave MASTER.** `boot_to_master`
+  means "this is the boot", not "the boot succeeded", but only the self-test
+  pass path consumed it. A boot whose probe failed — the PoE switch coming up
+  after the NUC, which is the entire reason the self test retries — left the
+  flag set for the rest of the session. Every later "exit master mode" then
+  re-ran the probe, passed, saw the flag and returned to MASTER: the GM's EXIT
+  button looked dead. FORCE RESET still escaped, but only if someone knew to
+  try it. The fail path consumes the flag too.
+
+- **The snapshot directory was open-coded in three places** and had already
+  drifted into a path that failed on a developer Mac for no useful reason. One
+  `persist.backup.snapshot_dir()`.
 
 - **`deploy.sh` rewrote its own source mid-run.** Bash reads a script lazily and
   seeks by byte offset, so the `git pull` in step 4 left the interpreter

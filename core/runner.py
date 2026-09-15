@@ -107,6 +107,9 @@ class GameRunner:
         # Name of the show _show_task is playing, so reload_config() can re-arm it.
         self._show_name: str | None = None
         self._self_test_task: asyncio.Task | None = None
+        # Latched by power_down(). Nothing may re-light the container after the
+        # operator has been told it is safe to cut the breaker.
+        self._powered_down: bool = False
         self._countdown_step: int = 0
         self._countdown_total: int = 0
         # monotonic_ns at which the ramp reaches GO, or None outside COUNTDOWN.
@@ -358,7 +361,7 @@ class GameRunner:
         the cue says: ambient light raises the reading inside every dot's ROI,
         and a broken beam that still reads above break_ratio is a MISSED break.
         """
-        if self.lights is None:
+        if self.lights is None or self._powered_down:
             return
         try:
             self.lights.set_state(state)
@@ -401,6 +404,104 @@ class GameRunner:
             # the node holds the last frame, so this is the state the container
             # is left in when the process exits.
             hazer.blackout()
+
+    async def power_down(self, snapshot: bool = True) -> dict:
+        """
+        End-of-day shutdown: save everything first, then darken the container.
+
+        The order is the point. Runs are settled and the database is snapshotted
+        and closed BEFORE anything goes dark, so a shutdown can never be what
+        loses a player's run. Then the lasers, then the haze and the maze
+        lights, and the entrance light LAST — the operator needs to see their
+        way out while the rest of the box goes down.
+
+        Leaves the container in the state it will keep once power is cut: relay
+        coils latch where they are left, and an Art-Net node holds the last
+        frame it received. Both are off when this returns.
+
+        Best effort per step and never raises: a board that has already gone
+        away must not strand the operator halfway through a shutdown. Every
+        step reports its own outcome so the caller can show what actually
+        happened rather than claiming success.
+        """
+        report: list[dict] = []
+
+        async def step(name: str, coro, detail: str = "") -> None:
+            try:
+                result = await coro
+                report.append({"step": name, "ok": True,
+                               "detail": detail or (result if isinstance(result, str) else "")})
+            except Exception as exc:
+                log.error("power_down: %s failed: %s", name, exc)
+                report.append({"step": name, "ok": False, "detail": str(exc)})
+
+        log.warning("POWER DOWN requested — saving, then darkening the container")
+
+        # 1. Stop anything that writes coils on a timer, or step 3 races it.
+        for attr in ("_show_task", "_count_in_task", "_max_run_task"):
+            self._cancel_task(attr)
+        self._show_name = None
+
+        # 2. Settle an in-flight run so it is recorded, not lost. Invariant 7:
+        #    this makes the row truthful, it does not make it resumable.
+        if self.context.run_id and self.state in RUN_STATES:
+            await step("settle run in progress", self.dispatch(GmAbort()),
+                       f"run {self.context.run_id} saved as aborted")
+        else:
+            report.append({"step": "settle run in progress", "ok": True,
+                           "detail": "no run in progress"})
+
+        # 3. Save. Before anything goes dark, so a failure here is still
+        #    recoverable with the lights on.
+        #    Event rows are written fire-and-forget (invariant 6: the game path
+        #    never waits on the DB), so some are still in flight — including the
+        #    ones the abort above just queued. Drain them, or a shutdown is
+        #    exactly what loses the last rows of the day.
+        if self._event_writes:
+            pending = set(self._event_writes)
+            await step("flush pending event rows",
+                       asyncio.wait(pending, timeout=5.0),
+                       f"{len(pending)} row(s)")
+        if snapshot and self.db is not None:
+            from persist.backup import export_snapshot, snapshot_dir
+            await step("database snapshot",
+                       export_snapshot(self.db, snapshot_dir()))
+        if self.db is not None:
+            await step("database closed", self.db.close(), "flushed and closed")
+
+        # 4. Lasers.
+        self._powered_down = True          # latch before darkening, not after
+        if self._resolver is not None and self.io is not None:
+            await step("lasers off",
+                       asyncio.wait_for(self._resolver.apply_all_off(self.io),
+                                        timeout=3.0),
+                       "all coils off")
+
+        # 5. Haze and the maze lights. The entrance stays lit for now.
+        if self.lights is not None:
+            try:
+                self.lights.set_work_lights(False)
+                self.lights.stop()
+            except Exception as exc:
+                log.warning("power_down: stopping light cues failed: %s", exc)
+        hazer = getattr(self, "hazer", None)
+        if hazer is not None and hasattr(hazer, "blackout"):
+            hazer.blackout()
+            report.append({"step": "haze and maze lights off", "ok": True,
+                           "detail": "entrance still lit"})
+
+        # 6. The entrance, last. This is the only sanctioned override of the
+        #    always_on guard, and it exists because the operator is standing at
+        #    the breaker and wants the box actually dark.
+        if hazer is not None and hasattr(hazer, "power_down"):
+            hazer.power_down()
+            report.append({"step": "entrance light off", "ok": True,
+                           "detail": "container dark"})
+
+        ok = all(r["ok"] for r in report)
+        log.warning("POWER DOWN complete — container is dark, safe to cut power"
+                    if ok else "POWER DOWN finished WITH PROBLEMS — check the container")
+        return {"ok": ok, "steps": report}
 
     # ------------------------------------------------------------------
     # Event dispatch

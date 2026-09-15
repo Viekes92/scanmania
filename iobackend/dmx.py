@@ -331,6 +331,36 @@ class DmxController:
         except Exception as exc:                       # never block shutdown
             log.warning("DMX blackout frame failed: %s", exc)
 
+    def power_down(self) -> None:
+        """
+        Everything dark, INCLUDING the always_on entrance light.
+
+        blackout() deliberately keeps the entrance lit, and that is right for
+        every path it serves: a process that dies must not leave people in a
+        dark box with an unlit way out. This is the other case — an operator
+        standing at the breaker at the end of the day, who wants the container
+        actually dark before cutting power. It is reached only from an explicit
+        shutdown request, never from an exit path or a finally.
+
+        Art-Net nodes hold the last frame they received, so this frame is the
+        state the container keeps after the power is cut.
+
+        Safe to call from a finally; never raises.
+        """
+        self._fan = 0
+        self._haze = 0
+        self._enabled = False
+        for st in self._lights.values():
+            st["level"] = 0.0
+            st["target"] = 0
+            st["fade_start"] = None
+        try:
+            self._send()
+            log.info("DMX power-down sent — everything dark, entrance included")
+        except Exception as exc:                       # never block shutdown
+            log.warning("DMX power-down frame failed: %s", exc)
+
+
 # The class was HazerController until the room lights joined it on the same
 # universe. Kept as an alias so an out-of-tree import does not break.
 HazerController = DmxController

@@ -1268,10 +1268,14 @@ def register_routes(
         password, and this is not a button to put one mis-tap away from a
         queue of people in a dark box.
 
-        With poweroff=true the NUC halts cleanly afterwards. That is the point
-        of the whole route: the operator's next move is the breaker, and
-        cutting mains under a running filesystem is how a box comes back with
-        a corrupt database instead of a day's runs.
+        With poweroff=true the sequence ends by stopping the kiosk, then the
+        game, then halting the NUC. Stopping the service is what closes the
+        database cleanly, and cutting mains under a running filesystem is how a
+        box comes back with a corrupt database instead of a day's runs.
+
+        With poweroff=false the box goes dark but stays up and stays usable:
+        FORCE RESET on the GM console brings it back. That matters, because
+        "dark and running" is otherwise a state only reachable out of by ssh.
         """
         if body.confirm != "SHUTDOWN":
             raise HTTPException(status_code=400,
@@ -1280,27 +1284,11 @@ def register_routes(
         if runner is None or not hasattr(runner, "power_down"):
             raise HTTPException(status_code=503, detail="runner not available")
 
-        result = await runner.power_down()
-
-        if body.poweroff:
-            async def _halt() -> None:
-                # Answer the browser first. The operator needs to SEE that the
-                # container went dark; a connection dropped by an immediate
-                # halt looks like a failed shutdown and invites a second try.
-                await asyncio.sleep(2.0)
-                log.warning("shutdown: halting the system now")
-                proc = await asyncio.create_subprocess_exec(
-                    "systemctl", "poweroff",
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.PIPE)
-                _, err = await proc.communicate()
-                if proc.returncode != 0:
-                    log.error("shutdown: systemctl poweroff failed: %s",
-                              (err or b"").decode().strip())
-            asyncio.create_task(_halt(), name="poweroff")
-
-        result["poweroff"] = body.poweroff
-        return result
+        # The halt is scheduled in a detached transient unit, so this response
+        # still reaches the browser: the operator needs to SEE the step report,
+        # and a dropped connection reads as a failed shutdown and invites a
+        # second attempt.
+        return await runner.power_down(poweroff=body.poweroff)
 
     @router.get("/api/admin/lights", dependencies=[Depends(_require_admin)])
     async def admin_lights_status():

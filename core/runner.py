@@ -405,7 +405,8 @@ class GameRunner:
             # is left in when the process exits.
             hazer.blackout()
 
-    async def power_down(self, snapshot: bool = True) -> dict:
+    async def power_down(self, poweroff: bool = False,
+                         snapshot: bool = True) -> dict:
         """
         End-of-day shutdown: save everything first, then darken the container.
 
@@ -466,8 +467,10 @@ class GameRunner:
             from persist.backup import export_snapshot, snapshot_dir
             await step("database snapshot",
                        export_snapshot(self.db, snapshot_dir()))
-        if self.db is not None:
-            await step("database closed", self.db.close(), "flushed and closed")
+        # Deliberately NOT closing the database here. Stopping the service is
+        # what closes it, cleanly, on its own shutdown path — and closing it
+        # while the process keeps serving leaves a box that is up, answering,
+        # and unable to do anything, recoverable only over ssh.
 
         # 4. Lasers.
         self._powered_down = True          # latch before darkening, not after
@@ -498,10 +501,84 @@ class GameRunner:
             report.append({"step": "entrance light off", "ok": True,
                            "detail": "container dark"})
 
+        # 7. Only once the container is dark: stop the units, then halt.
+        #    Never halt on a sequence that reported a problem — something may
+        #    still be energised, and a halted box cannot be asked about it.
         ok = all(r["ok"] for r in report)
-        log.warning("POWER DOWN complete — container is dark, safe to cut power"
+        halting = False
+        if poweroff:
+            if ok:
+                detail = self._schedule_halt()
+                halting = detail is not None
+                report.append({"step": "stopping services, then halting",
+                               "ok": halting,
+                               "detail": detail or "could not schedule the halt"})
+                ok = ok and halting
+            else:
+                report.append({
+                    "step": "stopping services, then halting", "ok": False,
+                    "detail": "SKIPPED — a step above failed; the box stays up "
+                              "so you can see what",
+                })
+
+        if not halting:
+            # The box keeps running, so it must stay usable. Hand the lights
+            # back, or the only way out of a dark container is ssh.
+            self._powered_down = False
+            if self.lights is not None and hasattr(self.lights, "reset"):
+                try:
+                    self.lights.reset()
+                except Exception as exc:
+                    log.warning("power_down: could not re-arm light cues: %s", exc)
+
+        log.warning("POWER DOWN complete — container is dark"
                     if ok else "POWER DOWN finished WITH PROBLEMS — check the container")
-        return {"ok": ok, "steps": report}
+        return {"ok": ok, "steps": report, "halting": halting}
+
+    def _schedule_halt(self) -> str | None:
+        """
+        Stop the kiosk, then the game, then halt — detached from this process.
+
+        Detached on purpose: the second command kills the very process that
+        issued it. systemd-run puts the sequence in its own transient unit,
+        outside this service's cgroup, so stopping the service cannot take the
+        halt down with it.
+
+        Kiosk first. scanmania-kiosk has Wants=scanmania.service, so stopping
+        the game on its own gets it dragged straight back up within five
+        seconds.
+
+        Stopping the service rather than halting out from under it is what
+        closes the database cleanly — __main__ blacks out, snapshots and closes
+        on its way down. This is why power_down() does not close it itself.
+
+        Returns a description of what was scheduled, or None if nothing was.
+        """
+        import shutil
+        import subprocess
+
+        seq = "systemctl stop scanmania-kiosk; systemctl stop scanmania; systemctl poweroff"
+        if shutil.which("systemd-run"):
+            cmd = ["systemd-run", "--no-block", "--collect",
+                   "--unit=scanmania-poweroff", "/bin/sh", "-c", seq]
+            what = "kiosk, then game, then poweroff"
+        elif shutil.which("systemctl"):
+            # systemd stops units in reverse dependency order during a halt, and
+            # the kiosk is After=scanmania, so it still goes down first.
+            cmd = ["systemctl", "poweroff"]
+            what = "systemctl poweroff (systemd stops the units first)"
+        else:
+            log.error("power_down: no systemctl on this box — cannot halt")
+            return None
+
+        try:
+            subprocess.Popen(cmd, start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as exc:
+            log.error("power_down: could not schedule the halt: %s", exc)
+            return None
+        log.warning("POWER DOWN: halt scheduled — %s", what)
+        return what
 
     # ------------------------------------------------------------------
     # Event dispatch
@@ -514,6 +591,20 @@ class GameRunner:
 
         Thread-safe: external producers should call put_event() instead.
         """
+        # FORCE RESET is the documented escape hatch from every state, and that
+        # has to include a container darkened by power_down() but still
+        # running: otherwise the only way back is ssh, from a box whose whole
+        # point is that the operator is standing in front of it.
+        if isinstance(event, GmForceReset) and self._powered_down:
+            self._powered_down = False
+            if self.lights is not None and hasattr(self.lights, "reset"):
+                try:
+                    self.lights.reset()
+                except Exception as exc:
+                    log.warning("could not re-arm light cues: %s", exc)
+            log.warning("FORCE RESET after a power down — the box is live again "
+                        "(haze stays off until the GM turns it back on)")
+
         old_state = self.state
         new_state, side_effects = transition(self.state, event, self.context)
         self.state = new_state

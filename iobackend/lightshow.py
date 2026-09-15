@@ -81,6 +81,19 @@ class LightCuePlayer:
     def stop(self) -> None:
         self._cancel()
 
+    def reset(self) -> None:
+        """
+        Forget the current state so the next set_state() re-applies its cue.
+
+        set_state() is a no-op when the state has not changed, which is what
+        keeps it cheap on every transition. After something external has taken
+        the lights away — a power-down that was then released — the FSM state
+        is usually still the same string, so nothing would re-light without
+        this.
+        """
+        self._cancel()
+        self._state = None
+
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------

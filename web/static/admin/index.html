@@ -753,8 +753,10 @@
         <label style="display:flex;align-items:center;gap:8px;font-size:12px;
                       color:var(--muted);margin-bottom:12px;">
           <input type="checkbox" id="shutdownHalt" checked>
-          Halt the NUC as well (cutting mains under a running filesystem is how
-          the database comes back corrupt)
+          Then stop the kiosk, stop the game and halt the NUC &mdash; leave this
+          ticked. Cutting mains under a running filesystem is how the box comes
+          back with a corrupt database. Unticked, the container goes dark but
+          stays running, and FORCE RESET on the GM console brings it back.
         </label>
         <button class="btn btn-danger" id="btnShutdown">Shut down</button>
         <button class="btn btn-default" id="btnShutdownCancel"
@@ -1503,12 +1505,15 @@
           (r.steps || []).forEach(s => line(
             (s.ok ? "\u2713 " : "\u2717 ") + s.step + (s.detail ? " \u2014 " + s.detail : ""),
             s.ok));
-          if (r.ok) {
-            line(halt.checked
-              ? "Container is dark. The NUC is halting \u2014 wait for its light to go out, then cut the breaker."
-              : "Container is dark. The NUC is still running.");
+          if (r.ok && r.halting) {
+            line("Container is dark. Kiosk and game stopping, then the NUC halts "
+               + "\u2014 wait for its power light to go out, then cut the breaker.");
+          } else if (r.ok) {
+            line("Container is dark. The NUC is still running \u2014 FORCE RESET on "
+               + "the GM console brings it back.");
           } else {
-            line("Finished WITH PROBLEMS \u2014 walk the container before cutting power.", false);
+            line("Finished WITH PROBLEMS \u2014 nothing was halted. Walk the "
+               + "container before cutting power.", false);
           }
         } catch (e) {
           line("Shutdown failed: " + e.message, false);
@@ -1516,7 +1521,8 @@
           btn.textContent = "Shut down";
           return;
         }
-        btn.textContent = halt.checked ? "Powering off\u2026" : "Shut down complete";
+        btn.textContent = "Shut down complete";
+        if (!halt.checked) { btn.disabled = false; btn.textContent = "Shut down"; }
       });
     })();
 

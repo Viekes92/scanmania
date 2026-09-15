@@ -73,17 +73,19 @@ def main() -> int:
         print(f"  {mark} {step.get('step', ''):<28} {detail}")
 
     if result.get("ok"):
-        if poweroff:
-            print("\nContainer is dark. The NUC is halting — wait for its power "
-                  "light to go out, then cut the breaker.")
+        if result.get("halting"):
+            print("\nContainer is dark. Kiosk and game stopping, then the NUC "
+                  "halts — wait for its power light to go out, then cut the "
+                  "breaker.")
         else:
-            print("\nContainer is dark. The NUC is still running.")
+            print("\nContainer is dark. The NUC is still running — FORCE RESET "
+                  "on the GM console brings it back.")
         return 0
 
     # Never tell someone it is safe to cut power when a step failed: a coil that
     # did not answer is a coil that may still be energised.
-    print("\nFinished WITH PROBLEMS — walk the container before cutting power.",
-          file=sys.stderr)
+    print("\nFinished WITH PROBLEMS — nothing was halted. Walk the container "
+          "before cutting power.", file=sys.stderr)
     return 1
 
 

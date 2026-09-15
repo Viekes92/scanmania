@@ -1115,14 +1115,15 @@ async def test_power_down_saves_a_run_in_progress_before_going_dark(
     from core.events import RUN_STATES
     assert r.state in RUN_STATES and run_id
 
-    # Keep the in-memory connection open so the row can be read back; that the
-    # real close runs is a separate assertion on the report below.
     closed = []
     db.close = lambda: (closed.append(True), asyncio.sleep(0))[1]
 
     report = await r.power_down(snapshot=False)
 
-    assert closed, "the database was not closed"
+    # power_down must NOT close the database: stopping the service does that,
+    # cleanly. Closing it here while the process keeps serving leaves a box
+    # that is up, answering, and unable to do anything.
+    assert not closed, "power_down closed the database out from under a live box"
     saved = await db.get_run(run_id)
     assert saved is not None, "the in-flight run was not recorded"
     assert saved["outcome"] == "aborted"
@@ -1155,22 +1156,161 @@ async def test_power_down_leaves_the_container_dark(
 
 
 @pytest.mark.asyncio
-async def test_power_down_latches_so_nothing_relights(
+async def test_power_down_latches_while_the_box_is_halting(
         fake_config, fake_io, fake_inputs, fake_vision, db):
-    """Once the operator is told it is safe, no later cue may raise a light."""
+    """While the halt is in flight, no cue may raise a light again.
+
+    The latch is only correct for a box on its way down. A box that stays up
+    releases it instead — see test_power_down_without_halt_leaves_a_usable_box.
+    """
     r = GameRunner(config=fake_config, io_backend=fake_io,
                    inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
     r.hazer = _FakeDmx()
+    r._schedule_halt = lambda: "kiosk, then game, then poweroff"
 
     class _Cues:
         def __init__(self): self.states = []
         def set_state(self, s): self.states.append(s)
         def set_work_lights(self, on): pass
         def stop(self): pass
+        def reset(self): pass
 
     r.lights = _Cues()
     await r.dispatch(BootComplete())
-    await r.power_down(snapshot=False)
+    result = await r.power_down(poweroff=True, snapshot=False)
+
+    assert result["halting"] is True
+    assert r._powered_down is True
     before = len(r.lights.states)
     r._cue_lights("ATTRACT")
-    assert len(r.lights.states) == before, "a cue ran after power down"
+    assert len(r.lights.states) == before, "a cue ran while the box was halting"
+
+
+@pytest.mark.asyncio
+async def test_power_down_without_halt_leaves_a_usable_box(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """Dark but still running must stay recoverable from the console.
+
+    Closing the database and latching the lights off while the process keeps
+    serving produced a box that was up, answering, and could do nothing — with
+    ssh as the only way out of a container the operator is standing in.
+    """
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.hazer = _FakeDmx()
+
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    result = await r.power_down(poweroff=False, snapshot=False)
+
+    assert result["halting"] is False
+    assert r._powered_down is False, "a box that stays up must stay usable"
+    # The database is still live, so the box can still record and serve.
+    assert await db.get_leaderboard() is not None
+
+
+@pytest.mark.asyncio
+async def test_force_reset_brings_back_a_darkened_box(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """FORCE RESET is the escape hatch from every state, this one included."""
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.hazer = _FakeDmx()
+
+    class _Cues:
+        def __init__(self): self.states, self.resets = [], 0
+        def set_state(self, s): self.states.append(s)
+        def set_work_lights(self, on): pass
+        def stop(self): pass
+        def reset(self): self.resets += 1
+
+    r.lights = _Cues()
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await r.power_down(poweroff=False, snapshot=False)
+
+    r._powered_down = True          # as if a halt had been scheduled and failed
+    await r.dispatch(GmForceReset())
+    assert r._powered_down is False
+    assert r.lights.resets >= 1, "light cues were not re-armed"
+    for attr in ("_arm_timeout_task", "_result_timeout_task",
+                 "_max_run_task", "_count_in_task", "_show_task"):
+        r._cancel_task(attr)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_step_never_halts_the_box(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """A halted box cannot be asked what went wrong, and something may still
+    be energised. Report it and stay up instead."""
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.hazer = _FakeDmx()
+    scheduled = []
+    r._schedule_halt = lambda: (scheduled.append(True), "halting")[1]
+
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+
+    async def _boom():
+        raise OSError("backup volume is full")
+    import persist.backup as _bk
+    orig = _bk.export_snapshot
+    _bk.export_snapshot = lambda *a, **k: _boom()
+    try:
+        result = await r.power_down(poweroff=True, snapshot=True)
+    finally:
+        _bk.export_snapshot = orig
+
+    assert not scheduled, "halted the box after a failed step"
+    assert result["ok"] is False and result["halting"] is False
+    assert any("SKIPPED" in (s["detail"] or "") for s in result["steps"])
+
+
+def test_halt_stops_the_kiosk_before_the_game():
+    """Order and detachment are both load-bearing.
+
+    scanmania-kiosk has Wants=scanmania.service, so stopping the game first
+    gets it dragged back up within five seconds. And the second command kills
+    the process issuing it, so the sequence has to live outside this service's
+    cgroup or it dies half-done — lights out, box still on.
+    """
+    import shutil
+    import subprocess
+    captured = {}
+
+    class _FakePopen:
+        def __init__(self, cmd, **kw):
+            captured["cmd"], captured["kw"] = cmd, kw
+
+    r = GameRunner.__new__(GameRunner)
+    orig_popen, orig_which = subprocess.Popen, shutil.which
+    subprocess.Popen = _FakePopen
+    shutil.which = lambda n: "/usr/bin/" + n
+    try:
+        assert r._schedule_halt() is not None
+    finally:
+        subprocess.Popen, shutil.which = orig_popen, orig_which
+
+    script = " ".join(captured["cmd"])
+    assert "--no-block" in script, "a blocking halt would hang the request"
+    assert captured["kw"].get("start_new_session") is True, "halt not detached"
+    # Match "systemctl poweroff", not "poweroff": the transient unit is itself
+    # named scanmania-poweroff and occurs earlier in the command line.
+    assert (script.index("stop scanmania-kiosk")
+            < script.index("stop scanmania;")
+            < script.index("systemctl poweroff")), "wrong shutdown order"
+
+
+def test_no_systemd_means_no_false_promise_of_a_halt():
+    """A box that cannot halt must say so, not report success and stay on."""
+    import shutil
+    import subprocess
+    r = GameRunner.__new__(GameRunner)
+    orig_popen, orig_which = subprocess.Popen, shutil.which
+    subprocess.Popen = lambda *a, **k: None
+    shutil.which = lambda n: None
+    try:
+        assert r._schedule_halt() is None
+    finally:
+        subprocess.Popen, shutil.which = orig_popen, orig_which

@@ -480,14 +480,8 @@ async def async_main(args: argparse.Namespace) -> int:
 
     # Export a snapshot before exit (best-effort)
     try:
-        import tempfile
-        from persist.backup import export_snapshot
-        backup_dir = (
-            os.path.join(tempfile.gettempdir(), "scanmania-backups")
-            if _sys.platform == "darwin"
-            else "/var/backups/scanmania"
-        )
-        snap_path = await export_snapshot(db, backup_dir)
+        from persist.backup import export_snapshot, snapshot_dir
+        snap_path = await export_snapshot(db, snapshot_dir())
         log.info("Snapshot exported to %s", snap_path)
     except Exception as e:
         log.warning("Snapshot export failed: %s", e)

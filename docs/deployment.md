@@ -96,25 +96,52 @@ be the thing that loses a day's runs:
    resumable (invariant 7)
 2. drains the fire-and-forget event rows still in flight (invariant 6 means
    there usually are some)
-3. snapshots and closes the database
+3. snapshots the database
 4. lasers off
 5. haze and the maze lights off
 6. **the entrance light last**, so the operator can still see their way out
+7. then, and only then: stop the kiosk, stop the game, halt the NUC
 
-Leave the NUC halt enabled. Cutting mains under a running filesystem is how the
-box comes back with a corrupt database instead of a day's runs, and the DB
-snapshot does not protect the filesystem it was written to. Wait for the NUC's
-power light to go out, then pull the breaker.
+Step 7 is scheduled in a detached transient unit (`systemd-run --no-block`),
+because stopping the game kills whatever process issued the command. **Kiosk
+first** -- `scanmania-kiosk` has `Wants=scanmania.service`, so stopping the game
+on its own gets it dragged back up within five seconds.
+
+Stopping the service is also what closes the database: `__main__` blacks out,
+snapshots and closes on its way down. The shutdown sequence deliberately does
+**not** close it itself -- see "Dark but still running" below.
+
+Wait for the NUC's power light to go out, then pull the breaker. Cutting mains
+under a running filesystem is how the box comes back with a corrupt database,
+and the DB snapshot does not protect the filesystem it was written to.
 
 Relay coils latch and an Art-Net node holds its last frame, so the container
 stays dark once power is cut. That cuts both ways: **a shutdown that reports a
-failed step has left something energised.** Walk the container before cutting
-power -- neither the portal nor the script will tell you it is safe when a step
-failed.
+failed step has left something energised.** Nothing is halted in that case --
+the box deliberately stays up so you can see what failed. Walk the container
+before cutting power.
 
 The entrance light is `always_on` and the DMX layer refuses to dim it on every
 other path, including when the process dies. This is the one sanctioned
 exception, and it exists because the operator is standing at the breaker.
+
+### Dark but still running
+
+Unticking the halt (or `--no-poweroff`) darkens the container and leaves the
+box up. That state has to stay usable, so the sequence does not close the
+database and does not latch the lights off: **FORCE RESET on the GM console
+brings it back**. Haze stays off until the GM turns it back on.
+
+The same applies if a halt is requested and cannot be scheduled -- the box
+releases the lights rather than sitting dark, running, and recoverable only
+over ssh.
+
+### Powering back on
+
+Just the NUC. `scanmania` and `scanmania-kiosk` are enabled, so mains-on is the
+whole procedure: the box boots into MASTER with the house lights up, and the GM
+walks the container and presses FORCE RESET to reach game mode.
+
 
 ## Stopping the game
 

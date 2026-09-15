@@ -20,12 +20,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   back with a corrupt database, and a DB snapshot does not protect the
   filesystem it was written to.
 
+  Only once the container is dark does it stop the kiosk, stop the game and
+  halt the NUC — scheduled in a detached transient unit, because stopping the
+  game kills whatever issued the command, and kiosk-first because the kiosk's
+  `Wants=` drags the game back up otherwise. Stopping the service is what
+  closes the database cleanly, so the sequence does not close it itself.
+
   `DmxController.power_down()` is the one sanctioned override of the
   `always_on` entrance guard, reachable only from an explicit shutdown request.
   `blackout()` — what a dying process calls — still leaves the entrance lit.
-  Every step reports its own outcome, and neither the portal nor the script
-  says it is safe to cut power when one failed: a coil that did not answer is a
-  coil that may still be energised.
+
+  Every step reports its own outcome. A sequence with a failed step halts
+  nothing and says so: a coil that did not answer may still be energised, and a
+  halted box cannot be asked about it. A box that stays up — halt unticked, or
+  a halt that could not be scheduled — keeps its database open and releases the
+  light latch, so FORCE RESET brings it back rather than ssh being the only way
+  out of a dark container.
 
 - **Both displays rebuilt to the brand design.** A shared
   `web/static/shared/brand.css` carries the Proxima Nova faces and the tokens;

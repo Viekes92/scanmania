@@ -75,19 +75,37 @@ has_output() {
   return 1
 }
 
-# Fall back to whatever is actually plugged in if the configured names are not.
-has_output "$OUT_IN"  || OUT_IN=${CONNECTED[0]:-}
-has_output "$OUT_OUT" || OUT_OUT=${CONNECTED[1]:-}
-[ -n "$OUT_IN" ] || { echo "No connected output, giving up."; exit 1; }
+# Resolve each role against what is actually plugged in. A configured output
+# that is missing drops ITS OWN role — it must not fall through to "the first
+# connected output", because that steals the other role's panel: with only one
+# screen cabled, asking for the outdoor page on it still produced the
+# in-container page, and the override looked like it did nothing.
+has_output "$OUT_IN"  || OUT_IN=""
+has_output "$OUT_OUT" || OUT_OUT=""
 
-MODE_IN=$(pick_mode "$OUT_IN")
-xrandr --output "$OUT_IN" --mode "$MODE_IN" --pos 0x0 --primary
-W_IN=${MODE_IN%x*}
+if [ -z "$OUT_IN" ] && [ -z "$OUT_OUT" ]; then
+  # Neither configured name is connected: the cabling moved wholesale, so use
+  # whatever is there in xrandr order rather than showing nothing.
+  OUT_IN=${CONNECTED[0]:-}
+  OUT_OUT=${CONNECTED[1]:-}
+fi
+[ -n "$OUT_IN$OUT_OUT" ] || { echo "No connected output, giving up."; exit 1; }
+
+# X lays the outputs out side by side; the outdoor window starts where the
+# in-container one ends. With no in-container panel that offset is 0.
+W_IN=0
+if [ -n "$OUT_IN" ]; then
+  MODE_IN=$(pick_mode "$OUT_IN")
+  xrandr --output "$OUT_IN" --mode "$MODE_IN" --pos 0x0 --primary
+  W_IN=${MODE_IN%x*}
+fi
 
 if [ -n "$OUT_OUT" ] && [ "$OUT_OUT" != "$OUT_IN" ]; then
   MODE_OUT=$(pick_mode "$OUT_OUT")
   xrandr --output "$OUT_OUT" --mode "$MODE_OUT" --pos "${W_IN}x0" \
          --rotate "$ROTATE_OUT"
+  # Something has to be primary, or Chromium guesses at a screen.
+  [ -n "$OUT_IN" ] || xrandr --output "$OUT_OUT" --primary
   # A rotated output swaps width and height, and Chromium is positioned from
   # explicit pixel values because there is no window manager to ask. Using the
   # unrotated mode here put a 2560-wide window on a 1440-wide panel: the right
@@ -113,7 +131,7 @@ launch() {   # launch <name> <WxH> <x-offset> <url>
 }
 
 echo "Launching:"
-launch in "$MODE_IN" 0 "$SERVER/display/in"
+[ -n "${MODE_IN:-}" ]  && launch in  "$MODE_IN"  0       "$SERVER/display/in"
 [ -n "${MODE_OUT:-}" ] && launch out "$MODE_OUT" "$W_IN" "$SERVER/display/out"
 
 # Supervise each window individually.
@@ -127,6 +145,7 @@ while true; do
     wait -n || true
     sleep 2
     for name in in out; do
+        [ "$name" = "in" ]  && [ -z "${MODE_IN:-}" ]  && continue
         [ "$name" = "out" ] && [ -z "${MODE_OUT:-}" ] && continue
         if ! pgrep -f "scanmania-kiosk-$name" >/dev/null 2>&1; then
             RESTARTS[$name]=$(( ${RESTARTS[$name]:-0} + 1 ))

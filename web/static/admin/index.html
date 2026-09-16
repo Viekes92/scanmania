@@ -1163,11 +1163,12 @@
         <select id="logUnit" aria-label="Log source unit" style="padding:8px 12px; border-radius:6px;
             border:1px solid var(--border); background:var(--surface2);
             color:var(--text); font-size:13px; font-family:var(--font);">
-          <option value="scanmania-core">scanmania-core</option>
-          <option value="scanmania-web">scanmania-web</option>
-          <option value="scanmania-vision">scanmania-vision</option>
-          <option value="scanmania-io">scanmania-io</option>
-          <option value="scanmania-kiosk">scanmania-kiosk</option>
+          <!-- The units that exist. The four listed here before
+               (scanmania-core/-web/-vision/-io) were from the design before the
+               services were consolidated, so every selection returned an empty
+               journal and the viewer looked broken. -->
+          <option value="scanmania">scanmania — the game</option>
+          <option value="scanmania-kiosk">scanmania-kiosk — displays</option>
         </select>
         <input type="text" id="logFilter" aria-label="Filter log lines" placeholder="Filter…"
           style="flex:1; min-width:120px; padding:8px 12px; border-radius:6px;

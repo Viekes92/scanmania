@@ -254,3 +254,23 @@ def test_force_reset_is_the_way_out_of_the_boot_master_state():
     ctx = FSMContext(boot_to_master=True)
     state, _ = transition("SELF_TEST", __import__("core.events", fromlist=["x"]).SelfTestPass(), ctx)
     assert transition(state, GmForceReset(), ctx)[0] == RESET
+
+
+def test_log_units_match_the_units_we_actually_ship():
+    """The log viewer's allowlist has to track the real systemd units.
+
+    It listed scanmania-core/-web/-io/-vision long after the services were
+    consolidated into one. journalctl exits 0 with no output for a unit that
+    does not exist, so every selection returned {"ok": true, "lines": ""} and
+    the panel drew an empty box — broken in the one way that leaves no trace.
+    """
+    from pathlib import Path
+    from web.routes_admin import _LOG_UNITS
+
+    shipped = {p.stem for p in
+               (Path(__file__).resolve().parent.parent / "deploy").glob("*.service")}
+    assert shipped, "no unit files found — has deploy/ moved?"
+    unknown = _LOG_UNITS - shipped
+    assert not unknown, (
+        f"the log viewer offers units that are not shipped: {sorted(unknown)}. "
+        f"Shipped units are {sorted(shipped)}.")

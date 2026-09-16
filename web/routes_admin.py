@@ -60,9 +60,16 @@ _CONFIG_FILES = {
     "beams":    ("beams.json",    "json"),
 }
 
+# The units that actually exist on the box.
+#
+# This still listed scanmania-core / -web / -io / -vision, from the design
+# before the services were consolidated into one. journalctl -u scanmania-core
+# exits 0 with no output, so the route returned {"ok": true, "lines": ""} and
+# the panel drew an empty box with no error — the log viewer looked broken in
+# the one way that gives you nothing to go on.
 _LOG_UNITS = frozenset({
-    "scanmania-core", "scanmania-web",
-    "scanmania-io", "scanmania-vision", "scanmania-kiosk",
+    "scanmania",          # the game: FSM, vision, io, web — all of it
+    "scanmania-kiosk",    # the two display browsers
 })
 
 # Serialises every read-modify-write on a config file. Two concurrent beam-mask
@@ -759,7 +766,14 @@ def register_routes(
         except asyncio.TimeoutError:
             proc.kill()
             raise HTTPException(status_code=504, detail="journalctl timed out")
-        return {"ok": True, "unit": unit, "lines": stdout.decode("utf-8", errors="replace")}
+        text = stdout.decode("utf-8", errors="replace")
+        if not text.strip():
+            # Silence here is ambiguous — no logs, or a unit that does not
+            # exist? Say which, rather than drawing an empty box.
+            text = (f"(journalctl returned nothing for {unit!r} — the unit has "
+                    f"logged nothing in this range, or it does not exist on "
+                    f"this host)")
+        return {"ok": True, "unit": unit, "lines": text}
 
     # ------------------------------------------------------------------
     # Hardware

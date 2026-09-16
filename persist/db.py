@@ -568,7 +568,7 @@ class Database:
         """
         Forget personal details for players with no run inside `days`.
 
-        Sign-in collects surname, email and date of birth from members of the
+        Sign-in collects surname and date of birth from members of the
         public. Nothing ever removed them, and there was no deletion path at
         all. The player row and its nickname stay so the leaderboard still
         reads, but extra_json is emptied.

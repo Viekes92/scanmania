@@ -62,11 +62,16 @@ def _clean_display_name(v: str) -> str:
 
 
 class SignInBody(BaseModel):
+    # Name, surname and date of birth. Nothing else.
+    #
+    # Email and gender were collected and are not any more: the identity of a
+    # player is their name and their date of birth, and everything the game
+    # needs — run time, outcome, which dot broke — hangs off the run row, not
+    # off them. Personal data you do not hold is personal data you cannot leak,
+    # cannot mis-handle at a venue, and do not have to purge.
     first_name: str = Field(..., min_length=1, max_length=30)
-    surname: str = Field(default="", max_length=50)
-    email: str = Field(default="", max_length=120)
+    surname: str = Field(..., min_length=1, max_length=50)
     dob: str = Field(default="", max_length=10)      # YYYY-MM-DD
-    gender: str = Field(default="", max_length=1)     # M or F
 
     @field_validator("first_name")
     @classmethod
@@ -109,9 +114,7 @@ def register_routes(
 
         extra = {
             "surname": body.surname,
-            "email": body.email,
             "dob": body.dob,
-            "gender": body.gender,
         }
 
         try:

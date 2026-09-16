@@ -494,6 +494,25 @@ verified against the code, not assumed.
 
 ### Changed
 
+- **Sign-in collects only what identifies a player: first name, surname and
+  date of birth.** Email and gender are no longer asked for, stored or
+  exported. A player's identity is their name and DOB; everything the game
+  actually needs — run time, outcome, segment reached, which dot broke — hangs
+  off the run row, not off them. Personal data you do not hold is data you
+  cannot leak, cannot mishandle at a venue, and never have to purge.
+
+  Surname is now **required** (it was optional), validated on the server and
+  checked in the console first so the GM is told before the round trip, with a
+  player standing in front of them. A stale iPad that still posts `email` or
+  `gender` is not rejected — the fields are ignored and never stored — so an
+  un-refreshed console keeps working.
+
+  Older rows may still carry the dropped fields in `extra_json`. The day export
+  deliberately does not read them, so the CSV cannot re-spread data we have
+  stopped asking for.
+
+### Changed
+
 - **The stop button on Opta I4 is now treated as normally closed.** The
   inversion happens in the sketch, immediately after the pin read, so the
   debounced state — and with it the Modbus bit, the Opta's own LEDs, its web

@@ -872,11 +872,6 @@
       border-color: var(--accent-text);
     }
 
-    .gender-btn.selected {
-      border-color: var(--green) !important;
-      color: var(--green) !important;
-      background: rgba(0,255,136,0.08) !important;
-    }
   </style>
 </head>
 <body>
@@ -930,25 +925,11 @@
 
       <input id="sfName" type="text" placeholder="First name *" maxlength="30" required
         class="signin-input">
-      <input id="sfSurname" type="text" placeholder="Surname (optional)" maxlength="50"
-        class="signin-input">
-      <input id="sfEmail" type="email" placeholder="Email (optional — prize draw)" maxlength="120"
+      <input id="sfSurname" type="text" placeholder="Surname *" maxlength="50" required
         class="signin-input">
       <input id="sfDob" type="date" placeholder="Date of birth"
         class="signin-input" style="color-scheme:dark;">
       <div style="display:flex; gap:10px;">
-        <button type="button" class="gender-btn" data-g="M" id="genderM"
-          style="flex:1; height:56px; font-size:18px; font-weight:900;
-            font-family:'Courier New',Courier,monospace; letter-spacing:2px;
-            border:2px solid var(--border); color:var(--muted);
-            background:var(--surface2); border-radius:var(--radius);
-            cursor:pointer; touch-action:manipulation;">M</button>
-        <button type="button" class="gender-btn" data-g="F" id="genderF"
-          style="flex:1; height:56px; font-size:18px; font-weight:900;
-            font-family:'Courier New',Courier,monospace; letter-spacing:2px;
-            border:2px solid var(--border); color:var(--muted);
-            background:var(--surface2); border-radius:var(--radius);
-            cursor:pointer; touch-action:manipulation;">F</button>
       </div>
 
       <div style="display:flex; gap:10px; margin-top:8px;">
@@ -1687,30 +1668,17 @@
     const signinForm     = document.getElementById("signinForm");
     const sfName         = document.getElementById("sfName");
     const sfSurname      = document.getElementById("sfSurname");
-    const sfEmail        = document.getElementById("sfEmail");
     const sfDob          = document.getElementById("sfDob");
     const btnNewPlayer   = document.getElementById("btnNewPlayer");
     const btnSigninCancel = document.getElementById("btnSigninCancel");
-    let selectedGender   = "";
 
-    // Gender toggle buttons
-    document.querySelectorAll(".gender-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        selectedGender = btn.dataset.g;
-        document.querySelectorAll(".gender-btn").forEach(b =>
-          b.classList.toggle("selected", b.dataset.g === selectedGender));
-      });
-    });
 
     function openSigninPanel() {
       signinPanel.style.display = "flex";
       showSigninError("");   // don't carry a stale failure into a new sign-in
       sfName.value = "";
       sfSurname.value = "";
-      sfEmail.value = "";
       sfDob.value = "";
-      selectedGender = "";
-      document.querySelectorAll(".gender-btn").forEach(b => b.classList.remove("selected"));
       sfName.focus();
     }
 
@@ -1725,7 +1693,6 @@
       e.preventDefault();
       const first_name = sfName.value.trim();
       const surname = sfSurname.value.trim();
-      const email = sfEmail.value.trim();
       // Server requires first_name only — see routes_signin.py::SignInBody.
       if (!first_name) return;
       try {
@@ -1735,9 +1702,7 @@
           body: JSON.stringify({
             first_name,
             surname,
-            email,
             dob: sfDob.value || "",
-            gender: selectedGender,
           }),
         });
         if (resp.ok) {
@@ -1745,7 +1710,7 @@
           closeSigninPanel();
         } else {
           showSigninError(resp.status === 422
-            ? "First name is required"
+            ? "First name and surname are both required"
             : `Sign-in failed (${resp.status}) — try again`);
         }
       } catch (err) {

@@ -933,9 +933,12 @@ def register_routes(
 
         buf = _io.StringIO()
         w = csv.writer(buf)
+        # No email, no gender: they are not collected any more. Older rows may
+        # still carry them in extra_json; they are deliberately NOT exported,
+        # so the CSV cannot re-spread data we have stopped asking for.
         w.writerow([
-            "run_id", "player_id", "first_name", "surname", "email", "dob",
-            "gender", "started_at_local", "time_of_day", "elapsed_ms",
+            "run_id", "player_id", "first_name", "surname", "dob",
+            "started_at_local", "time_of_day", "elapsed_ms",
             "elapsed", "busted", "outcome", "segment_reached",
             "detection_mode", "busting_dot", "voided", "voided_reason",
         ])
@@ -963,9 +966,7 @@ def register_routes(
                 r.get("player_id", ""),
                 r.get("player_nickname", ""),
                 extra.get("surname", ""),
-                extra.get("email", ""),
                 extra.get("dob", ""),
-                extra.get("gender", ""),
                 local,
                 tod,
                 "" if ms is None else ms,

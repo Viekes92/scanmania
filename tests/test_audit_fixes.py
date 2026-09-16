@@ -274,3 +274,42 @@ def test_log_units_match_the_units_we_actually_ship():
     assert not unknown, (
         f"the log viewer offers units that are not shipped: {sorted(unknown)}. "
         f"Shipped units are {sorted(shipped)}.")
+
+
+def test_signin_requires_both_names_and_takes_nothing_else():
+    """Identity is name + surname + DOB. Nothing more is collected.
+
+    Email and gender used to be stored in extra_json. Data you do not hold is
+    data you cannot leak, cannot mishandle at a venue, and never have to purge.
+    """
+    import pydantic
+    import pytest as _pytest
+    from web.routes_signin import SignInBody
+
+    with _pytest.raises(pydantic.ValidationError):
+        SignInBody(first_name="Ada")                    # surname now required
+    with _pytest.raises(pydantic.ValidationError):
+        SignInBody(first_name="Ada", surname="")
+
+    body = SignInBody(first_name="Ada", surname="Lovelace", dob="1990-12-10")
+    assert not hasattr(body, "email"), "email is still part of the sign-in model"
+    assert not hasattr(body, "gender"), "gender is still part of the sign-in model"
+
+    # A stale console still posting the old fields must not break, and must not
+    # smuggle them into storage either.
+    stale = SignInBody(first_name="Ada", surname="Lovelace",
+                       email="a@b.c", gender="F")
+    assert not hasattr(stale, "email") and not hasattr(stale, "gender")
+
+
+def test_the_day_export_does_not_carry_the_dropped_fields():
+    """Older rows may still hold them in extra_json; the CSV must not re-spread
+    data we have stopped asking for."""
+    from pathlib import Path
+    src = Path(__file__).resolve().parent.parent / "web" / "routes_admin.py"
+    text = src.read_text()
+    header = text[text.index('"run_id", "player_id"'):]
+    header = header[:header.index("])")]
+    assert '"email"' not in header, "email is still an export column"
+    assert '"gender"' not in header, "gender is still an export column"
+    assert '"surname"' in header and '"dob"' in header

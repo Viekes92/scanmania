@@ -518,3 +518,18 @@ def test_the_outcome_flashes_then_holds_the_verdict():
             f"{name} settles at {last['left']}, which is not 'very dim'"
     assert levels["finished"] == levels["result"] == levels["busted"], \
         f"the room changes level partway through the result: {levels}"
+
+
+def test_the_override_defaults_to_the_cue_table_not_to_on(dmx):
+    """
+    A fresh player hands the room to the cue table.
+
+    It defaulted True, so on a fresh boot the cue table never ran at all until
+    somebody pressed the GM switch off — no attract breathing, no outcome
+    settle, just a flat 255 in every state that is not forced dark.
+    """
+    p = LightCuePlayer(dmx, CUES)
+    assert p.work_lights is None, "the work-light override is on by default"
+    p.set_state("ATTRACT")
+    assert dmx.lights_state()["left"]["target"] != 255, \
+        "attract is at full work light on a fresh boot"

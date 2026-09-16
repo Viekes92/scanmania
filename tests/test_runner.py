@@ -1755,3 +1755,36 @@ async def test_a_backend_that_cannot_report_levels_still_works(
     assert r.state == "REGISTERED"
     for a in ("_show_task", "_registered_timeout_task"):
         r._cancel_task(a)
+
+
+@pytest.mark.asyncio
+async def test_signing_a_player_in_releases_the_gm_work_lights(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """
+    The GM switch is a work light for loading and unloading, and it was sticky:
+    nothing cleared it, and it beat the cue table in every state except the
+    ones forced dark and the outcome. A GM who turned it on to walk somebody in
+    got a flat 255 from RESET onwards, holding through attract and every run
+    after it — which is what "the lights stay on after the stop button, very
+    bright" actually was, arriving ~30 s after the button.
+    """
+    class _Lights:
+        def __init__(self): self.work_lights = True; self.states = []
+        def set_state(self, s): self.states.append(s)
+        def set_work_lights(self, on): self.work_lights = on
+        def reset(self): pass
+        def stop(self): pass
+
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.lights = _Lights()
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await _drain(r, iterations=5, pause=0)
+
+    assert r.lights.work_lights is True, "precondition: GM left them on"
+    await r.dispatch(PlayerRegistered(player_id="p-wl", nickname="Ada"))
+    assert r.lights.work_lights is None, \
+        "the override survived sign-in and will paint over the whole show"
+    for a in ("_show_task", "_registered_timeout_task"):
+        r._cancel_task(a)

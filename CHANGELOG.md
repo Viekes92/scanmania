@@ -9,6 +9,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **The GM work-light override was sticky, and defaulted to ON.** This is what
+  "the house lights stay on after the stop button and are very very bright"
+  actually was — and why it was so hard to pin on the stop button: the 255
+  arrived at RESET, about thirty seconds after the press, once the outcome
+  window had run out.
+
+  Nothing ever cleared the override, and it beat the cue table in every state
+  except the ones forced dark and (since the last fix) the outcome. So a GM who
+  switched the lights on to walk somebody in got a flat 255 from RESET onward,
+  held through attract and every run after it. Defaulting to `True` meant the
+  same thing on a fresh boot with nobody having touched the switch at all: no
+  attract breathing, no outcome settle, just full work light in every state
+  that was not forced dark.
+
+  Two changes. It now defaults to `None` — the cue table decides — and nothing
+  is lost by that, because the box boots into MASTER and the `master` cue is
+  already 255/255/255, so the container is lit for the walk-round either way.
+  And signing a player in releases the override, because that is the moment the
+  show takes over. The GM can switch it straight back on.
+
+
 - **Signing a player in while they already stand on the plate now arms at
   once.** Inputs are edge-triggered, which is right for a game driven by people
   stepping on things — but a plate that is *already* held down when the GM

@@ -79,7 +79,14 @@ class LightCuePlayer:
         #            master cue simply overrode it, so there was no way to
         #            stand in a dark container and look at the lasers)
         #   None  -> no override; the cue table decides
-        self._work_lights = True
+        #
+        # Defaults to None, NOT True. It used to default True, which meant the
+        # cue table never ran until a human pressed the GM switch off: the
+        # attract breathing, the outcome settle, all of it was dead on a fresh
+        # boot. Nothing provided by that default is lost — the box boots into
+        # MASTER and the `master` cue is already 255/255/255, so the container
+        # is lit for the walk-round either way.
+        self._work_lights = None
 
     # ------------------------------------------------------------------
     # Control

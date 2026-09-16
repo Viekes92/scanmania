@@ -646,6 +646,32 @@ class GameRunner:
     # Event dispatch
     # ------------------------------------------------------------------
 
+    def _release_work_lights(self) -> None:
+        """
+        Hand the room back to the cue table when a player signs in.
+
+        The GM switch is a WORK light — for loading and unloading — but it was
+        sticky: nothing cleared it, and it beat the cue table in every state
+        except the ones forced dark and the outcome. So a GM who turned it on
+        to walk somebody in got a flat 255 from RESET onwards, holding through
+        attract and every run after it. From the floor that is "the lights come
+        on at the end of a run and stay on, very bright" — and they did, about
+        thirty seconds after the stop button, which is what made it so hard to
+        pin on the stop button at all.
+
+        Sign-in is the moment the show takes over, so that is where the
+        override ends. The GM can always switch it straight back on.
+        """
+        if self.lights is None:
+            return
+        try:
+            if self.lights.work_lights is None:
+                return          # already the cue table's; nothing to say
+            log.info("player signed in — work lights released to the cue table")
+            self.lights.set_work_lights(None)
+        except Exception as exc:
+            log.warning("could not release the work lights: %s", exc)
+
     def _arm_if_plate_already_down(self) -> None:
         """
         Enqueue a synthetic PlateHigh when the plate is already held down.
@@ -742,6 +768,7 @@ class GameRunner:
             # Ask for the level instead of waiting for an edge. Enqueued rather
             # than dispatched: we are inside dispatch() already, and the drain
             # is what serialises events.
+            self._release_work_lights()
             self._arm_if_plate_already_down()
         if new_state != "REGISTERED":
             self._cancel_task("_registered_timeout_task")

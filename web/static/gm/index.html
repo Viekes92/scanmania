@@ -91,6 +91,12 @@
       -webkit-font-smoothing: antialiased;
       touch-action: manipulation;
       user-select: none;
+      /* iPad: no grey flash on tap, no long-press callout over a button an
+       * operator is jabbing at, and no rubber-banding the whole page when a
+       * strip is scrolled. */
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      overscroll-behavior: contain;
     }
 
     /* -----------------------------------------------------------------------
@@ -100,9 +106,31 @@
     body {
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      /* dvh, not vh: Safari's vh is the LARGEST viewport, so with any browser
+         chrome showing, 100vh is taller than the screen and the bottom of the
+         page sits underneath it. dvh tracks what is actually visible. */
+      min-height: 100dvh;
       padding: 0;
       gap: 0;
+      /* A mounted iPad has a home indicator; without this the FORCE RESET
+         button sits under it. */
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    /* The two controls the GM reaches for under pressure stay on screen no
+       matter how far the status below has been scrolled. This is what
+       "nothing urgent needs scrolling" actually requires — the old
+       overflow:hidden achieved the opposite by making content unreachable. */
+    #topBar {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    #actions {
+      position: sticky;
+      top: 74px;          /* directly under the top bar */
+      z-index: 39;
+      background: var(--bg);
     }
 
     /* -----------------------------------------------------------------------
@@ -613,7 +641,9 @@
       font-size: 12px;
       font-weight: 700;
       letter-spacing: 1px;
-      min-height: 40px;
+      /* 44 px is Apple's minimum touch target and this is the one button the
+         GM hits at the end of a long day, one-handed, holding an iPad. */
+      min-height: 48px;
       cursor: pointer;
     }
     #btnExportDay:active { background: #1d3a5e; }
@@ -1137,6 +1167,37 @@
   </div>
 
   <!-- WebSocket status -->
+  <!-- Password prompt. NOT window.prompt: one "prevent additional dialogs"
+       tap in kiosk Safari makes every native dialog a silent no-op for the
+       rest of the session, which would turn EXPORT DAY into a dead button
+       with no error. Same reason the admin console stopped using them. -->
+  <div id="pwOverlay" role="dialog" aria-modal="true" aria-labelledby="pwTitle" style="
+       display:none; position:fixed; inset:0; z-index:300;
+       background:rgba(5,5,7,0.94); align-items:center; justify-content:center;
+       flex-direction:column; gap:20px; padding:24px;">
+    <div id="pwTitle" style="font-family:var(--font-ui); font-size:22px;
+         font-weight:900; letter-spacing:2px; text-align:center; color:var(--text);">
+      ADMIN PASSWORD
+    </div>
+    <div id="pwWhy" style="font-size:15px; color:var(--muted); text-align:center;
+         max-width:520px; line-height:1.5;">
+      The export carries surname, email and date of birth.
+    </div>
+    <input id="pwInput" type="password" autocomplete="current-password"
+           aria-labelledby="pwTitle pwWhy" style="
+           width:min(90vw,520px); height:64px; font-size:24px; text-align:center;
+           letter-spacing:4px; border-radius:10px; border:2px solid var(--accent);
+           background:var(--surface2); color:var(--text);
+           font-family:'Courier New',monospace;">
+    <div id="pwErr" style="min-height:22px; font-size:15px; color:var(--red-text);"></div>
+    <div style="display:flex; gap:14px; width:min(90vw,520px);">
+      <button id="pwCancel" class="action-btn" style="flex:1; background:var(--surface2);
+              color:var(--muted); border:2px solid var(--border);">CANCEL</button>
+      <button id="pwOk" class="action-btn" style="flex:1; background:var(--accent);
+              color:#fff; border:2px solid var(--accent);">UNLOCK</button>
+    </div>
+  </div>
+
   <div id="wsStatus">
     <div class="ws-dot" id="wsDot"></div>
     <span id="wsLabel">connecting…</span>
@@ -1562,15 +1623,24 @@
 
     let gmFeedbackTimer = null;
 
-    function showGmFeedback(msg) {
+    /**
+     * showGmFeedback — transient message over the console.
+     *
+     * tone "err" holds it twice as long and colours it. A failure the
+     * operator missed is worse than one they had to look at, and this is
+     * now where export and light failures land instead of a native alert(),
+     * which kiosk Safari can silently suppress for the whole session.
+     */
+    function showGmFeedback(msg, tone) {
       gmFeedback.textContent = msg;
       gmFeedback.style.display = "block";
       gmFeedback.style.opacity = "1";
+      gmFeedback.style.color = tone === "err" ? "var(--red-text)" : "";
       if (gmFeedbackTimer) clearTimeout(gmFeedbackTimer);
       gmFeedbackTimer = setTimeout(() => {
         gmFeedback.style.opacity = "0";
         setTimeout(() => { gmFeedback.style.display = "none"; }, 300);
-      }, 3000);
+      }, tone === "err" ? 6000 : 3000);
     }
 
     async function gmPost(endpoint, body = {}) {
@@ -1794,7 +1864,7 @@
         });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         renderLights(await r.json());
-      } catch (e) { alert(`Lights failed: ${e.message}`); }
+      } catch (e) { showGmFeedback(`LIGHTS FAILED: ${e.message}`, "err"); }
     });
 
     refreshLights();
@@ -1931,8 +2001,38 @@
         .map(b => b.toString(16).padStart(2, "0")).join("");
     }
 
+    /**
+     * askPassword — resolves to the typed string, or null if cancelled.
+     * Replaces window.prompt, which kiosk Safari can permanently suppress.
+     */
+    function askPassword() {
+      return new Promise(resolve => {
+        const ov  = document.getElementById("pwOverlay");
+        const inp = document.getElementById("pwInput");
+        const err = document.getElementById("pwErr");
+        err.textContent = "";
+        inp.value = "";
+        ov.style.display = "flex";
+        // Do NOT autofocus: on iPad that throws the software keyboard up over
+        // the buttons before the operator has read why they are being asked.
+        const done = (value) => {
+          ov.style.display = "none";
+          document.getElementById("pwOk").onclick = null;
+          document.getElementById("pwCancel").onclick = null;
+          inp.onkeydown = null;
+          resolve(value);
+        };
+        document.getElementById("pwOk").onclick = () => done(inp.value || null);
+        document.getElementById("pwCancel").onclick = () => done(null);
+        inp.onkeydown = (e) => {
+          if (e.key === "Enter") done(inp.value || null);
+          if (e.key === "Escape") done(null);
+        };
+      });
+    }
+
     document.getElementById("btnExportDay").addEventListener("click", async () => {
-      const pw = window.prompt("Admin password — the export contains personal details");
+      const pw = await askPassword();
       if (!pw) return;
       const btn = document.getElementById("btnExportDay");
       const label = btn.textContent;
@@ -1948,7 +2048,7 @@
         const { token } = await resp.json();
         window.location = `/api/admin/export/day.csv?token=${encodeURIComponent(token)}`;
       } catch (e) {
-        alert(`Export failed: ${e.message}`);
+        showGmFeedback(`EXPORT FAILED: ${e.message}`, "err");
       } finally {
         btn.textContent = label;
         btn.disabled = false;

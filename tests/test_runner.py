@@ -1686,3 +1686,72 @@ async def test_calibration_darkens_the_entrance_and_always_puts_it_back(
         "the entrance was left dark after calibration bailed out"
     for a in ("_show_task", "_arm_timeout_task", "_result_timeout_task"):
         r._cancel_task(a)
+
+
+@pytest.mark.asyncio
+async def test_signing_in_with_the_plate_already_down_arms_immediately(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """
+    The player is usually already standing on the plate when the GM finishes
+    typing their name. Inputs are edge-triggered, so that plate never sends
+    another PlateHigh — and the box sat in REGISTERED until the player stepped
+    off and back on, with a queue watching.
+    """
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await _drain(r, iterations=5, pause=0)
+
+    # Player steps on FIRST, then the GM signs them in.
+    await fake_inputs.trigger_input("plate", 1)
+    assert fake_inputs.input_level("plate") == 1
+    await r.dispatch(PlayerRegistered(player_id="p-plate", nickname="Ada"))
+    assert r.state == "REGISTERED"
+
+    await _drain(r, iterations=8, pause=0)
+    assert r.state == "ARM", "the plate was already down and nothing armed"
+    for a in ("_show_task", "_arm_timeout_task", "_registered_timeout_task"):
+        r._cancel_task(a)
+
+
+@pytest.mark.asyncio
+async def test_signing_in_with_the_plate_up_still_waits_for_a_step(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """The nudge must not invent a step that never happened."""
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await _drain(r, iterations=5, pause=0)
+
+    await fake_inputs.trigger_input("plate", 0)      # explicitly NOT standing on it
+    await r.dispatch(PlayerRegistered(player_id="p-plate", nickname="Ada"))
+    await _drain(r, iterations=8, pause=0)
+    assert r.state == "REGISTERED", "armed without anyone on the plate"
+    for a in ("_show_task", "_registered_timeout_task"):
+        r._cancel_task(a)
+
+
+@pytest.mark.asyncio
+async def test_a_backend_that_cannot_report_levels_still_works(
+        fake_config, fake_io, fake_vision, db):
+    """The nudge is best-effort: an older backend just keeps the edge path."""
+    class _NoLevels:
+        async def run(self): await asyncio.sleep(3600)
+        async def events(self):
+            while True:
+                await asyncio.sleep(3600)
+                yield ("plate", 1, 0)
+        is_connected = True
+
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=_NoLevels(), vision_backend=fake_vision, db=db)
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await _drain(r, iterations=5, pause=0)
+    await r.dispatch(PlayerRegistered(player_id="p-plate", nickname="Ada"))
+    await _drain(r, iterations=5, pause=0)
+    assert r.state == "REGISTERED"
+    for a in ("_show_task", "_registered_timeout_task"):
+        r._cancel_task(a)

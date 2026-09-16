@@ -260,6 +260,25 @@ class ModbusInputs:
     # Events generator — same interface as FakePicoLink
     # ------------------------------------------------------------------
 
+    def input_level(self, input_id: str) -> int | None:
+        """
+        The CURRENT level of one input, or None if it is not mapped or nothing
+        has been polled yet.
+
+        events() is edge-triggered, which is right for a game driven by people
+        stepping on things — but it means a plate that is ALREADY held down
+        when we start caring about it never announces itself. This is the
+        level, for the one caller that needs to ask rather than wait.
+        """
+        if not self._connected:
+            return None
+        for idx, name in self._input_map.items():
+            if name == input_id:
+                if idx >= len(self._prev_states):
+                    return None
+                return 1 if self._prev_states[idx] else 0
+        return None
+
     async def events(self):
         """Async generator yielding (input_id, state, host_ns) tuples on input change."""
         while True:

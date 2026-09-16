@@ -56,6 +56,9 @@ class PicoLink:
         self._clock_offset: int | None = None  # current best estimate
 
         self._last_seq: int | None = None
+        # Last level seen per input. The wire protocol is edge-based, so this
+        # is the only way to answer "is the plate down RIGHT NOW".
+        self._levels: dict[str, int] = {}
 
     # ------------------------------------------------------------------
     # Main run loop
@@ -112,6 +115,7 @@ class PicoLink:
                 return
             self._check_seq(seq)
             host_ns = self.pico_ms_to_host_ns(pico_ms)
+            self._levels[input_id] = state
             log.debug("PicoLink EV seq=%d %s=%d", seq, input_id, state)
             self._on_event(input_id, state, host_ns)
 
@@ -187,6 +191,17 @@ class PicoLink:
     # ------------------------------------------------------------------
     # Commands to Pico
     # ------------------------------------------------------------------
+
+    def input_level(self, input_id: str) -> int | None:
+        """
+        Current level, or None if this input has not been seen since connect.
+
+        Edges only tell you about changes; a plate already held down when the
+        player signs in never sends one.
+        """
+        if not self._connected:
+            return None
+        return self._levels.get(input_id)
 
     async def send_led(self, led_id: str, mode: str) -> None:
         """Send LED command. mode must be one of: off, on, pulse, flash."""

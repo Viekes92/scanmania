@@ -42,6 +42,9 @@ class FakeInputs:
         self._connected: bool = True
         self._last_heartbeat_ns: int | None = time.monotonic_ns()
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=256)
+        # Mirrors the real backends' level cache, so a test can put the plate
+        # down and have it STAY down.
+        self._levels: dict[str, int] = {}
 
     # ------------------------------------------------------------------
     # Main loop — no-op; events are injected programmatically
@@ -71,10 +74,17 @@ class FakeInputs:
             log.debug("FakeInputs: trigger_input ignored — not connected")
             return
         host_ns = time.monotonic_ns()
+        self._levels[input_id] = int(state)
         log.debug("FakeInputs: trigger_input %s=%d", input_id, state)
         self._queue.put_nowait((input_id, state, host_ns))
         if self._on_event:
             self._on_event(input_id, state, host_ns)
+
+    def input_level(self, input_id: str) -> int | None:
+        """Current level, or None if this input has never been triggered."""
+        if not self._connected:
+            return None
+        return self._levels.get(input_id)
 
     def set_connected(self, value: bool) -> None:
         """Explicitly change link state — for connection-failure tests."""

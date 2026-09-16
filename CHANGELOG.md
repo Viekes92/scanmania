@@ -9,6 +9,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Signing a player in while they already stand on the plate now arms at
+  once.** Inputs are edge-triggered, which is right for a game driven by people
+  stepping on things — but a plate that is *already* held down when the GM
+  finishes typing the name never sends another `PlateHigh`, so the box sat in
+  REGISTERED and the player had to step off and back on with a queue watching.
+
+  Entering REGISTERED now asks the inputs backend for the plate's current
+  level instead of waiting for an edge, and enqueues a `PlateHigh` if it is
+  already down. `input_level()` is new on all three backends (Opta/Modbus reads
+  its existing poll cache; the Pico link and the fake now keep one). The FSM is
+  untouched and still pure — it sees an ordinary event and applies its usual
+  guards. Best-effort by design: a backend that cannot answer, or a link that
+  is down, falls back to the edge exactly as before.
+
+
 - **The maze stayed lit for 30 s after the stop button.** The house-light flash
   was right — the thing still on afterwards was the lasers. `clean` and `bust`
   were `loop: true` over a single solid preset, and nothing between the outcome

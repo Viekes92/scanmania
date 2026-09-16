@@ -646,6 +646,31 @@ class GameRunner:
     # Event dispatch
     # ------------------------------------------------------------------
 
+    def _arm_if_plate_already_down(self) -> None:
+        """
+        Enqueue a synthetic PlateHigh when the plate is already held down.
+
+        Only ever called on entering REGISTERED. It is a nudge, not a new
+        source of truth: if the backend cannot say (no such method, link down,
+        nothing polled yet) it does nothing and the real edge still works. The
+        FSM applies its own guards to the event exactly as it would a real one.
+        """
+        level = None
+        try:
+            getter = getattr(self.inputs, "input_level", None)
+            if callable(getter):
+                level = getter("plate")
+        except Exception as exc:
+            log.warning("could not read the plate level: %s", exc)
+            return
+        if level != 1:
+            return
+        log.info("plate already down at sign-in — arming without a fresh step")
+        try:
+            self._event_queue.put_nowait(PlateHigh())
+        except Exception as exc:
+            log.warning("could not enqueue the synthetic PlateHigh: %s", exc)
+
     async def dispatch(self, event: Any) -> None:
         """
         Feed an event to the FSM, execute resulting side effects, and handle
@@ -707,6 +732,17 @@ class GameRunner:
             self._registered_timeout_task = asyncio.create_task(
                 self._timeout_after(reg_ms, GmCancel()), name="registered_timeout"
             )
+            # The player is usually already standing on the plate by the time
+            # the GM finishes typing their name. Inputs are edge-triggered, so
+            # a plate that is ALREADY down never sends another PlateHigh and
+            # the FSM sat in REGISTERED waiting for one — the player had to
+            # step off and back on, with a queue watching, for no reason they
+            # could see.
+            #
+            # Ask for the level instead of waiting for an edge. Enqueued rather
+            # than dispatched: we are inside dispatch() already, and the drain
+            # is what serialises events.
+            self._arm_if_plate_already_down()
         if new_state != "REGISTERED":
             self._cancel_task("_registered_timeout_task")
 

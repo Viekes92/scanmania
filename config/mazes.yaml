@@ -203,35 +203,15 @@ light_cues:
       right: 20
       ms: 0
   finished:
-    description: "clean run \u2014 celebratory flash, then hold bright"
+    description: "clean run \u2014 celebratory flash, then settle low"
     steps:
-    - left: 255
-      right: 255
-      ms: 90
-      fade: false
-    - left: 0
-      right: 0
-      ms: 90
-      fade: false
-    - left: 255
-      right: 255
-      ms: 90
-      fade: false
-    - left: 0
-      right: 0
-      ms: 90
-      fade: false
-    - left: 255
-      right: 255
-      ms: 90
-      fade: false
-    - left: 0
-      right: 0
-      ms: 90
-      fade: false
-    - left: 200
-      right: 200
-      ms: 0
+    - {left: 150, right: 150, ms: 90, fade: false}
+    - {left: 0, right: 0, ms: 90, fade: false}
+    - {left: 150, right: 150, ms: 90, fade: false}
+    - {left: 0, right: 0, ms: 90, fade: false}
+    - {left: 150, right: 150, ms: 90, fade: false}
+    - {left: 0, right: 0, ms: 90, fade: false}
+    - {left: 60, right: 60, ms: 0}
   busted:
     description: "busted \u2014 one hard snap, then sullen low"
     steps:
@@ -253,11 +233,9 @@ light_cues:
       right: 120
       ms: 0
   result:
-    description: "score on screen \u2014 bright enough to walk out by"
+    description: "score on screen \u2014 enough to walk out by, no more"
     steps:
-    - left: 180
-      right: 180
-      ms: 0
+    - {left: 70, right: 70, ms: 0}
   fault:
     description: "something is wrong \u2014 slow throb so it is obvious from outside"
     loop: true

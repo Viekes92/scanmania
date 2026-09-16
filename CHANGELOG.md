@@ -9,6 +9,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **The house lights stayed bright after a run — the decoder, not the value.**
+  Art-Net capture off the NIC showed the NUC transmitting `left=3 right=3` for
+  the full 29.5 s of FINISHED and RESULT while the container was plainly not at
+  3. Value, controller, packets and deployed config were all correct and all
+  verified; the D5 DMX5125 decoders simply did not follow.
+
+  They handle steady values perfectly — 0 is off, 1 and 3 are visibly
+  different, slow fades land exactly where asked. What they do not handle is a
+  90 ms hard-edged burst followed by a single frame at a very low value: they
+  stay sitting bright. The settle was a hard cut (`fade: false`) straight out
+  of the last flash beat, so dropping that gives the decoder a slew it can
+  follow instead of an edge it cannot. Same destination, ~800 ms to get there;
+  the flash itself stays hard, because that half always worked.
+
+  Worth remembering when tuning any cue on this rig: the usable range on these
+  fixtures is roughly **0-6**, not 0-255 — 1 reads as "very dim" and anything
+  past ~10 is effectively full.
+
+### Changed
+
+- **The outcome flash is five beats, room and maze together** (was three).
+  10 whole-board relay writes per run now, on top of the count-in ramp — the
+  comment in `mazes.yaml` says so, because every beat switches 45 channels at
+  once and that is the thing to check before adding more.
+
+
 - **A cold boot no longer latches FAULT while the router is still coming up.**
   The self-test retried six times five seconds apart — about 25 s, which was
   enough for the PoE switch it was written for but not for the router, which

@@ -174,12 +174,20 @@ shows:
     - {preset: blackout,   hold_ms: 90}
     - {preset: horizontal, hold_ms: 90}
     - {preset: blackout,   hold_ms: 90}
+    - {preset: horizontal, hold_ms: 90}
+    - {preset: blackout,   hold_ms: 90}
+    - {preset: horizontal, hold_ms: 90}
+    - {preset: blackout,   hold_ms: 90}
     # Solid, and left that way. The show ends here.
     - {preset: horizontal, hold_ms: 100}
   clean:
     loop: false
     description: "clean run \u2014 verticals flash, then read as passable"
     steps:
+    - {preset: vertical, hold_ms: 90}
+    - {preset: blackout, hold_ms: 90}
+    - {preset: vertical, hold_ms: 90}
+    - {preset: blackout, hold_ms: 90}
     - {preset: vertical, hold_ms: 90}
     - {preset: blackout, hold_ms: 90}
     - {preset: vertical, hold_ms: 90}
@@ -262,6 +270,10 @@ light_cues:
     - {left: 150, right: 150, ms: 90, fade: false}
     - {left: 0, right: 0, ms: 90, fade: false}
     - {left: 150, right: 150, ms: 90, fade: false}
+    - {left: 0, right: 0, ms: 90, fade: false}
+    - {left: 150, right: 150, ms: 90, fade: false}
+    - {left: 0, right: 0, ms: 90, fade: false}
+    - {left: 150, right: 150, ms: 90, fade: false}
     # RAMP down to the settle — do NOT snap to it.
     #
     # This was a hard cut, on the reasoning that a half-lit room is the one
@@ -280,6 +292,10 @@ light_cues:
   busted:
     description: "busted — flash, then very dim while the bars read"
     steps:
+    - {left: 150, right: 150, ms: 90, fade: false}
+    - {left: 0, right: 0, ms: 90, fade: false}
+    - {left: 150, right: 150, ms: 90, fade: false}
+    - {left: 0, right: 0, ms: 90, fade: false}
     - {left: 150, right: 150, ms: 90, fade: false}
     - {left: 0, right: 0, ms: 90, fade: false}
     - {left: 150, right: 150, ms: 90, fade: false}

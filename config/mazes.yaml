@@ -153,18 +153,29 @@ shows:
     - {preset: all_on, sparkle_off: 6, hold_ms: 1800}
     - {preset: all_on, sparkle_off: 3, hold_ms: 2200}
     - {preset: all_on, sparkle_off: 7, hold_ms: 1800}
+  # The VERDICT, then dark. Both of these used to loop a solid preset, so the
+  # maze stayed lit from the stop button until RESET — result_display_ms twice
+  # over, 30 s of a fully lit container with nobody in it. The shape is the
+  # verdict and it only has to be read once; holding it past that is what made
+  # the house-light flash look like a flash into permanent light.
+  #
+  # hold_ms is the read time — tune it here or in Admin -> Shows.
   bust:
-    loop: true
-    description: "busted \u2014 horizontals solid, the maze reads as barred"
+    loop: false
+    description: "busted \u2014 horizontals bar the maze, then dark"
     steps:
     - preset: horizontal
-      hold_ms: 5000
+      hold_ms: 2500
+    - preset: blackout
+      hold_ms: 100
   clean:
-    loop: true
-    description: "clean run \u2014 verticals solid, the maze reads as passable"
+    loop: false
+    description: "clean run \u2014 verticals read as passable, then dark"
     steps:
     - preset: vertical
-      hold_ms: 5000
+      hold_ms: 2500
+    - preset: blackout
+      hold_ms: 100
   main_game:
     segments:
     - maze_1

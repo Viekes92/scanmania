@@ -9,6 +9,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **The maze stayed lit for 30 s after the stop button.** The house-light flash
+  was right — the thing still on afterwards was the lasers. `clean` and `bust`
+  were `loop: true` over a single solid preset, and nothing between the outcome
+  and RESET stops a show (FINISHED emits only `BroadcastState`), so the verdict
+  shape held through FINISHED *and* RESULT — `result_display_ms` twice over,
+  30 s of a fully lit container with nobody in it. From the floor that reads as
+  the flash dropping into permanent light.
+
+  Both now hold the verdict for 2.5 s and end on `blackout`. The shape is the
+  verdict and only has to be read once. Tune the read time in `mazes.yaml` or
+  Admin → Shows.
+
+
 - **The attract sparkle never ran.** `sparkle_off` was in `mazes.yaml` and the
   show player understood it, but `ShowStep` had no such field — so the loader
   dropped it and the runner read 0 off the dataclass. The attract show was four

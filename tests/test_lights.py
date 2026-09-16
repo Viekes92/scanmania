@@ -478,3 +478,25 @@ def test_arm_box_lights_row_one_not_row_three():
     # And they must all be in row 1, which is what "boxed in at the plate" means.
     rows = {e["row"] for e in beams if e["id"] in ("12", "13", "14")}
     assert rows == {1}, f"arm_box beams are not all row 1: {rows}"
+
+
+def test_the_outcome_shows_end_dark_and_do_not_loop():
+    """
+    The verdict shape is read once, then the container goes dark.
+
+    Both of these used to loop a solid preset, and nothing between the stop
+    button and RESET stops a show — FINISHED emits only BroadcastState — so the
+    maze stayed lit for result_display_ms TWICE over, 30 s of a fully lit
+    container with nobody in it. From the floor that read as the house-light
+    flash dropping into permanent light, which is exactly what it looked like.
+    """
+    from config import loader
+    shows = loader.load_all().mazes.shows
+    for name in ("clean", "bust"):
+        show = shows[name]
+        assert show.loop is False, f"{name} loops, so it never goes dark"
+        assert show.steps[-1].preset == "blackout", \
+            f"{name} ends on {show.steps[-1].preset!r}, leaving the maze lit"
+        # The verdict still has to be readable.
+        assert show.steps[0].hold_ms >= 1000, \
+            f"{name} flashes the verdict too briefly to read"

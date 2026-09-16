@@ -494,6 +494,19 @@ verified against the code, not assumed.
 
 ### Changed
 
+- **Schema v4 forgets email and gender.** Sign-in stopped collecting them, but
+  rows written earlier still carried them in `extra_json` — and in every hourly
+  snapshot taken since. Data we have decided not to hold should not survive in
+  the file just because it was written before the decision. The migration runs
+  once at startup, after `deploy.sh` has taken its pre-migration backup, so
+  nobody has to remember a manual purge on a touring box.
+
+  Rewritten in Python rather than with `json_remove()`: JSON1 is near-universal
+  but this has to run unattended in a shipping container, and a migration that
+  fails there fails at boot. It only touches rows that actually carry the
+  fields, and leaves unparseable `extra_json` alone rather than discarding a
+  row's other data trying to clean it.
+
 - **Sign-in collects only what identifies a player: first name, surname and
   date of birth.** Email and gender are no longer asked for, stored or
   exported. A player's identity is their name and DOB; everything the game

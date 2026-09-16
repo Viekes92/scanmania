@@ -99,7 +99,7 @@ CREATE INDEX IF NOT EXISTS idx_health_ts          ON health(ts);
 """
 
 # Current schema version — bump when adding migrations.
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 
 
 def _now_iso() -> str:
@@ -177,6 +177,46 @@ class Database:
             raise RuntimeError("Database.init() has not been called")
         return self._conn
 
+    async def _purge_dropped_pii(self) -> None:
+        """
+        Strip email and gender from every stored player.
+
+        Only touches rows that actually carry them, so a re-run is free, and
+        leaves malformed extra_json alone rather than discarding a row's other
+        fields trying to clean it.
+        """
+        import json as _json
+
+        async with self._db.execute(
+                "SELECT id, extra_json FROM players "
+                "WHERE extra_json IS NOT NULL AND extra_json != ''") as cur:
+            rows = await cur.fetchall()
+
+        changed = 0
+        for row in rows:
+            raw = row[1]
+            try:
+                extra = _json.loads(raw)
+            except (ValueError, TypeError):
+                log.warning("v4 purge: player %s has unparseable extra_json — "
+                            "left untouched", row[0])
+                continue
+            if not isinstance(extra, dict):
+                continue
+            if not any(k in extra for k in ("email", "gender")):
+                continue
+            extra.pop("email", None)
+            extra.pop("gender", None)
+            await self._db.execute(
+                "UPDATE players SET extra_json = ? WHERE id = ?",
+                (_json.dumps(extra), row[0]))
+            changed += 1
+
+        if changed:
+            log.warning("v4: removed email/gender from %d player row(s)", changed)
+        else:
+            log.info("v4: no stored email/gender to remove")
+
     async def _run_migrations(self) -> None:
         """Apply any schema migrations that haven't been applied yet."""
         await self._db.execute(
@@ -210,6 +250,19 @@ class Database:
                 # v3: cloud sync removed. The outbox only ever buffered rows
                 # for an endpoint that is no longer part of the system.
                 await self._db.execute("DROP TABLE IF EXISTS outbox")
+            if current < 4:
+                # v4: forget email and gender.
+                #
+                # Sign-in stopped collecting them, but rows written before that
+                # still carried them in extra_json — and in every hourly
+                # snapshot taken since. Data we have decided not to hold should
+                # not survive in the file just because it was written earlier.
+                #
+                # Rewritten in Python rather than with json_remove(): JSON1 is
+                # near-universal but this has to run unattended on a box in a
+                # shipping container, and a migration that fails there fails at
+                # boot. A few thousand rows is instantaneous either way.
+                await self._purge_dropped_pii()
             await self._db.execute("DELETE FROM _schema_version")
             await self._db.execute(
                 "INSERT INTO _schema_version VALUES (?)", (_SCHEMA_VERSION,)

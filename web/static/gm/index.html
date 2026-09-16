@@ -1326,7 +1326,12 @@
         "ABORTED":    "ABORTED",
         "RESULT":     "RESULT",
         "FAULT":      "FAULT",
-        "MASTER":     "MASTER MODE — check container, then FORCE RESET",
+        // Just the state. The instruction appended here ("check container,
+        // then FORCE RESET") made this the only label long enough to truncate
+        // against the clock — so the one state where the GM most needs to read
+        // the screen was the one showing an ellipsis. FORCE RESET is a
+        // permanent button in the corner; it does not need narrating up here.
+        "MASTER":     "MASTER MODE",
         "RUN_SEG_1":  "RUN — SEG 1",
         "RUN_SEG_2":  "RUN — SEG 2",
         "RUN_SEG_3":  "RUN — SEG 3",

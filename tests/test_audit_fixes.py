@@ -313,3 +313,49 @@ def test_the_day_export_does_not_carry_the_dropped_fields():
     assert '"email"' not in header, "email is still an export column"
     assert '"gender"' not in header, "gender is still an export column"
     assert '"surname"' in header and '"dob"' in header
+
+
+@pytest.mark.asyncio
+async def test_v4_migration_forgets_email_and_gender():
+    """Sign-in stopped collecting them; rows written earlier still held them.
+
+    Data we have decided not to hold should not survive in the file just
+    because it was written before the decision — and it is in every hourly
+    snapshot taken since, too.
+    """
+    import json
+    import os
+    import sqlite3
+    import tempfile
+    from persist.db import Database
+
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    con = sqlite3.connect(path)
+    con.executescript("""
+      CREATE TABLE players (id TEXT PRIMARY KEY, nickname TEXT NOT NULL,
+                            created_at TEXT NOT NULL, extra_json TEXT);
+      CREATE TABLE _schema_version (version INTEGER NOT NULL);
+      INSERT INTO _schema_version VALUES (3);
+    """)
+    con.execute("INSERT INTO players VALUES ('p1','Ada','2026-01-01',?)",
+                (json.dumps({"surname": "Lovelace", "email": "a@b.c",
+                             "dob": "1990-01-01", "gender": "F"}),))
+    # Malformed JSON must be left alone, not blanked in an attempt to clean it.
+    con.execute("INSERT INTO players VALUES ('p2','Bad','2026-01-01','{not json')")
+    con.commit()
+    con.close()
+
+    db = Database(path)
+    await db.init()
+    await db.close()
+
+    con = sqlite3.connect(path)
+    rows = dict(con.execute("SELECT id, extra_json FROM players").fetchall())
+    con.close()
+    os.unlink(path)
+
+    kept = json.loads(rows["p1"])
+    assert "email" not in kept and "gender" not in kept
+    assert kept["surname"] == "Lovelace" and kept["dob"] == "1990-01-01"
+    assert rows["p2"] == "{not json", "a row we could not parse was damaged"

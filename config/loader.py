@@ -335,6 +335,10 @@ class GameConfig:
     # Grace after a maze shape change before newly-lit channels can report a
     # break. They are physically still coming on. Sane range 100-500 ms.
     preset_settle_ms: int = 250
+    # Boot-time patience for the relay-board probe: the router is slower to
+    # come up than the NUC, and FAULT needs a human with an iPad to leave.
+    self_test_boot_timeout_s: int = 180
+    self_test_retry_s: int = 5
     # Pause between a checkpoint firing and the maze taking its next shape.
     # 0 keeps the old snap-immediately behaviour. Sane range 0-1000 ms.
     checkpoint_shape_delay_ms: int = 300
@@ -768,6 +772,11 @@ def load_game() -> GameConfig:
         arm_timeout_ms=_ranged(d.get("arm_timeout_ms", 180000),
                                10_000, 3_600_000, 180000, "game.arm_timeout_ms"),
         boot_to_master=bool(d.get("boot_to_master", True)),
+        self_test_boot_timeout_s=_ranged(
+            d.get("self_test_boot_timeout_s", 180), 0, 600, 180,
+            "game.self_test_boot_timeout_s"),
+        self_test_retry_s=_ranged(
+            d.get("self_test_retry_s", 5), 1, 30, 5, "game.self_test_retry_s"),
         checkpoint_shape_delay_ms=_ranged(
             d.get("checkpoint_shape_delay_ms", 300), 0, 1_000, 300,
             "game.checkpoint_shape_delay_ms"),

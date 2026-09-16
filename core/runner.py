@@ -49,8 +49,20 @@ log = logging.getLogger(__name__)
 
 # The NUC boots faster than the PoE switch, so the relay boards are routinely
 # unreachable for the first few seconds of a venue power-up.
-_SELF_TEST_ATTEMPTS = 6
 _SELF_TEST_RETRY_S = 5.0
+# How long to keep probing before declaring FAULT.
+#
+# Two windows, because "the boards are unreachable" means something different
+# depending on when you ask. At BOOT the network itself is still coming up —
+# the router takes about two minutes from cold, and the NUC is ready long
+# before it — so unreachable is expected and the only correct response is to
+# wait. Coming back from MASTER the hardware was working a minute ago, so a
+# miss is a real fault and should surface quickly rather than hang the GM.
+#
+# The boot window is config (game.self_test_boot_timeout_s); the warm one is
+# the old six-attempt behaviour, kept as-is.
+_SELF_TEST_BOOT_TIMEOUT_S = 180.0
+_SELF_TEST_WARM_TIMEOUT_S = 25.0
 
 
 class MasterModeRequired(RuntimeError):
@@ -745,7 +757,9 @@ class GameRunner:
         # Entering SELF_TEST (e.g. after exiting MASTER): re-run the probe
         if new_state == "SELF_TEST" and old_state != "SELF_TEST" and old_state != "BOOT":
             self._cancel_task("_self_test_task")
-            self._self_test_task = asyncio.create_task(self._run_self_test(), name="self_test")
+            self._self_test_task = asyncio.create_task(
+                self._run_self_test(timeout_s=_SELF_TEST_WARM_TIMEOUT_S),
+                name="self_test")
 
         # Entering REGISTERED: start an inactivity timeout. Without one, a
         # player who signs in and wanders off leaves the container dark (the
@@ -1971,17 +1985,40 @@ class GameRunner:
     # Self-test
     # ------------------------------------------------------------------
 
-    async def _run_self_test(self, attempts: int = _SELF_TEST_ATTEMPTS) -> None:
+    async def _run_self_test(self, timeout_s: float | None = None) -> None:
         """
-        Probe relay boards, retrying before giving up.
+        Probe relay boards, retrying until the window runs out.
 
         A single miss used to latch FAULT, and only GmForceReset escapes FAULT.
-        The NUC boots faster than the PoE switch, so every morning the boards
-        were briefly unreachable and the box sat wedged with a green systemd
-        unit until someone found the iPad.
+        The NUC boots faster than the rest of the rack, so every morning the
+        boards were briefly unreachable and the box sat wedged with a green
+        systemd unit until someone found the iPad.
+
+        Six attempts five seconds apart fixed the PoE switch, which is quick.
+        It did not fix the ROUTER, which takes about two minutes from cold: the
+        box gave up after ~25 s, roughly 95 s early, and latched FAULT every
+        time it was powered on with the rack. The window is a deadline now, not
+        an attempt count, and the boot one is long enough to outlast the router.
+
+        `timeout_s` defaults to the boot window. The re-entry path (coming back
+        from MASTER) passes the short one, because there the hardware was
+        working a minute ago and a miss is a real fault, not a cold start.
         """
+        if timeout_s is None:
+            timeout_s = getattr(getattr(self.config, "game", None),
+                                "self_test_boot_timeout_s",
+                                _SELF_TEST_BOOT_TIMEOUT_S) if self.config \
+                        else _SELF_TEST_BOOT_TIMEOUT_S
+        gap = getattr(getattr(self.config, "game", None),
+                      "self_test_retry_s", _SELF_TEST_RETRY_S) if self.config \
+              else _SELF_TEST_RETRY_S
+
+        started = time.monotonic()
+        deadline = started + max(0.0, float(timeout_s))
+        attempt = 0
         failed: list[str] = []
-        for attempt in range(1, attempts + 1):
+        while True:
+            attempt += 1
             failed = []
             if hasattr(self.io, "all_boards"):
                 for board in self.io.all_boards():
@@ -1992,16 +2029,25 @@ class GameRunner:
                         log.error("Self-test: %s FAILED", board.board_id)
                         failed.append(board.board_id)
             if not failed:
+                if attempt > 1:
+                    log.info("Self-test: all boards reachable after %.0f s",
+                             time.monotonic() - started)
                 await self.dispatch(SelfTestPass())
                 return
-            if attempt < attempts:
-                log.warning("Self-test: %s unreachable (attempt %d/%d) — "
-                            "retrying in %.0f s",
-                            ", ".join(failed), attempt, attempts, _SELF_TEST_RETRY_S)
-                await asyncio.sleep(_SELF_TEST_RETRY_S)
+            if time.monotonic() + gap >= deadline:
+                break
+            # Says how long is LEFT, so an operator watching a cold boot can
+            # see it is waiting for the network rather than hung.
+            log.warning("Self-test: %s unreachable (attempt %d, %.0f s of %.0f s "
+                        "left) — retrying in %.0f s",
+                        ", ".join(failed), attempt,
+                        max(0.0, deadline - time.monotonic()), timeout_s, gap)
+            await asyncio.sleep(gap)
 
         from core.events import SelfTestFail
-        await self.dispatch(SelfTestFail(reason=f"Boards failed: {', '.join(failed)}"))
+        await self.dispatch(SelfTestFail(
+            reason=f"Boards failed after {time.monotonic() - started:.0f} s: "
+                   f"{', '.join(failed)}"))
 
     # ------------------------------------------------------------------
     # Timer helpers

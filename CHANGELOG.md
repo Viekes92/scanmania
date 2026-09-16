@@ -9,6 +9,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **A cold boot no longer latches FAULT while the router is still coming up.**
+  The self-test retried six times five seconds apart — about 25 s, which was
+  enough for the PoE switch it was written for but not for the router, which
+  takes roughly two minutes from cold. The NUC is ready long before it, so
+  powering the rack on gave up ~95 s early and latched FAULT, and FAULT can
+  only be left with FORCE RESET on the iPad.
+
+  The window is a deadline now rather than an attempt count, and the boot one
+  defaults to 180 s (`game.self_test_boot_timeout_s`, 0-600). Coming back from
+  MASTER keeps a short 25 s window, because there the hardware was working a
+  minute ago and a miss is a real fault rather than a cold start. While it
+  waits it logs how long is left, so an operator can see it waiting for the
+  network instead of wondering whether it has hung.
+
+
 - **The GM work-light override was sticky, and defaulted to ON.** This is what
   "the house lights stay on after the stop button and are very very bright"
   actually was — and why it was so hard to pin on the stop button: the 255

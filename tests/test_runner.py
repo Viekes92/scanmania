@@ -1788,3 +1788,60 @@ async def test_signing_a_player_in_releases_the_gm_work_lights(
         "the override survived sign-in and will paint over the whole show"
     for a in ("_show_task", "_registered_timeout_task"):
         r._cancel_task(a)
+
+
+@pytest.mark.asyncio
+async def test_boot_self_test_waits_out_a_slow_router(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """
+    At boot, unreachable boards mean "the network is not up yet", not "broken".
+
+    The old six-attempts-five-seconds-apart gave ~25 s, which covered the PoE
+    switch but not the router — that takes about two minutes from cold, so the
+    box gave up ~95 s early and latched FAULT on every rack power-on. FAULT
+    needs a human with an iPad to leave.
+    """
+    calls = {"n": 0}
+
+    class _Board:
+        board_id = "SM-NODE-1"
+        async def read_coils(self):
+            calls["n"] += 1
+            # Unreachable for the first few probes, like a booting router.
+            return None if calls["n"] < 4 else [False] * 16
+
+    fake_io.all_boards = lambda: [_Board()]
+    fake_config.game.self_test_boot_timeout_s = 60
+    fake_config.game.self_test_retry_s = 0        # no real sleeping in tests
+
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    await r.dispatch(BootComplete())
+    await r._run_self_test()
+
+    assert calls["n"] >= 4, "it gave up before the boards came back"
+    assert r.state != "FAULT", "a slow router still latched FAULT"
+    for a in ("_show_task", "_self_test_task"):
+        r._cancel_task(a)
+
+
+@pytest.mark.asyncio
+async def test_self_test_still_faults_when_the_boards_are_really_gone(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """Patience must not become "never reports a fault"."""
+    class _Dead:
+        board_id = "SM-NODE-1"
+        async def read_coils(self):
+            return None
+
+    fake_io.all_boards = lambda: [_Dead()]
+    fake_config.game.self_test_boot_timeout_s = 0     # window already spent
+    fake_config.game.self_test_retry_s = 1
+
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    await r.dispatch(BootComplete())
+    await r._run_self_test()
+    assert r.state == "FAULT", "dead boards did not raise a fault"
+    for a in ("_show_task", "_self_test_task"):
+        r._cancel_task(a)

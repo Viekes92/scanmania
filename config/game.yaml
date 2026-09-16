@@ -32,6 +32,16 @@ registered_timeout_ms: 180000
 max_run_ms: 180000
 # Maximum run duration in ms before the run is auto-aborted. Range: 60000-600000.
 
+# How long to keep probing the relay boards at BOOT before declaring FAULT.
+# The router takes about two minutes from cold and the NUC is ready long before
+# it, so at boot "unreachable" means "not up yet", not "broken" — and FAULT can
+# only be left with FORCE RESET on the iPad. Coming back from MASTER uses a
+# short fixed window instead, because there the hardware was working a minute
+# ago. Sane range 0-600 s.
+self_test_boot_timeout_s: 180
+# Gap between probes. Range 1-30 s.
+self_test_retry_s: 5
+
 result_display_ms: 15000
 # How long to show the result screen (FINISHED or BUSTED) before resetting. Range: 5000-30000.
 

@@ -153,6 +153,52 @@ echo "Launching:"
 # on day 40 left one panel black permanently while the script sat waiting on the
 # other — and systemd never restarted anything, because nothing had exited.
 # `wait -n` returns on the FIRST exit, so a dead window is noticed and relaunched.
+# Liveness is judged by the PAGE, not the process.
+#
+# pgrep -f "scanmania-kiosk-$name" matched the --user-data-dir flag, which
+# Chromium repeats on the command line of every helper it spawns. So when a
+# RENDERER died — the OOM killer's usual victim, and what produces an
+# "Aw, Snap!" page — the browser process survived, pgrep found it, and the
+# supervisor decided the window was healthy. The panel sat frozen indefinitely
+# with the unit reporting active and nothing in the journal.
+#
+# Each display now stamps a counter into its window title on every broadcast it
+# processes. A stopped counter means the page is dead however it died: crashed
+# renderer, wedged JS, or a websocket that never came back.
+declare -A LAST_BEAT=()
+declare -A STALL_COUNT=()
+
+# How many consecutive checks with no title change before we relaunch. The loop
+# sleeps at least 2 s, the server broadcasts at 10 Hz, so three misses is ~6 s
+# of genuine silence — long enough not to trip on a slow frame.
+_BEAT_MISSES=3
+
+page_title() {   # page_title <in|out>
+  local want
+  case "$1" in
+    in)  want="In-container" ;;
+    out) want="Public" ;;
+    *)   return 1 ;;
+  esac
+  local id
+  id=$(xdotool search --name "$want" 2>/dev/null | head -1) || return 1
+  [ -n "$id" ] || return 1
+  xdotool getwindowname "$id" 2>/dev/null
+}
+
+page_alive() {   # page_alive <in|out>
+  local name=$1 title
+  title=$(page_title "$name") || return 1
+  [ -n "$title" ] || return 1
+  if [ "$title" = "${LAST_BEAT[$name]:-}" ]; then
+      STALL_COUNT[$name]=$(( ${STALL_COUNT[$name]:-0} + 1 ))
+  else
+      LAST_BEAT[$name]="$title"
+      STALL_COUNT[$name]=0
+  fi
+  [ "${STALL_COUNT[$name]:-0}" -lt "$_BEAT_MISSES" ]
+}
+
 declare -A RESTARTS=()
 RELAUNCH_BACKOFF_S=2
 _TOTAL_RELAUNCHES=0
@@ -171,12 +217,16 @@ while true; do
     for name in in out; do
         [ "$name" = "in" ]  && [ -z "${MODE_IN:-}" ]  && continue
         [ "$name" = "out" ] && [ -z "${MODE_OUT:-}" ] && continue
-        if pgrep -f "scanmania-kiosk-$name" >/dev/null 2>&1; then
-            RELAUNCH_BACKOFF_S=2        # it is up; forget the backoff
+        if page_alive "$name"; then
+            RELAUNCH_BACKOFF_S=2        # it is up AND updating; forget the backoff
         else
             RESTARTS[$name]=$(( ${RESTARTS[$name]:-0} + 1 ))
             _TOTAL_RELAUNCHES=$(( _TOTAL_RELAUNCHES + 1 ))
-            echo "$(date -Is) $name window gone — relaunch #${RESTARTS[$name]}"
+            echo "$(date -Is) $name window dead or frozen — relaunch #${RESTARTS[$name]}"
+            LAST_BEAT[$name]=""
+            STALL_COUNT[$name]=0
+            pkill -f "scanmania-kiosk-$name" 2>/dev/null || true
+            sleep 1
             if [ "$_TOTAL_RELAUNCHES" -gt "$_RELAUNCH_CAP" ]; then
                 echo "Giving up after $_TOTAL_RELAUNCHES relaunches — the window"
                 echo "is not staying up. Exiting so systemd records a FAILURE"

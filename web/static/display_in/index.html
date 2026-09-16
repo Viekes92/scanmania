@@ -428,7 +428,14 @@
       reconnectBadge.classList.remove("visible");
     };
 
+    // Heartbeat for the kiosk supervisor. Nobody sees a title in --app mode,
+    // so this costs nothing; kiosk.sh watches it and relaunches a window whose
+    // counter stops moving. pgrep cannot do this job: Chromium puts
+    // --user-data-dir on every helper process, so the browser surviving a dead
+    // renderer still looks alive.
+    let _beat = 0;
     ws.onmessage = (evt) => {
+      document.title = "ScanMania \u2014 In-container display \u00b7 " + (++_beat);
       __noteMessage();
       let msg;
       try { msg = JSON.parse(evt.data); } catch { return; }

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
 import uuid
 from datetime import datetime, timezone
@@ -1072,6 +1073,34 @@ class GameRunner:
         self._cancel_task("_show_task")
         self._show_name = None
 
+    async def _apply_sparkle(self, preset_name: str, count: int, show: str) -> None:
+        """
+        Light `preset_name` with `count` random channels dropped.
+
+        Goes through apply_channels(), which is a sanctioned writer, so the
+        resolver's desired state stays truthful and the reconciler does not
+        fight it back on (invariant 4).
+        """
+        preset = (self.config.mazes.presets or {}).get(preset_name) if self.config else None
+        if preset is None:
+            log.warning("Show '%s': unknown preset '%s' for sparkle", show, preset_name)
+            return
+        chans = preset.channels
+        if isinstance(chans, str):          # '*' — every channel on every board
+            width = getattr(self._resolver, "_channels_per_board", 16)
+            n_boards = len(getattr(self._resolver, "_board_ids", []) or [])
+            on = list(range(1, width * n_boards + 1))
+        else:
+            on = list(chans)
+        if count and len(on) > count:
+            for c in random.sample(on, count):
+                on.remove(c)
+        self._apply_maze(preset_name)
+        try:
+            await self._resolver.apply_channels(on, self.io)
+        except Exception as exc:
+            log.warning("Show '%s': sparkle write failed: %s", show, exc)
+
     async def _run_show(self, show: Any, name: str) -> None:
         """Execute a show's step sequence. Loops if show.loop is True."""
         try:
@@ -1079,7 +1108,16 @@ class GameRunner:
                 for step in show.steps:
                     preset_name = step.get("preset") if isinstance(step, dict) else getattr(step, "preset", None)
                     hold_ms = step.get("hold_ms", 300) if isinstance(step, dict) else getattr(step, "hold_ms", 300)
-                    if preset_name and self._resolver and self.io:
+                    sparkle = (step.get("sparkle_off") if isinstance(step, dict)
+                               else getattr(step, "sparkle_off", 0)) or 0
+                    if sparkle and preset_name and self._resolver and self.io:
+                        # Sparkle: the named preset, minus a few channels chosen
+                        # afresh each step. Only those few relays move, so the
+                        # wear is 2*sparkle per step rather than a full
+                        # all-on/all-off cycle — which is what makes it safe to
+                        # leave running all day.
+                        await self._apply_sparkle(preset_name, int(sparkle), name)
+                    elif preset_name and self._resolver and self.io:
                         # Shows drive presets straight through the resolver, so
                         # without this the detector keeps watching whatever maze
                         # was last APPLIED while the show flashes something else.
@@ -1231,6 +1269,14 @@ class GameRunner:
 
         pulses = self.config.game.count_in.pulses
         count_in_preset = self.config.game.count_in.preset
+        # What the ramp FLASHES — deliberately not the maze that will be lit at
+        # GO. Players read a flash of the real shape as "go now" and start
+        # early. Nothing measures a baseline during the ramp (runtime baselines
+        # come from beams.json) and the FSM applies the real maze at GO before
+        # detection arms, so flashing the whole grid changes nothing that
+        # matters and removes the tell.
+        flash_preset = getattr(self.config.game.count_in, "flash_preset",
+                               count_in_preset) or count_in_preset
         self._countdown_total = len(pulses)
         self._countdown_step = 0
         # Same anchor _handle_start_count_in used for the GO deadline, so the
@@ -1246,7 +1292,7 @@ class GameRunner:
                 await asyncio.sleep(sleep_s)
             if self._resolver and self.io:
                 try:
-                    await self._resolver.apply_preset(count_in_preset, self.io)
+                    await self._resolver.apply_preset(flash_preset, self.io)
                 except KeyError:
                     pass
 
@@ -1357,9 +1403,16 @@ class GameRunner:
         try:
             await self._resolver.apply_preset(preset, self.io)
             await asyncio.sleep(blink_ms / 1000.0)
-            # Invariant 4: ARM has no ApplyPreset, so nothing repairs _desired.
-            # A direct write here leaves the maze lit for the whole ARM state.
-            await self._resolver.apply_all_off(self.io)
+            # Leave the player boxed in rather than in the dark: house lights
+            # and entrance are off by the ARM cue, so without these few beams
+            # there is nothing to see at all from the plate. Falls back to
+            # all-off if the preset is missing — ARM has no ApplyPreset, so
+            # nothing else repairs _desired (invariant 4).
+            arm_preset = getattr(self.config.game.count_in, "arm_preset", "arm_box")
+            try:
+                await self._resolver.apply_preset(arm_preset, self.io)
+            except KeyError:
+                await self._resolver.apply_all_off(self.io)
         except Exception as exc:
             log.warning("ReadyBlink failed: %s", exc)
 

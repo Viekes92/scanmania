@@ -261,9 +261,13 @@ class CountInPulse:
 class CountInConfig:
     preset: str
     ready_blink_ms: int
-    baseline_pulse_index: int
+    baseline_pulse_index: int          # parsed, unused at runtime — see game.yaml
     pulses: list[CountInPulse]
     solid_at_end: bool
+    # What the ramp FLASHES, and what stays lit at ARM. Defaulted, so they go
+    # last: a dataclass cannot put a defaulted field before a required one.
+    flash_preset: str = "maze_1"
+    arm_preset: str = "arm_box"
 
 
 @dataclass
@@ -774,6 +778,8 @@ def load_game() -> GameConfig:
                 max(len(pulses) - 1, 0)),
             pulses=pulses,
             solid_at_end=ci.get("solid_at_end", True),
+            flash_preset=str(ci.get("flash_preset", ci.get("preset", "maze_1"))),
+            arm_preset=str(ci.get("arm_preset", "arm_box")),
         ),
         arm_grace_ms=d.get("arm_grace_ms", 150),
         snapshot_interval_min=max(0, int(d.get("snapshot_interval_min", 60))),

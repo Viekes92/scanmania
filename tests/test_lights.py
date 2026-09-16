@@ -344,3 +344,55 @@ def test_work_lights_off_in_attract_starts_the_cue_not_darkness(dmx):
     # Without a running loop the player applies the cue's first step, which is
     # enough to prove it chose the cue rather than all-off.
     assert dmx.lights_state()["left"]["target"] == CUES["attract"]["steps"][0]["left"]
+
+
+# ---------------------------------------------------------------------------
+# Show pass — entrance control and the MASTER override
+# ---------------------------------------------------------------------------
+
+def test_the_entrance_goes_dark_once_we_leave_attract(dmx):
+    """It leaks straight down the container.
+
+    Everything from sign-in to the result is meant to be read by laser light,
+    so the entrance is dark there — and lit again in ATTRACT, MASTER and FAULT,
+    the states where somebody is walking in or out.
+    """
+    import config.loader as loader
+    from iobackend.lightshow import LightCuePlayer
+
+    cues = loader.load_all().mazes.light_cues
+    p = LightCuePlayer(dmx, cues)
+    p.set_work_lights(None)
+
+    p.set_state("ATTRACT")
+    assert dmx.lights_state()["entrance"]["target"] > 0, "attract should be lit"
+    for state in ("REGISTERED", "ARM", "RUN_SEG_1", "RESULT"):
+        p.set_state(state)
+        assert dmx.lights_state()["entrance"]["target"] == 0, (
+            f"the entrance is still leaking in {state}")
+    p.set_state("FAULT")
+    assert dmx.lights_state()["entrance"]["target"] > 0, "fault must light the way out"
+
+
+def test_the_gm_can_black_out_master_mode(dmx):
+    """MASTER's cue is full working light, which used to override the switch —
+    so there was no way to stand in the container and look at the lasers."""
+    import config.loader as loader
+    from iobackend.lightshow import LightCuePlayer
+
+    p = LightCuePlayer(dmx, loader.load_all().mazes.light_cues)
+    p.set_state("MASTER")
+    p.set_work_lights(True)
+    assert dmx.lights_state()["left"]["target"] == 255
+    p.set_work_lights(False)
+    st = dmx.lights_state()
+    assert st["left"]["target"] == 0 and st["right"]["target"] == 0
+    assert st["entrance"]["target"] == 0, "the entrance should follow the house lights"
+
+
+def test_a_dying_process_still_relights_the_way_out(dmx):
+    """Cues may take the entrance dark; a blackout must give it back."""
+    dmx.set_light("entrance", 0, fade=False, allow_always_on=True)
+    assert dmx.lights_state()["entrance"]["level"] == 0
+    dmx.blackout()
+    assert dmx.lights_state()["entrance"]["level"] > 0

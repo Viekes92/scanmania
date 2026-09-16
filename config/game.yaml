@@ -47,6 +47,15 @@ show: main_game
 
 count_in:
   preset: maze_1
+
+  # What the 3-2-1 ramp FLASHES. Deliberately not the maze that will be lit at
+  # GO: players read a flash of the real shape as "go now" and start early.
+  # Flashing the whole grid carries no information about the route.
+  #
+  # Safe because nothing measures a baseline during the ramp — runtime
+  # baselines come from beams.json, and the FSM applies maze_1 at GO before
+  # detection is armed. (baseline_pulse_index below is parsed and unused.)
+  flash_preset: all_on
   # MUST match the preset that will be active at GO. The baseline is captured against this preset.
   # Changing this without changing maze_1 in mazes.yaml is a bug. See plan.md §4.3.
 

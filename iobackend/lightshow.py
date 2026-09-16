@@ -56,6 +56,12 @@ class LightCuePlayer:
         self._task: asyncio.Task | None = None
         # "Work lights": the GM's solid-on override for loading and unloading.
         # Suspends cues, but never survives into a RUN state.
+        # Tri-state, not a boolean.
+        #   True  -> GM forced them on  (loading, unloading)
+        #   False -> GM forced them OFF (which MASTER could not do before: the
+        #            master cue simply overrode it, so there was no way to
+        #            stand in a dark container and look at the lasers)
+        #   None  -> no override; the cue table decides
         self._work_lights = True
 
     # ------------------------------------------------------------------
@@ -112,8 +118,28 @@ class LightCuePlayer:
             self._all_off(fade=False)
             return
 
-        if self._work_lights:
+        if self._work_lights is True:
             self._all_on()
+            return
+        if self._work_lights is False and state == "MASTER":
+            # MASTER is the one state where "off" has to mean off. Its cue is
+            # full working light — correct for walking the container, useless
+            # when the GM wants to stand inside and look at the lasers — and
+            # the cue would otherwise just override the switch.
+            #
+            # Everywhere else, OFF still means "hand the room back to the
+            # show", which is what the cue table is for and what the rest of
+            # the states are tested against.
+            self._all_off()
+            # The entrance follows the house lights here, rather than staying
+            # lit on its always_on default: in MASTER the GM is deliberately
+            # making the container dark to look at the lasers, and the entrance
+            # is the brightest leak in the box. Every other path leaves it
+            # alone, and blackout() still restores it if the process dies.
+            try:
+                self._dmx.set_light("entrance", 0, fade=True, allow_always_on=True)
+            except Exception as exc:
+                log.warning("could not dim the entrance: %s", exc)
             return
 
         cue = self._cues.get(state.lower()) or self._cues.get(state)
@@ -146,7 +172,10 @@ class LightCuePlayer:
         for name, level in step.items():
             if name in ("ms", "fade"):
                 continue
-            self._dmx.set_light(name, int(level), fade=fade)
+            # allow_always_on: a cue is the only thing permitted to take the
+            # entrance dark, because only the cue table knows whether anyone is
+            # walking in or out right now.
+            self._dmx.set_light(name, int(level), fade=fade, allow_always_on=True)
 
     async def _play(self, cue: dict, state: str) -> None:
         steps = cue["steps"]

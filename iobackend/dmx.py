@@ -84,6 +84,9 @@ class DmxController:
             lvl = int(spec.get("default", 255))
             self._lights[name] = {"ch": ch, "level": float(lvl), "target": lvl,
                                   "fade_from": float(lvl), "fade_start": None,
+                                  # Kept so blackout() can RESTORE an always_on
+                                  # fixture rather than guess at full.
+                                  "default": lvl,
                                   "always_on": bool(spec.get("always_on", False))}
         self._fade_ms = int(cfg.get("fade_ms", 800))
         # Above the node's DMX output rate (35 Hz on SM-NODE-DMX), so every
@@ -239,9 +242,18 @@ class DmxController:
                     "always_on": s["always_on"], "channel": s["ch"] + 1}
                 for n, s in self._lights.items()}
 
-    def set_light(self, name: str, level: int, fade: bool = True) -> bool:
+    def set_light(self, name: str, level: int, fade: bool = True, allow_always_on: bool = False) -> bool:
         """
         Aim one light at a level. Returns False if the name is unknown.
+
+        `allow_always_on` is the one door through that guard, and only a LIGHT
+        CUE holds the key. The entrance leaks badly into the container and has
+        to be dark while someone is running, but it must still be lit whenever
+        a person is walking in or out — so the decision belongs to the cue
+        table, state by state, rather than being refused outright here.
+
+        blackout() still restores it: if this process dies, the way out is lit
+        no matter which cue was last applied.
 
         A light marked always_on refuses to be dimmed below its default — the
         entrance is a means of egress, not a show effect.
@@ -252,7 +264,7 @@ class DmxController:
                         name, self.light_names())
             return False
         level = max(0, min(255, int(level)))
-        if st["always_on"] and level < 1:
+        if st["always_on"] and level < 1 and not allow_always_on:
             log.warning("refusing to switch off '%s' — it is marked always_on", name)
             return False
         st["target"] = level
@@ -320,7 +332,15 @@ class DmxController:
         self._haze = 0
         self._enabled = False
         for name, st in self._lights.items():
-            if not st["always_on"]:
+            if st["always_on"]:
+                # RESTORE it, do not merely leave it. A cue may have taken the
+                # entrance dark for a run; if the process is dying, the way out
+                # must be lit again — that is the whole point of always_on, and
+                # it is now the only place the flag is absolute.
+                st["level"] = float(st.get("default", 255))
+                st["target"] = int(st.get("default", 255))
+                st["fade_start"] = None
+            else:
                 st["level"] = 0.0
                 st["target"] = 0
                 st["fade_start"] = None

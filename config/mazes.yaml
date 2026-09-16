@@ -5,6 +5,12 @@ presets:
   all_on:
     channels: '*'
     description: every relay on
+  arm_box:
+    channels:
+    - 12
+    - 13
+    - 14
+    description: "what the player sees from the plate — just enough to feel boxed in"
   vertical:
     channels:
     - 2
@@ -127,13 +133,17 @@ presets:
     description: "third maze \u2014 CP2 to END"
 shows:
   attract:
-    description: "idle sparkle \u2014 plays during ATTRACT state"
-    steps:
-    - preset: all_on
-      hold_ms: 2000
-    - preset: blackout
-      hold_ms: 300
+    description: "idle sparkle — the grid lit, a few channels winking out"
     loop: true
+    steps:
+    # sparkle_off drops N channels chosen fresh each step, so only those few
+    # relays move: 2*N operations per step instead of a full on/off cycle. At
+    # ~1.8 s that is a handful of relay operations a second across 45 channels,
+    # which is what makes it safe to leave running all day.
+    - {preset: all_on, sparkle_off: 4, hold_ms: 1800}
+    - {preset: all_on, sparkle_off: 6, hold_ms: 1800}
+    - {preset: all_on, sparkle_off: 3, hold_ms: 2200}
+    - {preset: all_on, sparkle_off: 7, hold_ms: 1800}
   bust:
     loop: true
     description: "busted \u2014 horizontals solid, the maze reads as barred"
@@ -159,11 +169,9 @@ shows:
     loop: true
 light_cues:
   master:
-    description: "GM is in the container \u2014 full working light"
+    description: "GM is in the container — working light, entrance lit"
     steps:
-    - left: 255
-      right: 255
-      ms: 0
+    - {left: 255, right: 255, entrance: 255, ms: 0}
   self_test:
     description: "boot probe \u2014 up, so the box is not dark while it checks"
     steps:
@@ -177,72 +185,58 @@ light_cues:
       right: 60
       ms: 0
   attract:
-    description: "slow alternating pulse, very dim \u2014 the room is idle"
+    description: "idle — both sides breathing together, very dim"
     loop: true
     steps:
-    - left: 14
-      right: 2
-      ms: 1600
-    - left: 2
-      right: 14
-      ms: 1600
+    # Both sides on the same value. Alternating left/right reads as a fault
+    # rather than a pulse, and 14 was still far too bright for an idle box.
+    - {left: 6, right: 6, ms: 2600}
+    - {left: 1, right: 1, ms: 2600}
   registered:
-    description: "player signed in \u2014 both sides up a little, waiting"
+    description: "player signed in — entrance dark, we have left attract"
     loop: true
     steps:
-    - left: 30
-      right: 30
-      ms: 1200
-    - left: 12
-      right: 12
-      ms: 1200
+    # Entrance OFF from here on. It leaks straight down the container, and
+    # everything from sign-in to the result is meant to be read by laser light.
+    # It comes back in ATTRACT, MASTER and FAULT — the states where somebody is
+    # walking in or out.
+    - {left: 20, right: 20, entrance: 0, ms: 1400}
+    - {left: 8, right: 8, entrance: 0, ms: 1400}
   arm:
-    description: "on the plate \u2014 steady low, about to go dark"
+    description: "on the plate — the box goes dark around the player"
     steps:
-    - left: 20
-      right: 20
-      ms: 0
+    # Entrance included: it leaks badly down the container, and from the plate
+    # that glow is the only thing telling you where the walls are. The lasers
+    # of preset arm_box are meant to be all you can see.
+    - {left: 0, right: 0, entrance: 0, ms: 0}
   finished:
-    description: "clean run \u2014 celebratory flash, then settle low"
+    description: "clean run — flash, then hard off so the lasers read"
     steps:
     - {left: 150, right: 150, ms: 90, fade: false}
     - {left: 0, right: 0, ms: 90, fade: false}
     - {left: 150, right: 150, ms: 90, fade: false}
     - {left: 0, right: 0, ms: 90, fade: false}
     - {left: 150, right: 150, ms: 90, fade: false}
-    - {left: 0, right: 0, ms: 90, fade: false}
-    - {left: 60, right: 60, ms: 0}
+    # OFF, and hard. A fade leaves the room half-lit for a second, which is
+    # exactly when the player looks up at the 18 vertical curtains — and a
+    # half-lit room is the one condition in which you cannot read them.
+    - {left: 0, right: 0, entrance: 0, ms: 0, fade: false}
   busted:
-    description: "busted \u2014 one hard snap, then sullen low"
+    description: "busted — one hard snap, then off so the bars read"
     steps:
-    - left: 255
-      right: 255
-      ms: 140
-      fade: false
-    - left: 0
-      right: 0
-      ms: 260
-      fade: false
-    - left: 40
-      right: 40
-      ms: 0
+    - {left: 150, right: 150, ms: 140, fade: false}
+    - {left: 0, right: 0, entrance: 0, ms: 0, fade: false}
   aborted:
-    description: "aborted \u2014 plain lights up, no drama"
+    description: "run cut short — entrance lit, someone is coming out"
     steps:
-    - left: 120
-      right: 120
-      ms: 0
+    - {left: 40, right: 40, entrance: 255, ms: 0}
   result:
-    description: "score on screen \u2014 enough to walk out by, no more"
+    description: "score on screen — room stays dark, the maze is the light"
     steps:
-    - {left: 70, right: 70, ms: 0}
+    - {left: 0, right: 0, entrance: 0, ms: 0, fade: false}
   fault:
-    description: "something is wrong \u2014 slow throb so it is obvious from outside"
+    description: "something is wrong — entrance lit so people can get out"
     loop: true
     steps:
-    - left: 200
-      right: 200
-      ms: 700
-    - left: 40
-      right: 40
-      ms: 700
+    - {left: 60, right: 60, entrance: 255, ms: 700}
+    - {left: 15, right: 15, entrance: 255, ms: 700}

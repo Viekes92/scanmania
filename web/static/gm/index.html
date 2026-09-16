@@ -117,21 +117,12 @@
       padding-bottom: env(safe-area-inset-bottom, 0px);
     }
 
-    /* The two controls the GM reaches for under pressure stay on screen no
-       matter how far the status below has been scrolled. This is what
-       "nothing urgent needs scrolling" actually requires — the old
-       overflow:hidden achieved the opposite by making content unreachable. */
-    #topBar {
-      position: sticky;
-      top: 0;
-      z-index: 40;
-    }
-    #actions {
-      position: sticky;
-      top: 74px;          /* directly under the top bar */
-      z-index: 39;
-      background: var(--bg);
-    }
+    /* No sticky positioning here.
+       A sticky #actions fought the `position: relative` rule that lifts every
+       section above the laser plate, and the detection toggle ended up drawn
+       straight over the action buttons. Page scrolling is what actually fixes
+       reachability; pinning was a nice-to-have, and it cost more than it gave
+       on a layout that has to be right first time in front of a queue. */
 
     /* -----------------------------------------------------------------------
        Section wrapper
@@ -563,15 +554,22 @@
 
     #healthStrip {
       display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
+      gap: 8px;
+      /* One row, never two. Six chips wrapped onto a second line, which pushed
+         everything below down and ate the height the recent-runs list needs.
+         They shrink to fit instead; the LED is what is read at a glance and it
+         never shrinks. */
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
     }
 
     .health-item {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 14px;
+      padding: 8px 12px;
       background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -580,6 +578,16 @@
       font-family: 'Courier New', Courier, monospace;
       color: var(--text);
       min-height: 48px;
+      /* Shrink so all six share one row; the LABEL truncates rather than the
+         strip wrapping. */
+      flex: 0 1 auto;
+      min-width: 0;
+      white-space: nowrap;
+    }
+
+    .health-item span {
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .health-led {

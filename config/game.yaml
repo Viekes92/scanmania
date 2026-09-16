@@ -195,6 +195,12 @@ audio:
     MASTER:     silence          # GM is working in the box
     FAULT:      silence
 
+  # Beds that play ONCE instead of looping, and what comes back when they
+  # finish: {track: follow-on}. end.mp3 is an eight-second sting, so looping it
+  # left the fanfare repeating under the score for the rest of the result.
+  music_once:
+    end.mp3: ambient.mp3
+
   cues:
     # No COUNTDOWN cue: the 3-2-1 is inside game.mp3.
     # No victory/defeat cue either — a run can only be won now, and end.mp3

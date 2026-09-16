@@ -36,6 +36,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- **A bed can now play once instead of looping** — `audio.music_once`, a map of
+  `{track: what follows it}`. `end.mp3` is an eight-second sting and was
+  looping, so the outcome fanfare repeated under the score for the whole
+  result; it now plays once and hands straight back to `ambient.mp3` rather
+  than waiting for the FSM to reach RESULT.
+
+  The hand-back is a polling thread (pygame's `set_endevent` needs an event
+  pump we do not run headless), guarded by a generation counter that every
+  play/stop bumps — so a sting superseded by a state change cannot fire a
+  second later and stamp on the new bed. It is a daemon thread, off the game
+  path, and swallows everything: this is decoration and must never raise into
+  the runner.
+
 - **The soundtrack follows the new rules of the game.** `end.mp3` plays on
   FINISHED, which is what stops `game.mp3`. The `countdown.wav` cue is gone
   (the 3-2-1 is in the bed) and so are `victory.wav` / `defeat.wav` — a run can

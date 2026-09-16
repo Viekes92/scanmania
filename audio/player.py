@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +56,9 @@ class AudioPlayer:
         self._available = False
         self._error: str | None = None
         self._current_music: str | None = None
+        # Bumped by every play/stop. A one-shot's follow-on thread only
+        # fires if the generation it started under is still current.
+        self._music_gen: int = 0
         self._sounds: dict[str, Any] = {}
         self._missing: set[str] = set()
 
@@ -158,13 +163,18 @@ class AudioPlayer:
     # Playback
     # ------------------------------------------------------------------
 
-    def play_music(self, filename: str | None, fade_ms: int = 400) -> None:
+    def play_music(self, filename: str | None, fade_ms: int = 400,
+                   loop: bool = True, follow: str | None = None) -> None:
         """
-        Start (or swap) the looping bed. `None` or "silence" stops it.
+        Start (or swap) the bed. `None` or "silence" stops it.
 
         Asking for the track already playing does nothing — that is what keeps
         one song running across a whole run instead of restarting it at every
         checkpoint.
+
+        `loop=False` plays it once; `follow` is what comes back when it ends.
+        That is for a STING — end.mp3 is eight seconds and looping it left the
+        outcome fanfare running over and over while the score sat on screen.
         """
         if not self._available:
             return
@@ -180,14 +190,47 @@ class AudioPlayer:
         try:
             self._mixer.music.load(str(path))
             self._mixer.music.set_volume(self._music_volume)
-            self._mixer.music.play(loops=-1, fade_ms=max(0, fade_ms))
+            self._music_gen += 1
+            self._mixer.music.play(loops=-1 if loop else 0,
+                                   fade_ms=max(0, fade_ms))
             self._current_music = filename
-            log.info("Audio: music -> %s", filename)
+            log.info("Audio: music -> %s%s", filename,
+                     "" if loop else f" (once, then {follow or 'silence'})")
+            if not loop and follow:
+                self._follow_when_done(self._music_gen, follow, fade_ms)
         except Exception as exc:
             self._device_lost(f"playing {filename!r}: {exc}")
             self._current_music = None
 
+    def _follow_when_done(self, gen: int, follow: str, fade_ms: int) -> None:
+        """
+        Start `follow` once the current one-shot finishes.
+
+        A polling thread rather than pygame's set_endevent, because that needs
+        an event pump we do not run headless. The generation counter is what
+        makes it safe: any later play_music/stop bumps it, so a sting that was
+        superseded by a state change cannot come back and stamp on the new bed.
+
+        Daemon, off the game path, and it swallows everything — this is
+        decoration and must never be able to raise into the runner.
+        """
+        def _watch() -> None:
+            try:
+                while True:
+                    time.sleep(0.2)
+                    if self._music_gen != gen:
+                        return              # superseded
+                    if not self._is_music_busy():
+                        break
+                if self._music_gen == gen:
+                    self.play_music(follow, fade_ms)
+            except Exception as exc:        # never raise out of a thread
+                log.warning("Audio: follow-on after a one-shot failed: %s", exc)
+
+        threading.Thread(target=_watch, name="audio_follow", daemon=True).start()
+
     def stop_music(self, fade_ms: int = 400) -> None:
+        self._music_gen += 1
         if not self._available or self._current_music is None:
             return
         try:
@@ -216,6 +259,7 @@ class AudioPlayer:
 
     def stop_all(self, fade_ms: int = 0) -> None:
         """Everything quiet, bed included. Used by the shutdown sequence."""
+        self._music_gen += 1
         if not self._available:
             return
         self.stop_music(fade_ms)

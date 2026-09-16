@@ -11,6 +11,8 @@ Invariant under test: audio is decoration. Nothing in here may be able to end
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 import config.loader as loader
@@ -297,3 +299,50 @@ def test_a_file_that_will_not_decode_is_not_retried_every_frame(tmp_path):
     p._mixer = object()
     p._missing.add("broken.wav")
     p.play_cue("broken.wav")          # must not touch the mixer at all
+
+
+# ---------------------------------------------------------------------------
+# One-shot beds: a sting plays once, then the bed comes back
+# ---------------------------------------------------------------------------
+
+def test_a_one_shot_bed_hands_back_to_its_follow_on():
+    """
+    end.mp3 is an eight-second sting. Looping it left the fanfare repeating
+    under the score for the rest of the result, so it plays once and ambient
+    returns — without waiting for the FSM to reach RESULT.
+    """
+    from audio.player import AudioPlayer
+    p = AudioPlayer(sounds_dir="sounds")
+    played: list[tuple] = []
+    busy = {"v": True}
+    p._is_music_busy = lambda: busy["v"]
+    p.play_music = lambda f, fade=400, loop=True, follow=None: played.append((f, loop))
+
+    p._follow_when_done(p._music_gen, "ambient.mp3", 400)
+    time.sleep(0.35)
+    assert played == [], "handed back while the sting was still playing"
+
+    busy["v"] = False
+    time.sleep(0.45)
+    assert played == [("ambient.mp3", True)], "the bed never came back"
+
+
+def test_a_superseded_one_shot_does_not_stamp_on_the_new_bed():
+    """
+    The safety property of the generation counter.
+
+    If the GM force-resets during the outcome sting, ATTRACT's bed starts and
+    the sting's pending follow-on must NOT fire a second later and yank the
+    soundtrack back to whatever it thought was next.
+    """
+    from audio.player import AudioPlayer
+    p = AudioPlayer(sounds_dir="sounds")
+    played: list[tuple] = []
+    p._is_music_busy = lambda: False          # sting already finished
+    p.play_music = lambda f, fade=400, loop=True, follow=None: played.append((f, loop))
+
+    stale_gen = p._music_gen
+    p._music_gen += 1                         # something else took the bed
+    p._follow_when_done(stale_gen, "ambient.mp3", 400)
+    time.sleep(0.35)
+    assert played == [], "a superseded sting overwrote the current bed"

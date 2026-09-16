@@ -294,6 +294,8 @@ class AudioConfig:
     # FSM state -> filename. A state absent from `music` keeps whatever is
     # playing; "silence" is how you ask for quiet.
     music: dict[str, str] = field(default_factory=dict)
+    # Beds that play ONCE instead of looping: {filename: what follows it}.
+    music_once: dict[str, str] = field(default_factory=dict)
     cues: dict[str, str] = field(default_factory=dict)
 
     @staticmethod
@@ -757,6 +759,10 @@ def _parse_audio(d: dict) -> AudioConfig:
         fade_ms=_ranged(d.get("fade_ms", 400), 0, 5_000, 400, "audio.fade_ms"),
         music=_names("music"),
         cues=_names("cues"),
+        # filename -> what returns when it finishes. Keys are FILENAMES, not
+        # state names, so _names() (which upper-cases keys) is wrong here.
+        music_once={str(k): str(v) for k, v in (d.get("music_once") or {}).items()
+                    if v is not None} if isinstance(d.get("music_once"), dict) else {},
     )
 
 

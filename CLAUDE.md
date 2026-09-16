@@ -107,7 +107,12 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
   keyed by FSM state and a state that is **not listed keeps whatever is
   playing**, which is what carries one track across `RUN_SEG_1/2/3` instead of
   restarting it at each checkpoint; ask for quiet by name with `silence`.
-  `audio.cues` fires one-shots on entering a state. **Cues are `.wav`** — decoded
+  `audio.cues` fires one-shots on entering a state. A bed normally LOOPS; list it
+  under `audio.music_once` (`{track: what follows it}`) to play it once and
+  hand back — `end.mp3` is an eight-second sting, and looping it left the
+  fanfare repeating under the score for the rest of the result. The hand-back
+  is a polling thread guarded by a generation counter, so a sting superseded by
+  a state change can never come back and stamp on the new bed. **Cues are `.wav`** — decoded
   into RAM at startup, because the game path may only call `play()`. **The bed
   is `.mp3`/`.ogg`** — it streams, and an 8-hour ambient track as `.wav` is
   5 GB. Both are checked at startup (`verify_music`), so a codec the box cannot

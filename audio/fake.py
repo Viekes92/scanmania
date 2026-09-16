@@ -22,6 +22,8 @@ class FakeAudioPlayer:
         self.calls: list[tuple] = []
         self.music: str | None = None
         self.music_starts: list[str | None] = []
+        # [(track, follow), ...] for the one-shot stings.
+        self.music_once_played: list[tuple[str, str | None]] = []
         self.restarts_avoided: int = 0
         self.cues_played: list[str] = []
 
@@ -38,7 +40,8 @@ class FakeAudioPlayer:
     def stop(self) -> None:
         self.calls.append(("stop",))
 
-    def play_music(self, filename: str | None, fade_ms: int = 400) -> None:
+    def play_music(self, filename: str | None, fade_ms: int = 400,
+                   loop: bool = True, follow: str | None = None) -> None:
         self.calls.append(("play_music", filename, fade_ms))
         want = None if not filename or filename.lower() in (
             "silence", "none", "off") else filename
@@ -50,6 +53,8 @@ class FakeAudioPlayer:
             return
         self.music = want
         self.music_starts.append(want)
+        if not loop:
+            self.music_once_played.append((want, follow))
         log.info("Audio[fake]: music -> %s", want or "silence")
 
     def stop_music(self, fade_ms: int = 400) -> None:

@@ -32,6 +32,10 @@ class AudioCuePlayer:
         # Config keys are FSM state names. Accept either case so an operator
         # writing "attract" gets the same result as "ATTRACT".
         self._music = _upper_keys(_get(cfg, "music", {}))
+        # filename -> what follows it. Empty for every ordinary bed.
+        self._music_once = dict(getattr(cfg, "music_once", None)
+                                or (cfg.get("music_once") if isinstance(cfg, dict) else None)
+                                or {})
         self._cues = _upper_keys(_get(cfg, "cues", {}))
         self._fade_ms = int(_get(cfg, "fade_ms", 400) or 0)
         self._state: str | None = None
@@ -73,7 +77,16 @@ class AudioCuePlayer:
         # Music first, so a state that swaps the bed and fires a sting does not
         # have the sting clipped by the crossfade starting after it.
         if key in self._music:
-            self._safe(self._player.play_music, self._music[key], self._fade_ms)
+            track = self._music[key]
+            # A sting, not a bed: end.mp3 is eight seconds, and looping it left
+            # the outcome fanfare repeating under the score. `follow` is what
+            # comes back when it finishes.
+            follow = self._music_once.get(track)
+            if follow is not None:
+                self._safe(self._player.play_music, track, self._fade_ms,
+                           False, follow)
+            else:
+                self._safe(self._player.play_music, track, self._fade_ms)
 
         cue = self._cues.get(key)
         if cue:

@@ -114,6 +114,15 @@ snapshot_keep: 48
 # Those lasers are physically still coming on, so a dark reading means nothing
 # yet. Channels lit in both the old and new shape are NOT paused — they keep
 # being watched straight through the transition. Sane range 100-500 ms.
+# Pause between a checkpoint firing and the maze taking its next shape. The
+# player is stepping over the checkpoint as it fires, and a shape that changes
+# under their feet is both startling and unfair.
+#
+# The OLD shape stays lit and watched during this window — the player is still
+# in the container and those beams are still real. 0 restores the old
+# snap-immediately behaviour. Sane range 0-1000 ms.
+checkpoint_shape_delay_ms: 300
+
 preset_settle_ms: 800
 
 # ---------------------------------------------------------------------------

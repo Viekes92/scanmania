@@ -463,14 +463,16 @@ class TestCheckpointTransitions:
         s, fx = step(RUN_SEG_1, Cp1Pressed(), ctx)
         assert s == RUN_SEG_2
         assert ctx.segment == 2
-        assert ApplyPreset("maze_2") in fx
+        # defer: the shape must not snap under a player still stepping
+        # over the checkpoint. The runner owns the wait; the FSM only flags it.
+        assert ApplyPreset("maze_2", defer=True) in fx
 
     def test_cp2_transitions_to_seg3(self):
         ctx = _run_ctx(segment=2)
         s, fx = step(RUN_SEG_2, Cp2Pressed(), ctx)
         assert s == RUN_SEG_3
         assert ctx.segment == 3
-        assert ApplyPreset("maze_3") in fx
+        assert ApplyPreset("maze_3", defer=True) in fx
 
 
 # ---------------------------------------------------------------------------

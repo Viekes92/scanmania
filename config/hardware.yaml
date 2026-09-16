@@ -144,17 +144,17 @@ hazer:
   fan_channel: 1               # DMX ch1 = blower speed (0-255)
   haze_channel: 2              # DMX ch2 = haze volume (0-255)
   default_fan: 255             # 0-255 (blower always on for haze distribution)
-  # Haze output while the GM switch is ON, DURING a burst.
+  # Haze level during a burst. Measured on the real machine, not derived:
+  # this sat at 1 for a while on the theory that anything more washed out
+  # the dots, but in the container 35 is what actually makes the beams read
+  # without fogging them. The dose is still governed by the duty cycle
+  # below — this is the amount, not how long.
   #
-  # The useful range is tiny and sits at the very bottom of the scale. Tested
-  # manually in the container: 1% (DMX 2-3) was too much, so the working range
-  # is DMX 1-2 and 1 is the hardware floor. There is almost nothing to tune
-  # here — the dose is set by the duty cycle below.
-  #
-  # Anything higher fogs the space and washes out the laser dots, which breaks
-  # detection as surely as no haze at all. Raise to 2 only if 1 is invisible.
-  # The GM console has an on/off switch only; this is the amount it turns on.
-  default_haze: 1              # 0-255. Useful range is 1-2, nothing higher.
+  # If the dots start looking soft on the cameras, come DOWN from here
+  # before touching detection thresholds: too much haze breaks detection as
+  # surely as none, and it is the easier thing to get wrong.
+  # The GM console has an on/off switch only; this is what it turns on.
+  default_haze: 35             # 0-255
 
   # Even at DMX 1 the machine puts out too much haze to run continuously, so it
   # is duty-cycled: haze for burst_s, then nothing until the next interval.

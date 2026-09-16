@@ -108,6 +108,7 @@ class GameRunner:
         # Name of the show _show_task is playing, so reload_config() can re-arm it.
         self._show_name: str | None = None
         self._self_test_task: asyncio.Task | None = None
+        self._deferred_preset_task: asyncio.Task | None = None
         # Latched by power_down(). Nothing may re-light the container after the
         # operator has been told it is safe to cut the breaker.
         self._powered_down: bool = False
@@ -494,7 +495,7 @@ class GameRunner:
         for attr in ("_show_task", "_count_in_task", "_max_run_task",
                      "_result_timeout_task", "_arm_timeout_task",
                      "_registered_timeout_task", "_assisted_task",
-                     "_self_test_task"):
+                     "_self_test_task", "_deferred_preset_task"):
             self._cancel_task(attr)
         self._show_name = None
 
@@ -1012,12 +1013,56 @@ class GameRunner:
         # changing shape at a checkpoint.
         if self._refuse_after_power_down(f"ApplyPreset({effect.preset_name!r})"):
             return
+
+        delay_ms = 0
+        if getattr(effect, "defer", False):
+            delay_ms = getattr(getattr(self.config, "game", None),
+                               "checkpoint_shape_delay_ms", 0) if self.config else 0
+        if delay_ms > 0:
+            # Scheduled, not awaited: the event drain is single-consumer, and
+            # sleeping in it would stall the stop button and every beam event
+            # for the duration.
+            self._cancel_task("_deferred_preset_task")
+            self._deferred_preset_task = asyncio.create_task(
+                self._apply_preset_after(effect.preset_name, delay_ms),
+                name="deferred_preset")
+            return
+
         self._apply_maze(effect.preset_name)
         if self._resolver and self.io:
             try:
                 await self._resolver.apply_preset(effect.preset_name, self.io)
             except KeyError:
                 log.warning("ApplyPreset: unknown preset '%s' — skipping", effect.preset_name)
+
+    async def _apply_preset_after(self, preset_name: str, delay_ms: int) -> None:
+        """
+        Wait, then switch the maze — detector and coils TOGETHER.
+
+        The pairing is the whole correctness argument. _apply_maze points the
+        detector at the dots captured for a preset, and the normal path calls it
+        just before the write so the settle window covers the lasers physically
+        coming on. Moving the detector early and the coils late would leave it
+        watching dots that are not lit yet: they read dark, and the player is
+        busted for a shape that has not appeared. So both happen here, after
+        the wait, and preset_settle_ms runs from that moment as before.
+
+        The OLD shape stays lit and watched during the wait, which is correct —
+        the player is still in the container and those beams are still real.
+        """
+        try:
+            await asyncio.sleep(delay_ms / 1000.0)
+            if self._refuse_after_power_down(f"deferred ApplyPreset({preset_name!r})"):
+                return
+            self._apply_maze(preset_name)
+            if self._resolver and self.io:
+                try:
+                    await self._resolver.apply_preset(preset_name, self.io)
+                except KeyError:
+                    log.warning("deferred ApplyPreset: unknown preset '%s'",
+                                preset_name)
+        except asyncio.CancelledError:
+            raise
 
     def _apply_maze(self, preset_name: str) -> None:
         self._current_preset = preset_name

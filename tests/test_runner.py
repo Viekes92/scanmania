@@ -1569,3 +1569,48 @@ async def test_preflight_passes_with_the_stop_button_at_rest(
 
     await r._handle_beam_preflight_check(BeamPreflightCheck())
     assert isinstance(r._event_queue.get_nowait(), PreflightPass)
+
+
+@pytest.mark.asyncio
+async def test_a_deferred_preset_switches_detector_and_coils_together(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """The pairing is the correctness argument, not the delay itself.
+
+    _apply_maze points the detector at the dots captured for a preset. If it
+    moved early while the coils moved late, the detector would be watching dots
+    that are not lit yet — they read dark, and the player is busted for a shape
+    that has not appeared. Both must happen after the wait.
+    """
+    from core.events import ApplyPreset
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    r._current_preset = "maze_1"
+    fake_config.game.checkpoint_shape_delay_ms = 200
+
+    await r._handle_apply_preset(ApplyPreset("maze_2", defer=True))
+    # Straight after the call, nothing has moved yet.
+    assert r._current_preset == "maze_1", "the detector switched before the coils"
+
+    await asyncio.sleep(0.35)
+    assert r._current_preset == "maze_2", "the deferred switch never happened"
+    r._cancel_task("_deferred_preset_task")
+
+
+@pytest.mark.asyncio
+async def test_a_deferred_preset_does_not_land_after_the_run_ends(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """A shape change arriving after a bust would relight the maze behind the
+    player and confuse the detector about what it is watching."""
+    from core.events import ApplyPreset
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.hazer = _FakeDmx()
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    fake_config.game.checkpoint_shape_delay_ms = 400
+
+    await r._handle_apply_preset(ApplyPreset("maze_3", defer=True))
+    await r.power_down(poweroff=False, snapshot=False)   # cancels every timer
+    assert r._deferred_preset_task is None, "the pending shape change survived"

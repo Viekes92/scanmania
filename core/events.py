@@ -483,8 +483,15 @@ class ApplyPreset:
     Tell io/presets.py to apply a named preset (static, single-frame).
     Used for maze changes (maze_1/2/3) and blackout.
     preset_name must exist in mazes.yaml presets section.
+
+    `defer` asks the runner to wait game.checkpoint_shape_delay_ms before
+    applying, so the maze does not snap to its next shape under a player who is
+    still mid-stride across the checkpoint. It is a FLAG, not a duration: the
+    FSM stays pure and does not read config or clocks (invariant 1), so the
+    runner owns the timing.
     """
     preset_name: str
+    defer: bool = False
 
 
 @dataclass(frozen=True)

@@ -339,7 +339,9 @@ def _break_effects_for_mode(ctx: FSMContext, event: BreakConfirmed, current_run_
 def _run_seg1_handlers() -> dict:
     def on_cp1(state, event, ctx):
         ctx.segment = 2
-        return RUN_SEG_2, [ApplyPreset("maze_2"), BroadcastState()]
+        # defer: the player is stepping over the checkpoint as this fires, and
+        # a shape that changes under their feet is both startling and unfair.
+        return RUN_SEG_2, [ApplyPreset("maze_2", defer=True), BroadcastState()]
 
     def on_cp2(state, event, ctx):
         # Out of order: cp2 during seg1 is ignored.
@@ -373,7 +375,7 @@ def _run_seg2_handlers() -> dict:
 
     def on_cp2(state, event, ctx):
         ctx.segment = 3
-        return RUN_SEG_3, [ApplyPreset("maze_3"), BroadcastState()]
+        return RUN_SEG_3, [ApplyPreset("maze_3", defer=True), BroadcastState()]
 
     def on_break(state, event: BreakConfirmed, ctx):
         return _break_effects_for_mode(ctx, event, RUN_SEG_2)

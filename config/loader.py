@@ -335,6 +335,9 @@ class GameConfig:
     # Grace after a maze shape change before newly-lit channels can report a
     # break. They are physically still coming on. Sane range 100-500 ms.
     preset_settle_ms: int = 250
+    # Pause between a checkpoint firing and the maze taking its next shape.
+    # 0 keeps the old snap-immediately behaviour. Sane range 0-1000 ms.
+    checkpoint_shape_delay_ms: int = 300
     # The soundtrack. Absent from game.yaml means silence, not an error.
     audio: AudioConfig = field(default_factory=AudioConfig)
 
@@ -760,6 +763,9 @@ def load_game() -> GameConfig:
         arm_timeout_ms=_ranged(d.get("arm_timeout_ms", 180000),
                                10_000, 3_600_000, 180000, "game.arm_timeout_ms"),
         boot_to_master=bool(d.get("boot_to_master", True)),
+        checkpoint_shape_delay_ms=_ranged(
+            d.get("checkpoint_shape_delay_ms", 300), 0, 1_000, 300,
+            "game.checkpoint_shape_delay_ms"),
         audio=_parse_audio(d.get("audio") or {}),
         assisted_timeout_ms=_ranged(d.get("assisted_timeout_ms", 60000),
                                     10_000, 300_000, 60000, "game.assisted_timeout_ms"),

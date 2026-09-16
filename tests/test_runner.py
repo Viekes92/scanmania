@@ -1845,3 +1845,73 @@ async def test_self_test_still_faults_when_the_boards_are_really_gone(
     assert r.state == "FAULT", "dead boards did not raise a fault"
     for a in ("_show_task", "_self_test_task"):
         r._cancel_task(a)
+
+
+@pytest.mark.asyncio
+async def test_the_count_in_waits_for_the_beds_spoken_lead(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """
+    game.mp3 speaks "3-2-1" at 4.0/5.15/6.05 s with GO at 7.0, so the visual
+    ramp has to start 4 s late or the numbers and the voice disagree.
+
+    During the lead there is deliberately NO deadline: the display renders
+    GET READY off a null countdown_remaining_ms rather than inventing a digit
+    it would have to count from 7.
+    """
+    import time
+    from core.events import StartCountIn
+    fake_config.game.count_in.audio_lead_ms = 250
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await _drain(r, iterations=5, pause=0)
+
+    await r._handle_start_count_in(StartCountIn())
+    assert r._countdown_go_ns is None, \
+        "a deadline during the lead makes the display count from 7"
+    assert r._get_state_message()["countdown_remaining_ms"] is None
+
+    await asyncio.sleep(0.4)
+    assert r._countdown_go_ns is not None, "the ramp never started after the lead"
+    total_ms = sum(p.on_ms + p.off_ms for p in fake_config.game.count_in.pulses)
+    left = (r._countdown_go_ns - time.monotonic_ns()) // 1_000_000
+    assert left <= total_ms, \
+        "GO was anchored before the lead, so the ramp and the voice diverge"
+    r._cancel_task("_count_in_task")
+
+
+@pytest.mark.asyncio
+async def test_a_dead_audio_layer_does_not_move_GO(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """
+    Audio is decoration and must never change WHEN a run starts (CLAUDE.md).
+
+    The lead is a monotonic wait, not a callback from the mixer, so a missing
+    file or a sound card that will not open costs the voice-over and nothing
+    else — the ramp still takes exactly as long and GO still lands on time.
+    """
+    class _DeadAudio:
+        def set_state(self, *a, **k): raise RuntimeError("sound card on fire")
+        def stop(self): raise RuntimeError("sound card on fire")
+        def reset(self): raise RuntimeError("sound card on fire")
+
+    import time
+    from core.events import StartCountIn
+    fake_config.game.count_in.audio_lead_ms = 200
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.audio = _DeadAudio()
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await _drain(r, iterations=5, pause=0)
+
+    t0 = time.monotonic_ns()
+    await r._handle_start_count_in(StartCountIn())
+    await asyncio.sleep(0.35)
+    assert r._countdown_go_ns is not None, "a dead mixer stalled the count-in"
+    total_ms = sum(p.on_ms + p.off_ms for p in fake_config.game.count_in.pulses)
+    go_ms = (r._countdown_go_ns - t0) // 1_000_000
+    assert 200 <= go_ms <= 200 + total_ms + 250, \
+        f"GO moved because of audio: {go_ms} ms"
+    r._cancel_task("_count_in_task")

@@ -131,6 +131,22 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
 - **Baseline frozen during a run.** Correct. Adapting mid-run slowly accepts a broken beam as normal. Rolling EMA only runs in `ATTRACT`.
 - **`monotonic_ns()` everywhere, never wall clock.** Correct. Wall clock can jump (NTP, DST). `events.ts_wall` stores wall time for human readability only; nothing computes durations from it.
 - **FSM returns side effects as data, doesn't execute them.** Correct. This is what makes `test_fsm.py` fast and deterministic without any mocks.
+- **The count-in starts 4 s after the GM taps COUNT IN.** Deliberate, and not
+  a hang. The spoken "3-2-1" is baked into `game.mp3` — the words land at
+  4.0 s, 5.15 s and 6.05 s with GO at 7.0 s — so the bed starts on the tap and
+  the visual ramp waits `count_in.audio_lead_ms` (4000) before beginning. GO is
+  `audio_lead_ms` + the 3000 ms pulse total. The in-container display shows
+  GET READY during the lead, because `countdown_remaining_ms` is deliberately
+  null until the ramp anchors: a deadline set at the tap would make the display
+  count down from 7, and it must read 3-2-1. Tune the lead by ear against the
+  track — mixer start-up latency is part of the offset.
+
+  The clock is still the authority, never the audio: the lead is a monotonic
+  wait, nothing listens to the mixer, and a missing file or a dead sound card
+  costs the voice-over and nothing else. The ramp takes exactly as long and GO
+  lands on time, silently. Audio must never be able to change when a run
+  starts.
+
 - **Count-in FLASHES `all_on`, not the maze about to be played.** Deliberate: players read a flash of the real shape as "go now" and start early, so the ramp shows the whole grid, which carries no route information. Safe because nothing measures a baseline during the ramp — runtime baselines come from `beams.json` and `count_in.baseline_pulse_index` is parsed but unused — and the FSM applies the real maze at GO before detection arms. `count_in.preset` still names the maze lit at GO; `count_in.flash_preset` is what the ramp shows.
 - **Detection cannot say which segment broke.** Correct, and deliberate. Calibration lights a whole maze and records what the cameras see; no dot is tied to a relay. A bust names the dot and the camera that saw it (`SM-CAM-13:d17`), which is what an operator needs to know where to look. See ADR 0009.
 - **`write_coils` writes the full 16-channel board every time.** Correct. One atomic transaction is what makes the maze snap rather than morph. Never loop single-coil writes.

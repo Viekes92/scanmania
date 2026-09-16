@@ -7,7 +7,47 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **The count-in is synced to the soundtrack.** `game.mp3` carries its own
+  spoken "3-2-1" — measured at 4.0 s, 5.15 s and 6.05 s, GO at 7.0 s — so the
+  bed now starts when the GM taps COUNT IN and the visual ramp waits
+  `count_in.audio_lead_ms` (new, 4000, range 0-10000) before running. GO is the
+  lead plus the unchanged 3000 ms pulse total. `0` restores the old instant
+  ramp.
+
+  The display shows **GET READY** through the lead. `countdown_remaining_ms`
+  stays null until the ramp anchors, on purpose: anchoring the deadline at the
+  tap would make the display count down from 7, and it must read 3-2-1.
+
+  The clock remains the authority. The lead is a monotonic wait and nothing
+  listens to the mixer, so a missing file or a dead card costs the voice-over
+  and nothing else — the ramp takes exactly as long and GO lands on time,
+  silently. Audio still cannot change when a run starts.
+
 ### Fixed
+
+- **The run track never loaded.** `audio.music.RUN_SEG_*` named `game.wav`;
+  the file is `game.mp3`. `verify_music` reported it at boot as a log line
+  rather than an error, which is why it went unnoticed. The run states are now
+  deliberately *unlisted* — an unlisted state keeps whatever is playing, so the
+  count-in bed runs unbroken into the run, which is the whole reason the
+  voice-over and the run music are one file.
+
+### Changed
+
+- **The soundtrack follows the new rules of the game.** `end.mp3` plays on
+  FINISHED, which is what stops `game.mp3`. The `countdown.wav` cue is gone
+  (the 3-2-1 is in the bed) and so are `victory.wav` / `defeat.wav` — a run can
+  only be won now, with a time penalty replacing the instant bust. Both of
+  those cue files were referenced but absent from `sounds/` anyway.
+
+- Three audio tests pinned the *shipped track names* rather than player
+  behaviour, so renaming the run track red-built them. Restart-avoidance and
+  mute/restore now use their own fixture config; the clean-run test still
+  asserts the shipped cue list on purpose, and a new test pins the property
+  that matters — that the run states stay unlisted.
+
 
 - **The house lights stayed bright after a run — the decoder, not the value.**
   Art-Net capture off the NIC showed the NUC transmitting `left=3 right=3` for

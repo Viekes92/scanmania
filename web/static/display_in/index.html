@@ -103,6 +103,15 @@
       color: var(--sm-red);
       font-variant-numeric: tabular-nums;
     }
+    /* The lead-in, while the bed plays its run-up and there is no deadline
+       yet. A word, not a digit — inventing a number here would either count
+       from 7 (wrong: the display must read 3-2-1) or freeze on 1 for four
+       seconds, which reads as a hung box. */
+    .cd-number.cd-ready {
+      font-size: clamp(48px, 11vw, 260px);
+      letter-spacing: 0.02em;
+      color: var(--sm-blue);
+    }
     #cdRingFill {
       height: 1.4vh;
       background: var(--sm-blue);
@@ -360,8 +369,19 @@
       // Seconds to GO, not the pulse index. The ramp accelerates, so counting
       // pulses raced 8→1 through a 3 s window. Clamped to 1 so the last frame
       // before RUN never flashes a "0".
-      cdStep.textContent = Math.max(1, Math.ceil((msg.countdown_remaining_ms ?? 0) / 1000));
-      setRingProgress(step, total);
+      // null remaining = the count-in lead: the bed is playing its run-up and
+      // the GO deadline is not anchored yet. Explicitly `== null` so a real 0
+      // on the last frame still renders as a digit.
+      const remain = msg.countdown_remaining_ms;
+      if (remain == null) {
+        cdStep.classList.add("cd-ready");
+        cdStep.textContent = "GET READY";
+        setRingProgress(0, total);
+      } else {
+        cdStep.classList.remove("cd-ready");
+        cdStep.textContent = Math.max(1, Math.ceil(remain / 1000));
+        setRingProgress(step, total);
+      }
 
     } else if (RUN_STATES.has(state)) {
       swRunning = true;

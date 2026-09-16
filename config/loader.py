@@ -268,6 +268,11 @@ class CountInConfig:
     # last: a dataclass cannot put a defaulted field before a required one.
     flash_preset: str = "maze_1"
     arm_preset: str = "arm_box"
+    # Dead air between the bed starting and the visual ramp starting, because
+    # the spoken "3-2-1" is baked into game.mp3 and does not begin at zero.
+    # GO = audio_lead_ms + the pulse total. 0 restores the old behaviour, where
+    # the ramp begins the instant the GM taps COUNT IN. Range 0-10000 ms.
+    audio_lead_ms: int = 0
 
 
 @dataclass
@@ -800,6 +805,8 @@ def load_game() -> GameConfig:
             solid_at_end=ci.get("solid_at_end", True),
             flash_preset=str(ci.get("flash_preset", ci.get("preset", "maze_1"))),
             arm_preset=str(ci.get("arm_preset", "arm_box")),
+            audio_lead_ms=_ranged(ci.get("audio_lead_ms", 0), 0, 10_000, 0,
+                                  "game.count_in.audio_lead_ms"),
         ),
         arm_grace_ms=d.get("arm_grace_ms", 150),
         snapshot_interval_min=max(0, int(d.get("snapshot_interval_min", 60))),

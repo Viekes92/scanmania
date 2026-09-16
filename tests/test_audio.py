@@ -43,8 +43,12 @@ def test_a_clean_run_sounds_right(player, audio_cfg):
     for state in RUN:
         cues.set_state(state)
 
+    # Deliberately asserts the SHIPPED soundtrack, so a careless edit to
+    # game.yaml is caught. The 3-2-1 is no longer a cue — it is baked into
+    # game.mp3 and synced with count_in.audio_lead_ms — and there is no
+    # victory/defeat one-shot any more, because a run can only be won.
     assert player.cues_played == [
-        "countdown.wav", "sector.wav", "sector.wav", "victory.wav"
+        "sector.wav", "sector.wav"
     ], "wrong one-shots, or wrong order, through a clean run"
 
 
@@ -55,12 +59,33 @@ def test_the_run_track_survives_both_checkpoints(player, audio_cfg):
     a track that jumps back to bar one every time someone crosses a checkpoint
     is worse than no music.
     """
-    cues = AudioCuePlayer(player, audio_cfg)
+    # Its OWN config, not the shipped one: this is a property of the player,
+    # and pinning it to whatever game.yaml currently names turns routine show
+    # tuning into a red build. (It did — renaming the run track broke this.)
+    cfg = {"music": {"COUNTDOWN": "run.mp3", "RUN_SEG_1": "run.mp3",
+                     "RUN_SEG_2": "run.mp3", "RUN_SEG_3": "run.mp3"},
+           "cues": {}}
+    cues = AudioCuePlayer(player, cfg)
     for state in RUN:
         cues.set_state(state)
 
-    assert player.music_starts.count("game.wav") == 1, "run track restarted"
+    assert player.music_starts.count("run.mp3") == 1, "run track restarted"
     assert player.restarts_avoided >= 2
+
+
+def test_the_shipped_config_carries_one_track_across_the_whole_run(audio_cfg):
+    """The run states are deliberately UNLISTED so the count-in bed plays on.
+
+    game.mp3 opens with the spoken 3-2-1 and then becomes the run track, so
+    naming it again at RUN_SEG_* would be at best a no-op and at worst a
+    restart back to the voice-over.
+    """
+    music = audio_cfg.music if hasattr(audio_cfg, "music") else audio_cfg["music"]
+    assert music.get("COUNTDOWN"), "nothing starts the count-in bed"
+    for seg in ("RUN_SEG_1", "RUN_SEG_2", "RUN_SEG_3"):
+        assert seg not in music, (
+            f"{seg} names a track; an unlisted state is what keeps the "
+            f"count-in bed running unbroken into the run")
 
 
 def test_a_state_with_no_music_entry_keeps_the_bed(player):
@@ -95,14 +120,15 @@ def test_config_keys_are_case_insensitive(player):
 
 
 def test_mute_stops_the_bed_and_restores_it(player, audio_cfg):
-    cues = AudioCuePlayer(player, audio_cfg)
+    cfg = {"music": {"ATTRACT": "bed.mp3", "RUN_SEG_1": "run.mp3"}, "cues": {}}
+    cues = AudioCuePlayer(player, cfg)
     cues.set_state("ATTRACT")
     cues.set_muted(True)
     assert player.music is None
     cues.set_state("RUN_SEG_1")
     assert player.music is None, "muted audio still started a track"
     cues.set_muted(False)
-    assert player.music == "game.wav", "unmuting did not restore the bed"
+    assert player.music == "run.mp3", "unmuting did not restore the bed"
 
 
 # ---------------------------------------------------------------------------

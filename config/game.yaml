@@ -69,6 +69,17 @@ count_in:
   # MUST match the preset that will be active at GO. The baseline is captured against this preset.
   # Changing this without changing maze_1 in mazes.yaml is a bug. See plan.md §4.3.
 
+  # The spoken "3-2-1" lives in game.mp3, not in a cue, and it does not start
+  # at zero: the words land at 4.0 s, 5.15 s and 6.05 s, with GO at 7.0 s.
+  # So the bed starts when the GM taps COUNT IN and the visual ramp waits this
+  # long before beginning, putting GO at audio_lead_ms + 3000 = 7000 ms.
+  #
+  # Tune BY EAR against the track, not by arithmetic — mixer start-up latency
+  # is part of the offset. Nothing in the game waits on the audio: if the file
+  # is missing the ramp still takes exactly as long and GO still lands on time.
+  # 0 restores the old instant ramp. Range 0-10000 ms.
+  audio_lead_ms: 4000
+
   ready_blink_ms: 150
   # Duration of the silent "system ready" blink at ARM. Doubles as the pre-flight beam check window.
   # Range: 100-300.
@@ -169,21 +180,24 @@ audio:
     ATTRACT:    ambient.mp3      # idle box, nobody playing
     REGISTERED: ambient.mp3      # player signed in, still idle
     ARM:        ambient.mp3
-    COUNTDOWN:  silence          # let the count-in cue carry it alone
-    RUN_SEG_1:  game.wav         # the run track: NOT relisted for SEG_2/SEG_3,
-    RUN_SEG_2:  game.wav         # but naming the same file is a no-op anyway,
-    RUN_SEG_3:  game.wav         # so it keeps playing across both checkpoints
-    FINISHED:   silence          # the victory cue owns this moment
-    BUSTED:     silence
-    ABORTED:    silence
+    # game.mp3 starts the moment the GM taps COUNT IN and carries the spoken
+    # 3-2-1 itself, which is why count_in.audio_lead_ms exists. RUN_SEG_* are
+    # deliberately NOT listed: an unlisted state keeps whatever is playing, so
+    # the same track runs unbroken from the count-in through all three
+    # segments. Relisting it would also work, but only because restarting the
+    # same file is a no-op — leaving it out says the intent.
+    COUNTDOWN:  game.mp3
+    # Stop pressed. Switching the bed here is what stops game.mp3.
+    FINISHED:   end.mp3
+    BUSTED:     end.mp3          # until the time penalty replaces instant bust
+    ABORTED:    silence          # run cut short — no fanfare
     RESULT:     ambient.mp3      # back to the bed while the score is up
     MASTER:     silence          # GM is working in the box
     FAULT:      silence
 
   cues:
-    COUNTDOWN:  countdown.wav    # 3-2-1 before GO
+    # No COUNTDOWN cue: the 3-2-1 is inside game.mp3.
+    # No victory/defeat cue either — a run can only be won now, and end.mp3
+    # covers the moment on its own.
     RUN_SEG_2:  sector.wav       # checkpoint 1 reached
     RUN_SEG_3:  sector.wav       # checkpoint 2 reached
-    FINISHED:   victory.wav
-    BUSTED:     defeat.wav
-    ABORTED:    defeat.wav

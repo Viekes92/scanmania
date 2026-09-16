@@ -1411,18 +1411,62 @@ class GameRunner:
         log.info("[SideEffect] StartCountIn")
         if self._count_in_task and not self._count_in_task.done():
             self._count_in_task.cancel()
+        lead_ms = 0
+        if self.config is not None:
+            lead_ms = getattr(self.config.game.count_in, "audio_lead_ms", 0)
+
+        if lead_ms > 0:
+            # The bed carries the spoken 3-2-1 and it does not start at zero,
+            # so the visual ramp waits for it. Deliberately NO deadline during
+            # the lead: countdown_remaining_ms stays None and the display shows
+            # GET READY rather than inventing a digit. The wait is scheduled,
+            # not awaited — the event drain is single-consumer and sleeping in
+            # it would stall the stop button for four seconds.
+            self._countdown_go_ns = None
+            self._countdown_step = 0
+            self._countdown_total = len(self.config.game.count_in.pulses)
+            self._count_in_task = asyncio.create_task(
+                self._count_in_after_lead(lead_ms), name="count_in_lead")
+            return
+
         # Anchor the ramp here rather than inside the task. StartCountIn is
         # followed immediately by BroadcastState, which would otherwise go out
         # with no deadline set and flash the wrong digit for one frame.
+        self._anchor_count_in()
+        self._count_in_task = asyncio.create_task(
+            self._run_count_in_ramp(), name="count_in_ramp"
+        )
+
+    def _anchor_count_in(self) -> None:
+        """Fix the ramp start and the GO deadline on the monotonic clock."""
         self._countdown_start_ns = time.monotonic_ns()
         if self.config is not None:
             total_ms = sum(
                 p.on_ms + p.off_ms for p in self.config.game.count_in.pulses
             )
             self._countdown_go_ns = self._countdown_start_ns + total_ms * 1_000_000
-        self._count_in_task = asyncio.create_task(
-            self._run_count_in_ramp(), name="count_in_ramp"
-        )
+
+    async def _count_in_after_lead(self, lead_ms: int) -> None:
+        """
+        Wait out the bed's spoken lead-in, then run the ramp.
+
+        The clock is the authority here, not the audio. We START the track and
+        count from our own monotonic anchor; nothing waits on a callback from
+        the mixer. A missing file, a dead card or a mixer that will not open
+        therefore costs the voice-over and nothing else — the ramp still takes
+        exactly as long and GO still lands on time, silently. Audio must never
+        be able to change when a run starts.
+        """
+        try:
+            await asyncio.sleep(lead_ms / 1000.0)
+            self._anchor_count_in()
+            # Push the first digit out immediately rather than waiting for the
+            # next periodic frame, so "3" appears with the spoken "three".
+            if self._hub:
+                await self._hub.broadcast(self._get_state_message())
+            await self._run_count_in_ramp()
+        except asyncio.CancelledError:
+            raise
 
     async def _run_count_in_ramp(self) -> None:
         """

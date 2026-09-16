@@ -5,11 +5,6 @@ presets:
   all_on:
     channels: '*'
     description: every relay on
-  # Generated from the type field in beams.json (V-left, V-right vs
-  # H-top-left, H-center, H-top-right) — regenerate if the wiring moves.
-  # Used by the outcome shows: a clean run lights the verticals so the maze
-  # reads as a corridor you could walk through, a bust lights the
-  # horizontals so it reads as barred.
   vertical:
     channels:
     - 2
@@ -30,7 +25,7 @@ presets:
     - 41
     - 44
     - 46
-    description: the 18 vertical segments — 'you got through'
+    description: "the 18 vertical segments \u2014 'you got through'"
   horizontal:
     channels:
     - 1
@@ -60,7 +55,7 @@ presets:
     - 43
     - 45
     - 47
-    description: the 27 horizontal segments — 'you were stopped'
+    description: "the 27 horizontal segments \u2014 'you were stopped'"
   maze_1:
     channels:
     - 3
@@ -135,31 +130,17 @@ shows:
     description: "idle sparkle \u2014 plays during ATTRACT state"
     steps:
     - preset: all_on
-      hold_ms: 500
+      hold_ms: 2000
     - preset: blackout
       hold_ms: 300
     loop: true
   bust:
-    # The opposite read: every horizontal lit and held, so the maze looks
-    # barred. Solid rather than flashing for the same reason as clean — the
-    # shape is the message, and a flash hides it half the time.
-    # Held by a single-step loop for the same reason as `clean` above.
     loop: true
     description: "busted \u2014 horizontals solid, the maze reads as barred"
     steps:
     - preset: horizontal
       hold_ms: 5000
   clean:
-    # Solid, not flashing, and not looping. One step, then the show task ends
-    # and the coils simply stay where it left them (StopShow is documented to
-    # leave them alone, and the reconciler holds the desired state), so this
-    # holds until RESULT hands over to the attract show.
-    # loop: true with ONE step, so the hold length stops mattering. It was a
-    # single 15000 ms step chosen to match result_display_ms — two numbers in
-    # two files that silently had to agree, and raising result_display_ms to
-    # its documented 30000 ceiling would have ended the show halfway through
-    # the result screen. Re-applying an identical preset is idempotent; the
-    # coils never move, so this is not relay wear.
     loop: true
     description: "clean run \u2014 verticals solid, the maze reads as passable"
     steps:
@@ -177,26 +158,24 @@ shows:
       hold_ms: 200
     loop: true
 light_cues:
-  # MASTER, SELF_TEST and RESET were absent, and LightCuePlayer falls through to
-  # all-off for a state it does not recognise. It looked fine only because the
-  # work-lights override starts on at boot: once the GM turned work lights off
-  # for the first show and later tapped MASTER MODE to walk the maze, the room
-  # went dark around them. MASTER is the one mode that means "a human is inside".
   master:
-    description: "GM is in the container — full working light"
+    description: "GM is in the container \u2014 full working light"
     steps:
-      - {left: 255, right: 255, ms: 0}
-
+    - left: 255
+      right: 255
+      ms: 0
   self_test:
-    description: "boot probe — up, so the box is not dark while it checks"
+    description: "boot probe \u2014 up, so the box is not dark while it checks"
     steps:
-      - {left: 120, right: 120, ms: 0}
-
+    - left: 120
+      right: 120
+      ms: 0
   reset:
-    description: "transient on the way to attract — hold, do not blink"
+    description: "transient on the way to attract \u2014 hold, do not blink"
     steps:
-      - {left: 60, right: 60, ms: 0}
-
+    - left: 60
+      right: 60
+      ms: 0
   attract:
     description: "slow alternating pulse, very dim \u2014 the room is idle"
     loop: true

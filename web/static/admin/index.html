@@ -1192,6 +1192,12 @@
         <div class="flex-row">
           <button class="btn btn-danger"  id="btnEngageMaster">Engage Master Mode</button>
           <button class="btn btn-default" id="btnExitMaster">Exit Master Mode</button>
+          <!-- House lights, here as well as on the Hardware tab. Master Mode is
+               where the GM is standing IN the container doing direct hardware
+               control, and having to leave the tab to turn the lights off — the
+               one thing you need to see the lasers by — was the wrong place to
+               put that trip. Same endpoint and same state as the other toggle. -->
+          <button class="btn btn-default" id="btnMasterLights">House lights</button>
         </div>
       </div>
 
@@ -2331,13 +2337,21 @@
       catch (e) { renderLights(null); }
     }
 
-    document.getElementById("btnLightsToggle").addEventListener("click", async function () {
+    async function toggleWorkLights() {
       try {
         renderLights(await apiPost("/api/admin/lights", { on: !lightsWorkMode }));
       } catch (e) {
         toast("Lights failed: " + e.message, "error");
       }
-    });
+    }
+
+    document.getElementById("btnLightsToggle").addEventListener("click", toggleWorkLights);
+
+    // Second entry point, on the Master Mode tab. ONE handler and one piece
+    // of state, so the two buttons can never disagree about what the lights
+    // are actually doing.
+    const _masterLights = document.getElementById("btnMasterLights");
+    if (_masterLights) _masterLights.addEventListener("click", toggleWorkLights);
 
     async function loadDmxPatch() {
       const el = document.getElementById("dmxPatch");

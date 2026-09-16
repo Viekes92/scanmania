@@ -262,7 +262,21 @@ light_cues:
     - {left: 150, right: 150, ms: 90, fade: false}
     - {left: 0, right: 0, ms: 90, fade: false}
     - {left: 150, right: 150, ms: 90, fade: false}
-    - {left: 3, right: 3, entrance: 0, ms: 0, fade: false}
+    # RAMP down to the settle — do NOT snap to it.
+    #
+    # This was a hard cut, on the reasoning that a half-lit room is the one
+    # condition in which you cannot read the 18 vertical curtains. The
+    # reasoning is fine; the hardware is not. The D5 DMX5125 decoders driving
+    # these fixtures handle steady values perfectly — 0 is off, 1 and 3 are
+    # visibly different, slow fades land exactly — but a 90 ms hard-edged
+    # burst followed by a single frame at 3 leaves them sitting bright for
+    # the whole result. Art-Net capture shows the NUC transmitting 3 for the
+    # full 29.5 s while the room plainly was not at 3, so it is the decoder
+    # reacting to the EDGE, not the value.
+    #
+    # Fading gives it a slew it can follow instead of an edge it cannot.
+    # Same destination, ~800 ms (hazer.lights.fade_ms) to get there.
+    - {left: 3, right: 3, entrance: 0, ms: 0}
   busted:
     description: "busted — flash, then very dim while the bars read"
     steps:
@@ -271,7 +285,8 @@ light_cues:
     - {left: 150, right: 150, ms: 90, fade: false}
     - {left: 0, right: 0, ms: 90, fade: false}
     - {left: 150, right: 150, ms: 90, fade: false}
-    - {left: 3, right: 3, entrance: 0, ms: 0, fade: false}
+    # Ramped, not snapped — see `finished` above.
+    - {left: 3, right: 3, entrance: 0, ms: 0}
   aborted:
     description: "run cut short — entrance lit, someone is coming out"
     steps:

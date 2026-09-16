@@ -65,6 +65,20 @@ Gamemaster taps COUNT IN
   → Pulse 0 on: vision/baseline.py captures baseline
   → Ramp complete: FSM → (RUN_SEG_1, [StartStopwatch, ArmDetection])
 
+Player crosses checkpoint 1
+  → Pico CP1 event → runner.py dispatches CP1_PRESSED to FSM
+  → FSM returns (RUN_SEG_2, [ApplyPreset("maze_2", defer=True), BroadcastState])
+  → runner.py waits game.checkpoint_shape_delay_ms (300 ms) in a SEPARATE task,
+    not in the event drain — the drain is single-consumer and sleeping in it
+    would stall the stop button and every beam event for the duration
+  → after the wait: vision/detect.py is repointed AND io/presets.py writes the
+    coils, in that order and in the same step. They must move together: the
+    detector watches the dots captured for a preset, so repointing it early
+    would leave it reading dots that are not lit yet — dark — and bust the
+    player for a shape that has not appeared
+  → the OLD shape stays lit and watched throughout the wait, which is correct:
+    the player is still in the container and those beams are still real
+
 Vision detects break on beam b07
   → vision/detect.py: ratio < break_ratio for N=3 frames
   → vision/evidence.py: saves JPEG crop

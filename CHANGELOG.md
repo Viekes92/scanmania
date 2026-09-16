@@ -9,6 +9,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **A 300 ms pause before the maze changes shape at a checkpoint**
+  (`game.checkpoint_shape_delay_ms`, 0-1000, 0 restores the old snap). The
+  player is stepping over the checkpoint as it fires, and a shape that changes
+  under their feet is both startling and unfair.
+
+  `ApplyPreset` gained a `defer` flag — a flag, not a duration, so `core/fsm.py`
+  stays pure and reads no config and no clock (invariant 1); the runner owns the
+  timing. It is scheduled rather than awaited, because the event drain is
+  single-consumer and sleeping in it would stall the stop button and every beam
+  event for the duration. It is cancelled with the other timers on power-down,
+  so a pending shape change cannot land after a run has ended.
+
+  The detector and the coils move **together** after the wait, and that pairing
+  is the whole correctness argument: `_apply_maze` points the detector at the
+  dots captured for a preset, so moving it early while the coils moved late
+  would leave it watching dots that are not lit yet — they read dark, and the
+  player is busted for a shape that has not appeared. The old shape stays lit
+  and watched during the wait, which is right: the player is still in the
+  container and those beams are still real.
+
+### Changed
+
+- **Default haze 1 -> 35** (`hardware.yaml`, `hazer.default_haze`), measured in
+  the container. The old comment asserted 1-2 was the only usable range on the
+  theory that more would wash the dots out; 35 is what actually makes the beams
+  read. The duty cycle still governs the dose — this is the amount, not the
+  duration — and the note now says to come down from here before touching
+  detection thresholds.
+
+
 - **Recalibration from the admin panel** (Calibration → Check / Save). After the
   container is moved, the dots drift — and they do not drift together: a dot is
   where a *beam lands*, so a settled mount or a flexed ceiling moves each one by

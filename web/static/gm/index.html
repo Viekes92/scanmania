@@ -71,7 +71,8 @@
       --health-err:   #EC1C24;
 
       --radius: 10px;
-      --btn-h:  72px;          /* minimum 48 px, targeting 72 for iPad comfort */
+      --btn-h:  104px;        /* was 72. Hit fast, one-handed, holding an
+                              iPad, with players waiting. */
       /* Two families on purpose. Proxima Nova (the display face) for chrome —
          headings, buttons, labels — so the console reads as the same product
          as the screens. Monospace stays on DATA: the stopwatch, coil grids,
@@ -1068,17 +1069,10 @@
         <div class="health-led ok" id="hCameraLed"></div>
         <span>Camera</span>
       </div>
-    </div>
-    <!-- Haze output: a switch, nothing else.
-         It gates DMX ch2 (haze volume) only. The blower on ch1 runs
-         continuously, so the machine is never shut down and haze already in the
-         container keeps circulating.
-         The level lives in config/hardware.yaml (default_haze) and is tunable
-         on /admin. The useful range is 1-2% of DMX, so a 0-255 slider on a
-         tablet is all thumb and no control — one stray drag fogs the container
-         out and washes the laser dots. The GM decides ON or OFF; the amount is
-         a tuned setting, not a live decision. -->
-    <div style="display:flex;gap:12px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+        <!-- The toggles live in the SAME strip as the read-only chips.
+             They used to sit in a sibling div below it, so Health was
+             two rows by construction and no amount of nowrap on the
+             strip above could ever pull them up. -->
       <button class="health-item" id="hLightsToggle" style="cursor:pointer;touch-action:manipulation;border:none;">
         <div class="health-led ok" id="hLightsLed"></div>
         <span id="hLightsLabel">Lights ON</span>
@@ -1089,6 +1083,15 @@
       </button>
       <span id="hHazerLevel" style="font-size:11px;color:var(--muted);font-family:var(--font);"></span>
     </div>
+    <!-- Haze output: a switch, nothing else.
+         It gates DMX ch2 (haze volume) only. The blower on ch1 runs
+         continuously, so the machine is never shut down and haze already in the
+         container keeps circulating.
+         The level lives in config/hardware.yaml (default_haze) and is tunable
+         on /admin. The useful range is 1-2% of DMX, so a 0-255 slider on a
+         tablet is all thumb and no control — one stray drag fogs the container
+         out and washes the laser dots. The GM decides ON or OFF; the amount is
+         a tuned setting, not a live decision. -->
   </div>
 
   <!-- -----------------------------------------------------------------------

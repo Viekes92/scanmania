@@ -50,14 +50,27 @@ unclutter -idle 0.5 -root &
 # largest first, so the first match is the best one. Falls back to the
 # preferred mode if the panel offers nothing fast enough.
 pick_mode() {
+  # The LARGEST mode that runs at >= MIN_HZ, compared by pixel area.
+  #
+  # This used to take the first qualifying line and stop, assuming xrandr lists
+  # modes highest-resolution first. It does not: it lists the PREFERRED mode
+  # first, and a panel whose preferred mode is not its best puts a small one at
+  # the top. HDMI-2 advertises 1280x720 (preferred) before 1920x1080, so the
+  # in-container display ran at 720p on a panel that can do 1080p, and nothing
+  # said so — it just looked soft.
   xrandr --query | awk -v out="$1" -v minhz="$MIN_HZ" '
     $1 == out && $2 == "connected" { on = 1; next }
     on && $1 ~ /^[0-9]+x[0-9]+$/ {
       res = $1
       if (pref == "") pref = res
+      split(res, wh, "x")
+      area = wh[1] * wh[2]
       for (i = 2; i <= NF; i++) {
         hz = $i; gsub(/[*+]/, "", hz)
-        if (hz + 0 >= minhz) { found = res; exit }
+        if (hz + 0 >= minhz) {
+          if (area > best_area) { best_area = area; found = res }
+          break
+        }
       }
       next
     }

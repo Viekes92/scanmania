@@ -4,7 +4,9 @@ iobackend/lightshow.py — drives the room lights from the FSM state.
 Inputs:  light cues from mazes.yaml, the current FSM state, the DMX controller
 Outputs: set_light() calls on the DMX owner; nothing talks to Art-Net directly
 Invariant: RUN states are always fully dark, whatever the cue file says and
-           whatever the GM has set. The detector samples raw brightness inside
+           whatever the GM has set. The outcome states (FINISHED/BUSTED/RESULT)
+           belong to the cue table too — the work-light override resumes at
+           ATTRACT, not over the top of the result. The detector samples raw brightness inside
            each dot's ROI with no background subtraction, so ambient light
            raises the reading and a genuinely broken beam can still read above
            break_ratio — a MISSED break, where a player runs clean through a
@@ -38,6 +40,21 @@ log = logging.getLogger(__name__)
 _DARK_STATES = frozenset({
     "COUNTDOWN", "RUN_SEG_1", "RUN_SEG_2", "RUN_SEG_3",
 })
+
+# The outcome. These are show moments — the flash, then the hard off that lets
+# the lasers read while the player looks up at the score — and the cue table
+# owns them even when the GM has the work lights switched on.
+#
+# It did not, and that is what made a run end wrong: the work-light override is
+# not cleared by the run, so at FINISHED the room went to a flat 255 and STAYED
+# there through RESULT and back into ATTRACT, going dark again only when the
+# next run forced it. The outcome cue never played at all.
+#
+# The work lights come back in ATTRACT, which is when the player is walking out
+# and the next group is loading in — the moment they are actually for. ABORTED
+# and FAULT are deliberately NOT here: a run cut short means somebody is coming
+# out of a dark container, and the GM's light should win.
+_CUE_OWNS_STATES = frozenset({"FINISHED", "BUSTED", "RESULT"})
 
 
 class LightCuePlayer:
@@ -118,7 +135,7 @@ class LightCuePlayer:
             self._all_off(fade=False)
             return
 
-        if self._work_lights is True:
+        if self._work_lights is True and state not in _CUE_OWNS_STATES:
             self._all_on()
             return
         if self._work_lights is False and state == "MASTER":

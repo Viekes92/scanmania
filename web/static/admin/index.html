@@ -3019,7 +3019,7 @@
     /* -----------------------------------------------------------------------
        SHOW EDITOR
     ----------------------------------------------------------------------- */
-    let seSteps = [];   // [{preset, hold_ms}, ...]
+    let seSteps = [];   // [{preset, hold_ms, sparkle_off?}, ...]
     let sePlayTimer = null;
     let sePlayingIdx = -1;  // index of currently-playing step, -1 = not playing
     /* Monotonic generation token. playStep() awaits a POST before rescheduling,
@@ -3138,6 +3138,9 @@
       const show = _showsCache[name] || {};
       seSteps = (show.steps || []).map(s => ({
         preset: s.preset, hold_ms: s.hold_ms ?? 300,
+        // Pass through untouched: there is no sparkle control in this editor,
+        // and dropping the key here is what deleted the attract sparkle.
+        ...(s.sparkle_off ? { sparkle_off: s.sparkle_off } : {}),
       }));
       seCurrentDescription = show.description || "";
       document.getElementById("seShowName").value = name;

@@ -885,75 +885,123 @@ class GameRunner:
 
         targets = mazes or [m for m in ("maze_1", "maze_2", "maze_3")]
 
-        # Ambient gate. Every ROI captured with the house lights on is wrong,
-        # and the person who left them on is the same person clicking this.
-        if self._resolver and self.io:
-            await self._resolver.apply_all_off(self.io)
-        await asyncio.sleep(0.8)
-        amb = await ambient_blobs(streams, params)
-        worst = max(amb.values()) if amb else 0
-        if worst > _MAX_AMBIENT_BLOBS:
-            report["ambient"] = amb
-            report["notes"].append(
-                f"refused: {worst} blobs visible with every laser OFF (limit "
-                f"{_MAX_AMBIENT_BLOBS}). House lights on, or a door open — "
-                f"recalibrating now would map reflections as dots.")
-            return report
-        report["ambient"] = amb
-
-        settle = getattr(getattr(self.config, "game", None), "preset_settle_ms", 800)
-        for maze in targets:
+        # The room must be dark for this, and that includes the ENTRANCE.
+        # It is the brightest fixture in the box and it points straight down
+        # the container, so leaving it lit does not merely dim the dots — the
+        # ambient gate below counts its reflections as blobs and refuses the
+        # whole calibration. Nothing else can switch it off: it is marked
+        # always_on and the DMX layer refuses to dim it.
+        #
+        # Sanctioned because MASTER is required to get here, so the only person
+        # who could be inside is the GM who clicked this, and it is put back in
+        # the finally below on every path out — refusal, exception or clean save.
+        _prev_work = None
+        _dimmed: list[tuple[str, int]] = []
+        _hazer = getattr(self, "hazer", None)
+        if self.lights is not None:
             try:
-                if self._resolver and self.io:
-                    await self._resolver.apply_preset(maze, self.io)
-                await asyncio.sleep(max(1.0, settle / 1000.0))
-                prev = ((existing.get(maze) or {}).get("cameras") or {})
-                cams = await recapture_maze(streams, params, previous=prev)
+                _prev_work = self.lights.work_lights
+                self.lights.set_work_lights(False)
             except Exception as exc:
-                log.error("recalibrate: %s failed: %s", maze, exc)
-                report["mazes"][maze] = {"error": str(exc)}
-                continue
+                log.warning("recalibrate: could not suspend the work lights: %s", exc)
+        if _hazer is not None and hasattr(_hazer, "lights_state"):
+            try:
+                for _n, _st in _hazer.lights_state().items():
+                    if not _st.get("always_on"):
+                        continue
+                    # Remember the level it is ON, not its configured default —
+                    # that is what "put it back" has to mean.
+                    _dimmed.append((_n, int(_st.get("target", 255))))
+                    _hazer.set_light(_n, 0, fade=False, allow_always_on=True)
+                if _dimmed:
+                    log.info("recalibrate: %s dark for the capture",
+                             ", ".join(n for n, _ in _dimmed))
+            except Exception as exc:
+                log.warning("recalibrate: could not dim the entrance: %s", exc)
 
-            per_cam = {}
-            for cid, blk in cams.items():
-                was = len((prev.get(cid) or {}).get("dots") or [])
-                now = len(blk["dots"])
-                blind = sum(1 for d in blk["dots"] if not d["baseline"])
-                per_cam[cid] = {"was": was, "now": now, "blind": blind,
-                                "delta": now - was}
-            report["mazes"][maze] = {"cameras": per_cam,
-                                     "total_was": sum(c["was"] for c in per_cam.values()),
-                                     "total_now": sum(c["now"] for c in per_cam.values()),
-                                     "_candidate": cams}
+        try:
+            # Ambient gate. Every ROI captured with the house lights on is wrong,
+            # and the person who left them on is the same person clicking this.
+            if self._resolver and self.io:
+                await self._resolver.apply_all_off(self.io)
+            await asyncio.sleep(0.8)
+            amb = await ambient_blobs(streams, params)
+            worst = max(amb.values()) if amb else 0
+            if worst > _MAX_AMBIENT_BLOBS:
+                report["ambient"] = amb
+                report["notes"].append(
+                    f"refused: {worst} blobs visible with every laser OFF (limit "
+                    f"{_MAX_AMBIENT_BLOBS}). House lights on, or a door open — "
+                    f"recalibrating now would map reflections as dots.")
+                return report
+            report["ambient"] = amb
 
-        if self._resolver and self.io:
-            await self._resolver.apply_all_off(self.io)
+            settle = getattr(getattr(self.config, "game", None), "preset_settle_ms", 800)
+            for maze in targets:
+                try:
+                    if self._resolver and self.io:
+                        await self._resolver.apply_preset(maze, self.io)
+                    await asyncio.sleep(max(1.0, settle / 1000.0))
+                    prev = ((existing.get(maze) or {}).get("cameras") or {})
+                    cams = await recapture_maze(streams, params, previous=prev)
+                except Exception as exc:
+                    log.error("recalibrate: %s failed: %s", maze, exc)
+                    report["mazes"][maze] = {"error": str(exc)}
+                    continue
 
-        # Believability gate. A recapture that loses a quarter of the dots is
-        # far more likely to be someone standing in the maze, a door open, or a
-        # camera that dropped out than a real change of that size — and saving
-        # it would replace a working calibration with a broken one.
-        lost = [f"{m}: {d['total_was']} -> {d['total_now']}"
-                for m, d in report["mazes"].items()
-                if "_candidate" in d and d["total_was"]
-                and d["total_now"] < d["total_was"] * 0.75]
-        if lost:
-            report["notes"].append(
-                "NOT saved: dot count fell by more than a quarter (" +
-                "; ".join(lost) + "). Check nobody is in the container and the "
-                "lasers are all on, then run it again.")
-            apply = False
+                per_cam = {}
+                for cid, blk in cams.items():
+                    was = len((prev.get(cid) or {}).get("dots") or [])
+                    now = len(blk["dots"])
+                    blind = sum(1 for d in blk["dots"] if not d["baseline"])
+                    per_cam[cid] = {"was": was, "now": now, "blind": blind,
+                                    "delta": now - was}
+                report["mazes"][maze] = {"cameras": per_cam,
+                                         "total_was": sum(c["was"] for c in per_cam.values()),
+                                         "total_now": sum(c["now"] for c in per_cam.values()),
+                                         "_candidate": cams}
 
-        report["ok"] = bool(report["mazes"]) and not lost
-        if apply and report["ok"]:
-            applied = await self._write_calibration(report)
-            report["applied"] = applied
-            if applied:
-                report["notes"].append("saved; detection reloaded")
+            if self._resolver and self.io:
+                await self._resolver.apply_all_off(self.io)
 
-        for d in report["mazes"].values():
-            d.pop("_candidate", None)
-        return report
+            # Believability gate. A recapture that loses a quarter of the dots is
+            # far more likely to be someone standing in the maze, a door open, or a
+            # camera that dropped out than a real change of that size — and saving
+            # it would replace a working calibration with a broken one.
+            lost = [f"{m}: {d['total_was']} -> {d['total_now']}"
+                    for m, d in report["mazes"].items()
+                    if "_candidate" in d and d["total_was"]
+                    and d["total_now"] < d["total_was"] * 0.75]
+            if lost:
+                report["notes"].append(
+                    "NOT saved: dot count fell by more than a quarter (" +
+                    "; ".join(lost) + "). Check nobody is in the container and the "
+                    "lasers are all on, then run it again.")
+                apply = False
+
+            report["ok"] = bool(report["mazes"]) and not lost
+            if apply and report["ok"]:
+                applied = await self._write_calibration(report)
+                report["applied"] = applied
+                if applied:
+                    report["notes"].append("saved; detection reloaded")
+
+            for d in report["mazes"].values():
+                d.pop("_candidate", None)
+            return report
+        finally:
+            # The way out gets its light back first, and on every path.
+            for _n, _lvl in _dimmed:
+                try:
+                    _hazer.set_light(_n, _lvl, fade=False, allow_always_on=True)
+                except Exception as exc:
+                    log.error("recalibrate: FAILED to relight '%s': %s", _n, exc)
+            if self.lights is not None and _prev_work is not None:
+                try:
+                    self.lights.set_work_lights(_prev_work)
+                except Exception as exc:
+                    log.warning("recalibrate: could not restore the work lights: %s",
+                                exc)
 
     async def _write_calibration(self, report: dict) -> bool:
         """Back up beams.json, write the new ROIs, reload detection."""

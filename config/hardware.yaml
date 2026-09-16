@@ -154,7 +154,7 @@ hazer:
   # before touching detection thresholds: too much haze breaks detection as
   # surely as none, and it is the easier thing to get wrong.
   # The GM console has an on/off switch only; this is what it turns on.
-  default_haze: 35             # 0-255
+  default_haze: 50             # 0-255
 
   # Even at DMX 1 the machine puts out too much haze to run continuously, so it
   # is duty-cycled: haze for burst_s, then nothing until the next interval.

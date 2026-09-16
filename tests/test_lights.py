@@ -197,14 +197,47 @@ def test_going_dark_is_instant_not_a_fade(dmx):
     assert dmx.light_level("left") == 0, "must already be there, not fading"
 
 
-def test_work_lights_return_after_the_run(dmx):
-    p = LightCuePlayer(dmx, CUES)
+def test_work_lights_return_in_attract_not_over_the_result(dmx):
+    """
+    The work lights come back when the player is walking OUT, not the instant
+    the run ends.
+
+    They used to return at the outcome, which meant a GM who had the house
+    lights switched on got a flat 255 over the top of the finished/busted cue:
+    the room lit up at the end of every run, stayed lit through the result and
+    back into attract, and only went dark again when the next run forced it.
+    """
+    # A distinctive level, so "the cue played" is not confusable with the
+    # work lights' own 255.
+    cues = {**CUES,
+            "finished": {"steps": [{"left": 150, "right": 150, "ms": 10}]},
+            "result": {"steps": [{"left": 0, "right": 0, "ms": 0}]}}
+    p = LightCuePlayer(dmx, cues)
     p.set_work_lights(True)
     p.set_state("RUN_SEG_1")
     assert dmx.light_level("left") == 0
+
+    p.set_state("FINISHED")
+    assert dmx.lights_state()["left"]["target"] == 150, \
+        "the work lights painted over the outcome cue"
     p.set_state("RESULT")
+    assert dmx.lights_state()["left"]["target"] == 0, \
+        "the work lights painted over the result"
+
+    p.set_state("ATTRACT")
     # Coming back up FADES, so the target is set immediately and the level
     # follows. Going dark is deliberately instant — see the dark-state tests.
+    assert dmx.lights_state()["left"]["target"] == 255, \
+        "the work lights never came back for load-out"
+
+
+def test_an_aborted_run_still_gets_the_gm_work_light(dmx):
+    """ABORTED is not an outcome to be read — it is somebody coming out of a
+    dark container early, and the GM's light should win there."""
+    p = LightCuePlayer(dmx, CUES)
+    p.set_work_lights(True)
+    p.set_state("RUN_SEG_2")
+    p.set_state("ABORTED")
     assert dmx.lights_state()["left"]["target"] == 255
 
 

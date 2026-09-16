@@ -352,6 +352,11 @@ class PresetConfig:
 class ShowStep:
     preset: str
     hold_ms: int = 300
+    # Drop this many channels, chosen fresh each step, from the named preset —
+    # the attract "sparkle". The runner has always understood it; this field
+    # did not exist, so _run_show read it off the dataclass as 0 and the
+    # attract show sat as a dead, fully-lit grid. Range 0-45, one per segment.
+    sparkle_off: int = 0
 
 
 @dataclass
@@ -815,6 +820,8 @@ def load_mazes() -> MazesConfig:
                 ShowStep(
                     preset=st.get("preset", "blackout"),
                     hold_ms=_clean_hold_ms(st.get("hold_ms", 300), name),
+                    sparkle_off=_ranged(st.get("sparkle_off", 0), 0, 45, 0,
+                                        f"shows.{name}.sparkle_off"),
                 )
                 for st in s["steps"]
             ]

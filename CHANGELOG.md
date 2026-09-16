@@ -7,6 +7,51 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The attract sparkle never ran.** `sparkle_off` was in `mazes.yaml` and the
+  show player understood it, but `ShowStep` had no such field — so the loader
+  dropped it and the runner read 0 off the dataclass. The attract show was four
+  identical `all_on` steps: a dead, fully-lit grid. The key is parsed and
+  bounded now (0-45, one per segment).
+
+  It was being deleted from the far end as well: the admin show editor rebuilds
+  every step as `preset` + `hold_ms`, so one save of any show silently stripped
+  the sparkle out of the file. The key now round-trips through `ShowStepBody`
+  and the editor, and is written back only when non-zero so ordinary shows keep
+  a two-key step.
+
+- **The house lights came on at the end of every run and stayed on.** The GM's
+  work-light override is not cleared by a run, and it beat the cue table
+  everywhere except the states forced dark — so at FINISHED the room went to a
+  flat 255, held it through RESULT and back into ATTRACT, and went dark again
+  only when the next run forced it. The outcome cue never played.
+
+  The outcome states (FINISHED/BUSTED/RESULT) now belong to the cue table even
+  with the switch on: the flash plays and the room snaps dark so the lasers
+  read while the player looks up at the score. The work lights come back at
+  ATTRACT — the player is walking out and the next group is loading in, which
+  is the moment they are for. ABORTED and FAULT deliberately still hand the
+  room to the GM: somebody is coming out of a dark container early.
+
+- **Calibration ran with the entrance light on.** It is the brightest fixture
+  in the box and points straight down the container, and nothing else can
+  switch it off — `always_on` makes the DMX layer refuse. So its reflections
+  counted against the ambient gate, which is the check that refuses a capture
+  when the cameras can see anything with every laser off. Recalibration now
+  takes the room and the entrance dark for the capture and restores both in a
+  `finally`, on every path out including a refusal or an exception.
+
+### Changed
+
+- **Default haze 35 -> 50** (`hardware.yaml`), tuned in the container.
+
+- **Chromium background networking off in `kiosk.sh`.** The box is offline at a
+  venue and Chromium still spent its startup trying to register for Google
+  push, at 60 ERROR lines per boot in the kiosk journal — noise that buries
+  real display faults, and pointless outbound chatter from a show LAN. No
+  display setting changed.
+
 ### Added
 
 - **A 300 ms pause before the maze changes shape at a checkpoint**

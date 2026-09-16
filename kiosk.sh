@@ -33,6 +33,14 @@ CHROME_FLAGS=(
   --noerrdialogs --disable-infobars --disable-translate
   --no-first-run --no-default-browser-check --disable-pinch
   --disable-session-crashed-bubble --disable-features=TranslateUI
+  # The box is offline at a venue, and Chromium still spends its startup trying
+  # to register for Google push. That is 60 ERROR lines per boot in the kiosk
+  # journal (DEPRECATED_ENDPOINT / QUOTA_EXCEEDED / "Registration URL fetching
+  # failed"), which is noise that buries real display faults — and pointless
+  # outbound chatter from a machine on a show LAN. Nothing here is a display
+  # setting; the pages do not change.
+  --disable-background-networking --disable-component-update --disable-sync
+  --disable-domain-reliability --disable-breakpad --metrics-recording-only
   --autoplay-policy=no-user-gesture-required
 )
 

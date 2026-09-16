@@ -115,9 +115,12 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
 - **Recalibrating — two different jobs.** *Geometry* (the container was moved,
   the dots drifted): **Admin → Calibration → Check**, then Save. It runs inside
   the game, lights each maze, re-finds every dot and re-measures its baseline,
-  reusing the per-camera thresholds untouched. Needs MASTER MODE, house lights
-  off, nobody inside; it is a dry run until you press Save, backs up
-  `beams.json`, and refuses a result that loses more than a quarter of the dots.
+  reusing the per-camera thresholds untouched. Needs MASTER MODE and nobody
+  inside; it takes the room lights **and the entrance** dark itself for the
+  capture and restores them afterwards, so the ambient gate is not failed by
+  the one fixture the DMX layer otherwise refuses to dim. It is a dry run until
+  you press Save, backs up `beams.json`, and refuses a result that loses more
+  than a quarter of the dots.
   *Tuning* (a camera's exposure changed, dots are not being found at all) still
   needs the full tool below — there is no substitute for watching each stage.
 - **Retuning:** stop the game (`systemctl stop scanmania-kiosk scanmania` — kiosk first, or its `Wants=` drags the game back up), run `tools/capture.py`, open port 8090. Light a maze, tune each camera, capture, repeat, write. Verify on `/admin/beams`.

@@ -270,6 +270,10 @@ class ShowStepBody(BaseModel):
     # Upper bound is a guard rail against a stray extra zero wedging the maze on
     # one step, not a design limit — the show player and loader have no cap.
     hold_ms: int = Field(default=300, ge=50, le=60_000)
+    # Carried through, not editable here. The editor has no sparkle control, so
+    # without this a save of ANY show rewrote its steps as preset+hold_ms only
+    # and silently deleted the attract sparkle.
+    sparkle_off: int = Field(default=0, ge=0, le=45)
 
 
 class SaveShowBody(BaseModel):
@@ -1199,7 +1203,12 @@ def register_routes(
                 # Preserve the existing description when the client doesn't send one.
                 "description": body.description or old.get("description", ""),
                 "steps": [
-                    {"preset": s.preset, "hold_ms": s.hold_ms} for s in body.steps
+                    # sparkle_off only when set, so ordinary shows keep a
+                    # two-key step and the file stays readable.
+                    ({"preset": s.preset, "hold_ms": s.hold_ms,
+                      "sparkle_off": s.sparkle_off} if s.sparkle_off
+                     else {"preset": s.preset, "hold_ms": s.hold_ms})
+                    for s in body.steps
                 ],
                 "loop": body.loop,
             }

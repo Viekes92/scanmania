@@ -1614,3 +1614,75 @@ async def test_a_deferred_preset_does_not_land_after_the_run_ends(
     await r._handle_apply_preset(ApplyPreset("maze_3", defer=True))
     await r.power_down(poweroff=False, snapshot=False)   # cancels every timer
     assert r._deferred_preset_task is None, "the pending shape change survived"
+
+
+@pytest.mark.asyncio
+async def test_calibration_darkens_the_entrance_and_always_puts_it_back(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """
+    The entrance has to be dark for a capture and lit again afterwards.
+
+    It points straight down the container and is the brightest thing in the
+    box, so with it lit the ambient gate counts its reflections as blobs and
+    refuses the whole calibration — and nothing else can switch it off, because
+    always_on makes the DMX layer refuse.
+
+    The half that matters is the restore: this asserts it on the REFUSAL path,
+    because that is the one that leaves somebody standing in an unlit container
+    if it is ever dropped.
+    """
+    class _Hazer:
+        def __init__(self):
+            self.state = {"entrance": {"level": 255, "target": 255,
+                                       "always_on": True, "channel": 5},
+                          "left": {"level": 0, "target": 0,
+                                   "always_on": False, "channel": 3}}
+            self.log = []
+        def lights_state(self):
+            return {n: dict(v) for n, v in self.state.items()}
+        def set_light(self, name, level, fade=True, allow_always_on=False):
+            if self.state[name]["always_on"] and level < 1 and not allow_always_on:
+                return False
+            self.state[name]["target"] = level
+            self.state[name]["level"] = level
+            self.log.append((name, level))
+            return True
+
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.hazer = _Hazer()
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await _drain(r, iterations=5, pause=0)
+    await r.dispatch(MasterModeEngage())     # recalibration refuses elsewhere
+    await _drain(r, iterations=5, pause=0)
+    assert r.state == "MASTER"
+
+    # Streams, so it gets PAST the "vision is not running" refusal and into
+    # the part that touches the lights. Then the ambient gate refuses, which
+    # is the realistic failure: somebody left a door open.
+    r.vision._streams = {"SM-CAM-11": object()}
+
+    import vision.recalibrate as _vr
+    saw_dark = {}
+
+    async def _fake_ambient(streams, params):
+        # Sampled at the moment of the capture — the entrance must be OFF here.
+        saw_dark["entrance"] = r.hazer.state["entrance"]["target"]
+        return {"SM-CAM-11": 999}          # way over the limit -> refuse
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(_vr, "ambient_blobs", _fake_ambient)
+    try:
+        out = await r.recalibrate()
+    finally:
+        monkeypatch.undo()
+
+    assert out["ok"] is False
+    assert saw_dark["entrance"] == 0, \
+        "the capture ran with the entrance still lit"
+
+    assert r.hazer.state["entrance"]["target"] == 255, \
+        "the entrance was left dark after calibration bailed out"
+    for a in ("_show_task", "_arm_timeout_task", "_result_timeout_task"):
+        r._cancel_task(a)

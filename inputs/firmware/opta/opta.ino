@@ -3,6 +3,8 @@
  * SM-NODE-TRIG | 172.16.0.100
  * Modbus TCP :502 | Web :80
  * I1=plate I2=CP1 I3=CP2 I4=stop
+ * I4 is NORMALLY CLOSED (see IN_NC): open contact = pressed. Fail-safe —
+ * a cut wire ends the run rather than leaving it unstoppable.
  *
  * Button: press N times quickly to toggle input N (1-4)
  * USER LED: solid = booted, blink = NUC offline
@@ -20,6 +22,23 @@ const int NUM_IN = 4;
 const int IN_PIN[NUM_IN] = { A0, A1, A2, A3 };
 const char* IN_NAME[NUM_IN] = { "START", "CP1", "CP2", "STOP" };
 const int IN_LED[NUM_IN] = { LED_D0, LED_D1, LED_D2, LED_D3 };
+
+/*
+ * Contact type per input. true = NORMALLY CLOSED.
+ *
+ * I4 (STOP) is a normally-closed switch: the circuit is CLOSED while the
+ * button is at rest and OPENS when it is pressed. Inverting here, right after
+ * the pin read, means the debounced state[] — and therefore the Modbus bit,
+ * these LEDs, the web page and the serial log — all keep meaning "1 = pressed"
+ * no matter how a given button happens to be wired. Nothing downstream needs
+ * to know, and the NUC's ("stop", 1) -> StopPressed mapping stays correct.
+ *
+ * This is also why a stop button SHOULD be normally closed: a cut wire, a
+ * pulled connector or a dead contact reads as OPEN, which after this inversion
+ * reads as PRESSED. The run ends. The failure that matters is the opposite one
+ * — a stop button that cannot end a run — and NC makes that one impossible.
+ */
+const bool IN_NC[NUM_IN] = { false, false, false, true };
 
 bool state[NUM_IN] = {};
 bool lastRaw[NUM_IN] = {};
@@ -131,7 +150,9 @@ void loop() {
       Serial.print(IN_NAME[i]);
       Serial.println(" released");
     }
-    bool raw = digitalRead(IN_PIN[i]) == HIGH;
+    // Normalise to "pressed" before debouncing, so everything after this
+    // point — debounce, LEDs, counters, Modbus — speaks one language.
+    bool raw = (digitalRead(IN_PIN[i]) == HIGH) != IN_NC[i];
     if (raw != lastRaw[i]) { lastEdge[i] = millis(); lastRaw[i] = raw; }
     if ((millis() - lastEdge[i]) >= 30 && raw != state[i]) {
       state[i] = raw;

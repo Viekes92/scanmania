@@ -1531,3 +1531,41 @@ def test_a_recapture_that_loses_most_dots_is_not_saved():
     lost = [m for m, d in report["mazes"].items()
             if d["total_was"] and d["total_now"] < d["total_was"] * 0.75]
     assert lost == ["maze_1"], "the believability gate would not have caught this"
+
+
+@pytest.mark.asyncio
+async def test_preflight_names_a_stuck_stop_button(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """I4 is normally closed, so a cut wire reads as PRESSED.
+
+    That is the right failure direction — the run ends rather than becoming
+    unstoppable — but it also means a broken stop circuit ends every run the
+    instant it starts, which from the floor looks like the game is simply
+    broken. Preflight should say so before anyone queues up.
+    """
+    from core.events import BeamPreflightCheck, PreflightFail
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.context.detection_mode = "manual"        # isolate the input check
+    fake_inputs._input_map = {0: "plate", 1: "cp1", 2: "cp2", 3: "stop"}
+    fake_inputs._prev_states = [False, False, False, True]   # stop stuck on
+
+    await r._handle_beam_preflight_check(BeamPreflightCheck())
+    ev = r._event_queue.get_nowait()
+    assert isinstance(ev, PreflightFail)
+    assert "stop button" in ev.reason and "normally closed" in ev.reason
+
+
+@pytest.mark.asyncio
+async def test_preflight_passes_with_the_stop_button_at_rest(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """At rest a normally-closed stop button reads 0 — the Opta inverts it."""
+    from core.events import BeamPreflightCheck, PreflightPass
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    r.context.detection_mode = "manual"
+    fake_inputs._input_map = {0: "plate", 1: "cp1", 2: "cp2", 3: "stop"}
+    fake_inputs._prev_states = [False, False, False, False]
+
+    await r._handle_beam_preflight_check(BeamPreflightCheck())
+    assert isinstance(r._event_queue.get_nowait(), PreflightPass)

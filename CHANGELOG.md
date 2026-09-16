@@ -494,6 +494,25 @@ verified against the code, not assumed.
 
 ### Changed
 
+- **The stop button on Opta I4 is now treated as normally closed.** The
+  inversion happens in the sketch, immediately after the pin read, so the
+  debounced state — and with it the Modbus bit, the Opta's own LEDs, its web
+  page and its serial log — all keep meaning "1 = pressed" whatever a given
+  button is wired as. Nothing on the NUC side changed; `("stop", 1)` still maps
+  to `StopPressed`. Per-input contact type lives in `IN_NC[]`.
+
+  Normally closed is the right choice for a stop button: a cut wire, a pulled
+  connector or a dead contact reads as OPEN, which after the inversion reads as
+  PRESSED, so the run ends. The failure that matters is the other one — a stop
+  button that cannot end a run — and NC makes it impossible.
+
+  The cost is that a broken stop circuit now ends every run the instant it
+  starts, which from the floor looks like the game is simply broken. Preflight
+  names it: arming with the stop input already reading pressed fails with a
+  message that points at the wiring rather than at the player.
+
+### Changed
+
 - **The GM console and admin portal now carry the brand.** Proxima Nova and the
   wordmark from the displays, and the accent moved to the sampled brand blue
   and red, so the tools read as the same product as the screens.

@@ -1290,6 +1290,25 @@ class GameRunner:
             if dead:
                 problems.append(f"relay board(s) {', '.join(dead)} not OK")
 
+        # The stop button must not already be pressed at ARM.
+        #
+        # It is a NORMALLY CLOSED switch, which is the right choice — a cut
+        # wire, pulled connector or dead contact reads as PRESSED, so the run
+        # ends rather than becoming unstoppable. But that same property means a
+        # broken stop circuit makes every run end the instant it starts, and
+        # from the floor that looks like the game is simply broken with no
+        # clue why. Say it here, once, before anyone queues up.
+        try:
+            states = dict(zip(getattr(self.inputs, "_input_map", {}).values(),
+                              getattr(self.inputs, "_prev_states", [])))
+        except Exception:
+            states = {}
+        if states.get("stop"):
+            problems.append(
+                "the stop button reads as PRESSED before the run started — it "
+                "is normally closed, so this is usually a cut wire or an "
+                "unplugged connector, not someone leaning on the button")
+
         if self.context.detection_mode != "manual":
             stats = {}
             if self.vision is not None and hasattr(self.vision, "detector_stats"):

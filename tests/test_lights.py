@@ -396,3 +396,52 @@ def test_a_dying_process_still_relights_the_way_out(dmx):
     assert dmx.lights_state()["entrance"]["level"] == 0
     dmx.blackout()
     assert dmx.lights_state()["entrance"]["level"] > 0
+
+
+def test_the_entrance_comes_back_when_the_run_ends(dmx):
+    """The cue table is the ONLY thing that sets the entrance now.
+
+    A state that does not name it inherits whatever the last one left, and
+    every state from sign-in to the result deliberately sets it to 0 — so
+    without an explicit value in the ATTRACT cue the first run of the day took
+    the entrance dark and it never came back.
+    """
+    import config.loader as loader
+    from iobackend.lightshow import LightCuePlayer
+
+    p = LightCuePlayer(dmx, loader.load_all().mazes.light_cues)
+    p.set_work_lights(None)
+    for state in ("ATTRACT", "REGISTERED", "ARM", "COUNTDOWN",
+                  "RUN_SEG_1", "FINISHED", "RESULT", "RESET"):
+        p.set_state(state)
+    p.set_state("ATTRACT")
+    assert dmx.lights_state()["entrance"]["target"] > 0, (
+        "the entrance stayed dark after a run — it is the way in")
+
+
+def test_arm_box_lights_row_one_not_row_three():
+    """`arm_box` holds BEAM ids 12/13/14 translated to global channels.
+
+    A beam id encodes row+strip and maps to a per-board relay, so the global
+    channel is board_index*16 + relay_channel. Using the ids as channel numbers
+    lit beams 32/33/34 — row 3, the far end of the container — instead of row 1
+    where the player is standing.
+    """
+    import json
+    from pathlib import Path
+    import yaml
+    import config.loader as loader
+
+    root = Path(__file__).resolve().parent.parent
+    beams = json.loads((root / "config" / "beams.json").read_text())["beams"]
+    boards = [b["id"] for b in
+              yaml.safe_load((root / "config" / "hardware.yaml").read_text())["relay_boards"]]
+    idx = {b: i for i, b in enumerate(boards)}
+    expected = sorted(idx[e["board_id"]] * 16 + e["relay_channel"]
+                      for e in beams if e["id"] in ("12", "13", "14"))
+
+    got = sorted(loader.load_all().mazes.presets["arm_box"].channels)
+    assert got == expected, f"arm_box is {got}, beams 12/13/14 are {expected}"
+    # And they must all be in row 1, which is what "boxed in at the plate" means.
+    rows = {e["row"] for e in beams if e["id"] in ("12", "13", "14")}
+    assert rows == {1}, f"arm_box beams are not all row 1: {rows}"

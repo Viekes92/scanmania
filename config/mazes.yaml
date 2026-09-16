@@ -153,29 +153,41 @@ shows:
     - {preset: all_on, sparkle_off: 6, hold_ms: 1800}
     - {preset: all_on, sparkle_off: 3, hold_ms: 2200}
     - {preset: all_on, sparkle_off: 7, hold_ms: 1800}
-  # The VERDICT, then dark. Both of these used to loop a solid preset, so the
-  # maze stayed lit from the stop button until RESET — result_display_ms twice
-  # over, 30 s of a fully lit container with nobody in it. The shape is the
-  # verdict and it only has to be read once; holding it past that is what made
-  # the house-light flash look like a flash into permanent light.
+  # FLASH the verdict, then HOLD it.
   #
-  # hold_ms is the read time — tune it here or in Admin -> Shows.
+  # The maze flashes with the house lights (cue `finished` / `busted` below, on
+  # the same three-beat cadence) and then settles solid until RESET swaps in
+  # the attract show. Neither of these loops: a show that ends leaves its last
+  # preset applied and the reconciler keeps re-asserting it, so the final step
+  # IS the hold — no long hold_ms needed, and no relay moves while it waits.
+  #
+  # Three flashes is 6 whole-board writes per run on top of the count-in ramp.
+  # That is a deliberate cost, not an oversight: keep it in mind before adding
+  # more, because every step here is 45 channels switching at once.
   bust:
     loop: false
-    description: "busted \u2014 horizontals bar the maze, then dark"
+    description: "busted \u2014 horizontals flash, then bar the maze"
     steps:
-    - preset: horizontal
-      hold_ms: 2500
-    - preset: blackout
-      hold_ms: 100
+    - {preset: horizontal, hold_ms: 90}
+    - {preset: blackout,   hold_ms: 90}
+    - {preset: horizontal, hold_ms: 90}
+    - {preset: blackout,   hold_ms: 90}
+    - {preset: horizontal, hold_ms: 90}
+    - {preset: blackout,   hold_ms: 90}
+    # Solid, and left that way. The show ends here.
+    - {preset: horizontal, hold_ms: 100}
   clean:
     loop: false
-    description: "clean run \u2014 verticals read as passable, then dark"
+    description: "clean run \u2014 verticals flash, then read as passable"
     steps:
-    - preset: vertical
-      hold_ms: 2500
-    - preset: blackout
-      hold_ms: 100
+    - {preset: vertical, hold_ms: 90}
+    - {preset: blackout, hold_ms: 90}
+    - {preset: vertical, hold_ms: 90}
+    - {preset: blackout, hold_ms: 90}
+    - {preset: vertical, hold_ms: 90}
+    - {preset: blackout, hold_ms: 90}
+    # Solid, and left that way. The show ends here.
+    - {preset: vertical, hold_ms: 100}
   main_game:
     segments:
     - maze_1
@@ -232,31 +244,45 @@ light_cues:
     # that glow is the only thing telling you where the walls are. The lasers
     # of preset arm_box are meant to be all you can see.
     - {left: 0, right: 0, entrance: 0, ms: 0}
+  # After the flash the room sits at 3/255 — not off.
+  #
+  # It was a hard 0, on the reasoning that a half-lit room is the one condition
+  # in which you cannot read the laser curtains. That still holds, and 3 is not
+  # half-lit: it is enough to see the walls and the way out while the verdict
+  # shape stays the brightest thing in the container. A true blackout with the
+  # maze solid read as a fault rather than a result.
+  #
+  # The flash itself stays hard (fade: false) and on the same three-beat
+  # cadence as the laser shows above, so the room and the maze flash together.
   finished:
-    description: "clean run — flash, then hard off so the lasers read"
+    description: "clean run — flash, then very dim while the verticals read"
     steps:
     - {left: 150, right: 150, ms: 90, fade: false}
     - {left: 0, right: 0, ms: 90, fade: false}
     - {left: 150, right: 150, ms: 90, fade: false}
     - {left: 0, right: 0, ms: 90, fade: false}
     - {left: 150, right: 150, ms: 90, fade: false}
-    # OFF, and hard. A fade leaves the room half-lit for a second, which is
-    # exactly when the player looks up at the 18 vertical curtains — and a
-    # half-lit room is the one condition in which you cannot read them.
-    - {left: 0, right: 0, entrance: 0, ms: 0, fade: false}
+    - {left: 3, right: 3, entrance: 0, ms: 0, fade: false}
   busted:
-    description: "busted — one hard snap, then off so the bars read"
+    description: "busted — flash, then very dim while the bars read"
     steps:
-    - {left: 150, right: 150, ms: 140, fade: false}
-    - {left: 0, right: 0, entrance: 0, ms: 0, fade: false}
+    - {left: 150, right: 150, ms: 90, fade: false}
+    - {left: 0, right: 0, ms: 90, fade: false}
+    - {left: 150, right: 150, ms: 90, fade: false}
+    - {left: 0, right: 0, ms: 90, fade: false}
+    - {left: 150, right: 150, ms: 90, fade: false}
+    - {left: 3, right: 3, entrance: 0, ms: 0, fade: false}
   aborted:
     description: "run cut short — entrance lit, someone is coming out"
     steps:
     - {left: 40, right: 40, entrance: 255, ms: 0}
   result:
-    description: "score on screen — room stays dark, the maze is the light"
+    # Must MATCH the level finished/busted settle at, or the room drops a step
+    # partway through the result for no reason the player can see: FINISHED and
+    # RESULT are two states but one continuous moment to anybody watching.
+    description: "score on screen — same very dim, the maze is still the light"
     steps:
-    - {left: 0, right: 0, entrance: 0, ms: 0, fade: false}
+    - {left: 3, right: 3, entrance: 0, ms: 0, fade: false}
   fault:
     description: "something is wrong — entrance lit so people can get out"
     loop: true

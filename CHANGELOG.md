@@ -24,6 +24,46 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   is down, falls back to the edge exactly as before.
 
 
+- **The end of a run now flashes, then holds the verdict.** Stop pressed → the
+  room and the maze flash together → the verdict shape stays lit over a very
+  dim room until RESET swaps in the attract show.
+
+  Two things were wrong. The maze never flashed at all: `clean` and `bust` went
+  straight to a solid preset. And they were `loop: true`, which combined with
+  the fact that nothing between the outcome and RESET stops a show (FINISHED
+  emits only `BroadcastState`) meant the shape held through FINISHED *and*
+  RESULT — `result_display_ms` twice over — while the house cue had already
+  taken the room to a hard 0. A lit maze over a black room read as a fault
+  rather than a result.
+
+  Both shows now flash the verdict three times on the same cadence as the
+  house-light cue and end solid. Neither loops: a show that ends leaves its
+  last preset applied and the reconciler holds it there, so the final step *is*
+  the hold — no long `hold_ms`, and no relay moving while it waits.
+
+  The room settles at **3/255** rather than 0. The old reasoning — that a
+  half-lit room is the one condition in which you cannot read the laser
+  curtains — still holds, and 3 is not half-lit: it is enough to see the walls
+  and the way out while the verdict stays the brightest thing in the container.
+  `result` matches that level exactly, because FINISHED and RESULT are two
+  states but one continuous moment to anyone watching, and a mismatch drops the
+  room a step partway through for no visible reason.
+
+- **Signing a player in while they already stand on the plate now arms at
+  once.** Inputs are edge-triggered, which is right for a game driven by people
+  stepping on things — but a plate that is *already* held down when the GM
+  finishes typing the name never sends another `PlateHigh`, so the box sat in
+  REGISTERED and the player had to step off and back on with a queue watching.
+
+  Entering REGISTERED now asks the inputs backend for the plate's current
+  level instead of waiting for an edge, and enqueues a `PlateHigh` if it is
+  already down. `input_level()` is new on all three backends (Opta/Modbus reads
+  its existing poll cache; the Pico link and the fake now keep one). The FSM is
+  untouched and still pure — it sees an ordinary event and applies its usual
+  guards. Best-effort by design: a backend that cannot answer, or a link that
+  is down, falls back to the edge exactly as before.
+
+
 - **The maze stayed lit for 30 s after the stop button.** The house-light flash
   was right — the thing still on afterwards was the lasers. `clean` and `bust`
   were `loop: true` over a single solid preset, and nothing between the outcome

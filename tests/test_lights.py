@@ -480,23 +480,41 @@ def test_arm_box_lights_row_one_not_row_three():
     assert rows == {1}, f"arm_box beams are not all row 1: {rows}"
 
 
-def test_the_outcome_shows_end_dark_and_do_not_loop():
+def test_the_outcome_flashes_then_holds_the_verdict():
     """
-    The verdict shape is read once, then the container goes dark.
+    Stop pressed -> room and maze flash together -> the verdict shape stays lit
+    over a very dim room until RESET swaps in the attract show.
 
-    Both of these used to loop a solid preset, and nothing between the stop
-    button and RESET stops a show — FINISHED emits only BroadcastState — so the
-    maze stayed lit for result_display_ms TWICE over, 30 s of a fully lit
-    container with nobody in it. From the floor that read as the house-light
-    flash dropping into permanent light, which is exactly what it looked like.
+    Two earlier versions of this were wrong in opposite directions. First the
+    shows looped a solid preset, and since nothing between the outcome and
+    RESET stops a show (FINISHED emits only BroadcastState) the maze stayed lit
+    for result_display_ms TWICE over with the room at 0. Then they ended on
+    blackout, which killed the verdict entirely. The shape is the result and
+    has to survive the whole result window; the room is what comes down.
     """
     from config import loader
-    shows = loader.load_all().mazes.shows
-    for name in ("clean", "bust"):
-        show = shows[name]
-        assert show.loop is False, f"{name} loops, so it never goes dark"
-        assert show.steps[-1].preset == "blackout", \
-            f"{name} ends on {show.steps[-1].preset!r}, leaving the maze lit"
-        # The verdict still has to be readable.
-        assert show.steps[0].hold_ms >= 1000, \
-            f"{name} flashes the verdict too briefly to read"
+    cfg = loader.load_all().mazes
+    verdict = {"clean": "vertical", "bust": "horizontal"}
+
+    for name, shape in verdict.items():
+        show = cfg.shows[name]
+        assert show.loop is False, \
+            f"{name} loops, so the reconciler never gets to hold it still"
+        # A show that ends leaves its last preset applied — so the LAST step is
+        # the hold, and it has to be the verdict rather than darkness.
+        assert show.steps[-1].preset == shape, \
+            f"{name} ends on {show.steps[-1].preset!r}, so the verdict vanishes"
+        # ...and it has to actually flash on the way there.
+        assert sum(1 for st in show.steps if st.preset == "blackout") >= 2, \
+            f"{name} does not flash before it settles"
+
+    # The room settles very dim, NOT off, and RESULT must match what
+    # finished/busted settled at — they are one continuous moment to a player.
+    levels = {}
+    for name in ("finished", "busted", "result"):
+        last = cfg.light_cues[name]["steps"][-1]
+        levels[name] = (last["left"], last["right"])
+        assert 0 < last["left"] <= 20, \
+            f"{name} settles at {last['left']}, which is not 'very dim'"
+    assert levels["finished"] == levels["result"] == levels["busted"], \
+        f"the room changes level partway through the result: {levels}"

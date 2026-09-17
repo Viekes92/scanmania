@@ -23,6 +23,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- **Detection made responsive.** The report was "I had to stand there for a
+  second". The pipeline was not at fault — all eight cameras hold 25 fps with
+  17-24 ms median frame age through a run, measured from the recorded frames —
+  so the delay was entirely in the confirm rules:
+
+  - `break_ratio` 0.4 → **0.5**. A dot only counted as broken once it fell to
+    40% of its lit value, so a partially blocked beam sitting at 60% never
+    triggered at all, however long you stood in it. This is the knob that made
+    you wait. The gap to `clear_ratio` (0.65) is the hysteresis and is
+    unchanged.
+  - `consecutive_frames` 3 → **2**, so confirm takes 80 ms rather than 120.
+  - Both were implicit loader defaults never written in `beams.json`; they are
+    explicit now, so they can be tuned without touching code.
+
 - **`min_simultaneous_breaks` 3 → 2.** Measured from the recorded runs: an arm
   through a beam produces **2 dark dots on the best camera**, so a threshold of
   3 meant a player had to block about four beams to be caught. 3 was chosen

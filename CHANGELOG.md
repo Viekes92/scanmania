@@ -9,6 +9,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **The kiosk froze and was never relaunched.** `kiosk.sh`'s supervision loop
+  opened with `wait -n`, which blocks until a background job **terminates** — so
+  the health check below it only ran after a Chromium *process* died, and
+  `page_alive` (the title heartbeat) never got to run in the one case it was
+  written for. The comment in `display_out` says it plainly: "pgrep cannot do
+  this job: Chromium puts `--user-data-dir` on every helper process, so the
+  browser surviving a dead renderer still looks alive." A hung renderer is
+  exactly that — process up, page frozen, `wait -n` blocked forever, panel
+  stuck on whatever it last drew.
+
+  The loop polls every 5 s now. A frozen page is caught after
+  `_BEAT_MISSES` identical titles (~20 s) and a dead window fails the same
+  check, so nothing is lost by not waiting on the job. Exited jobs are reaped
+  non-blocking so a crashed Chromium does not linger as a zombie.
+
+- **The give-up cap was a lifetime total**, which is wrong for a box that runs
+  for two months: a display needing one relaunch a day would trip a cap of 50
+  halfway through the tour and take the unit down permanently. It is now a rate
+  — more than 10 relaunches inside 10 minutes — which catches a window that
+  cannot stay up *now* without punishing one that has been fine for weeks.
+  Relaunch backoff also moved to after a failed relaunch rather than delaying
+  every health check.
+
+
+### Fixed
+
 - **The daily leaderboard silently dropped returning players.** The
   "one row per player" subquery took `MIN(elapsed_ms)` over a player's ENTIRE
   history while the outer query was filtered to today, so the two disagreed: if

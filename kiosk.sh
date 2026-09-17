@@ -209,42 +209,71 @@ page_alive() {   # page_alive <in|out>
 
 declare -A RESTARTS=()
 RELAUNCH_BACKOFF_S=2
-_TOTAL_RELAUNCHES=0
-_RELAUNCH_CAP=50
+_CHECK_INTERVAL_S=5
+# Relaunches allowed inside _RELAUNCH_WINDOW_S before we give up. A CUMULATIVE
+# cap was wrong for a box that runs for two months: a display that needs one
+# relaunch a day would trip a lifetime cap of 50 halfway through the tour and
+# take the unit down for good. What we actually want to catch is a window that
+# cannot stay up RIGHT NOW.
+_RELAUNCH_WINDOW_S=600
+_RELAUNCH_MAX_IN_WINDOW=10
+declare -a _RELAUNCH_TIMES=()
+
 while true; do
-    wait -n || true
-    # Back off. A launch that can never succeed — dbus-run-session missing,
-    # chromium gone — relaunched every 2 s forever while systemd reported the
-    # unit active and both panels stayed black. Growing the gap turns a hot
-    # spin into something a human can read in the journal, and the cap means we
-    # stop pretending it is going to work.
-    sleep "$RELAUNCH_BACKOFF_S"
-    if [ "$RELAUNCH_BACKOFF_S" -lt 30 ]; then
-        RELAUNCH_BACKOFF_S=$(( RELAUNCH_BACKOFF_S * 2 ))
-    fi
+    # POLL. This used to be `wait -n`, which blocks until a background job
+    # TERMINATES — so the whole health check below only ran after a Chromium
+    # process died, and page_alive (the title heartbeat) never got to run in
+    # the one case it was written for: a renderer that hangs while the browser
+    # process stays alive. The display froze, the process looked fine, and
+    # nothing ever relaunched it. That is the "kiosk stops working after a
+    # while".
+    #
+    # page_alive covers the crash case too — a dead window has no title — so
+    # nothing is lost by not waiting on the job.
+    sleep "$_CHECK_INTERVAL_S"
+    # Reap any job that did exit, without blocking, so a crashed Chromium does
+    # not sit as a zombie for the life of the unit.
+    jobs -rp >/dev/null 2>&1 || true
     for name in in out; do
         [ "$name" = "in" ]  && [ -z "${MODE_IN:-}" ]  && continue
         [ "$name" = "out" ] && [ -z "${MODE_OUT:-}" ] && continue
         if page_alive "$name"; then
             RELAUNCH_BACKOFF_S=2        # it is up AND updating; forget the backoff
+            continue
         else
             RESTARTS[$name]=$(( ${RESTARTS[$name]:-0} + 1 ))
-            _TOTAL_RELAUNCHES=$(( _TOTAL_RELAUNCHES + 1 ))
             echo "$(date -Is) $name window dead or frozen — relaunch #${RESTARTS[$name]}"
             LAST_BEAT[$name]=""
             STALL_COUNT[$name]=0
             pkill -f "scanmania-kiosk-$name" 2>/dev/null || true
             sleep 1
-            if [ "$_TOTAL_RELAUNCHES" -gt "$_RELAUNCH_CAP" ]; then
-                echo "Giving up after $_TOTAL_RELAUNCHES relaunches — the window"
-                echo "is not staying up. Exiting so systemd records a FAILURE"
-                echo "instead of reporting a healthy unit with black panels."
+            # Rate, not lifetime total: keep only the relaunches inside the
+            # window, then judge on how many are left.
+            _now=$(date +%s)
+            _kept=()
+            for _t in "${_RELAUNCH_TIMES[@]:-}"; do
+                [ -n "$_t" ] || continue
+                [ $(( _now - _t )) -lt "$_RELAUNCH_WINDOW_S" ] && _kept+=("$_t")
+            done
+            _kept+=("$_now")
+            _RELAUNCH_TIMES=("${_kept[@]}")
+            if [ "${#_RELAUNCH_TIMES[@]}" -gt "$_RELAUNCH_MAX_IN_WINDOW" ]; then
+                echo "Giving up: ${#_RELAUNCH_TIMES[@]} relaunches in the last"
+                echo "$_RELAUNCH_WINDOW_S s — the window is not staying up. Exiting so"
+                echo "systemd records a FAILURE instead of reporting a healthy"
+                echo "unit with black panels."
                 exit 1
             fi
             if [ "$name" = "in" ]; then
                 launch in "$MODE_IN" 0 "$SERVER/display/in"
             else
                 launch out "$MODE_OUT" "$W_IN" "$SERVER/display/out"
+            fi
+            # Grow the gap only when a relaunch actually happened, so a launch
+            # that can never succeed is not retried in a hot spin.
+            sleep "$RELAUNCH_BACKOFF_S"
+            if [ "$RELAUNCH_BACKOFF_S" -lt 30 ]; then
+                RELAUNCH_BACKOFF_S=$(( RELAUNCH_BACKOFF_S * 2 ))
             fi
         fi
     done

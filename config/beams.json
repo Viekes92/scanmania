@@ -642,7 +642,8 @@
     "flap_window_s": 60,
     "min_simultaneous_breaks": 2,
     "break_ratio": 0.5,
-    "clear_ratio": 0.65
+    "clear_ratio": 0.65,
+    "max_simultaneous_breaks": 60
   },
   "_calibration": "The 45 entries under `beams` are the RELAY WIRING RECORD: which board and channel drives which strip. Detection does not read them (ADR 0009). ROIs live under `mazes.<name>.cameras.<cam>.dots`, written by tools/capture.py, one capture per maze. Absent `mazes` means uncalibrated, and an uncalibrated preset watches nothing.",
   "mazes": {

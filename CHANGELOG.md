@@ -9,6 +9,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Detection dropped to manual mid-run: the mass-dark limit was measuring a
+  player, not a fault.** `max_simultaneous_breaks` was 10, counted across ALL
+  cameras. Recording a normal run showed a real player darkening **12-43 dots
+  globally** (peak 43 across six cameras) — a body is wide enough to shadow
+  dots on several cameras at once — so the rule fired repeatedly, suppressed
+  detection and dropped the game to manual for the rest of the run.
+
+  It surfaced now because raising `break_ratio` to 0.5 made more
+  partially-shadowed dots count as dark. The logged breaks show it directly:
+  `0.446`, `0.429`, `0.443` are dots that only register above the old 0.4.
+
+  Raised to **60**, from the measurement: comfortably above the observed player
+  peak, comfortably below the ~200 dots a shape change darkens, which is the
+  fault it actually has to catch. A single dead relay is 5 dots and was never
+  caught by this rule; a dead camera is caught by the stall detector. Re-measure
+  after any `break_ratio` change — that is the knob that moves the player
+  figure.
+
+  The recovery added earlier did work: `detector fault cleared after 30 s
+  healthy`, and the mode returned on its own instead of latching for the
+  session.
+
+
+### Fixed
+
 - **The kiosk panels went black ten minutes into every show.** `kiosk.sh` calls
   `xset s off -dpms` to stop X blanking the screens, but it ran two seconds
   after launching Xorg — and Xorg on this box needs about five to accept

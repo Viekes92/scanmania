@@ -227,11 +227,22 @@ class DetectionConfig:
     global_break_rate_limit: int
     flap_count_threshold: int
     flap_window_s: int
-    # More than this many dots going dark at once is not a person. A body blocks
-    # a handful; a relay failure, a preset change or a camera glitch kills
-    # dozens. Replaces the old per-channel "all 5 of its dots dark" rule, which
-    # needed a dot-to-channel mapping we no longer have. Sane range 6-25.
-    max_simultaneous_breaks: int = 10
+    # More than this many dots going dark at once is not a person — it is a
+    # preset change or a camera glitch.
+    #
+    # 10 was far too low, and MEASURED so: recording a normal run showed a real
+    # player darkening 12-43 dots globally (peak 43 across six cameras), so the
+    # rule fired repeatedly mid-run, suppressed detection and dropped the game
+    # to manual. It counts across ALL cameras, and a body is wide enough to
+    # shadow dots on several at once.
+    #
+    # The real fault it has to catch is a shape change, which darkens ~200 of
+    # the ~200 watched dots — so anything between the player peak and that is
+    # safe. A single dead relay is only 5 dots and was never caught by this
+    # rule anyway; a dead camera is caught by the stall detector.
+    # Sane range 45-120, and re-measure after changing break_ratio, which is
+    # what moves the player figure.
+    max_simultaneous_breaks: int = 60
     # ...and FEWER than this many, ON ONE CAMERA, is not a person either. A
     # body crossing a curtain blocks several of its lasers at once; a single
     # dot flickering is haze drifting, a marginal r=4 dot, or sensor noise. In

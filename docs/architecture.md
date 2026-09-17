@@ -6,38 +6,32 @@ One NUC runs everything. Six systemd units communicate over localhost sockets an
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  NUC (Debian 12)                                                │
+│  NUC (Debian 13)                                                │
 │                                                                 │
-│  scanmania-io.service          scanmania-vision.service         │
-│  ┌────────────────────┐        ┌───────────────────────────┐   │
-│  │ Modbus master       │        │ RTSP decode               │   │
-│  │ Preset resolution   │        │ Dot detection             │   │
-│  │ Reconciliation loop │        │ Baseline management       │   │
-│  └────────┬───────────┘        │ Evidence thumbnails        │   │
-│           │ unix socket         │ MJPEG stream out          │   │
-│           │                    └─────────────┬─────────────┘   │
-│  scanmania-core.service                      │ unix socket      │
-│  ┌──────────────────────────────────────┐   │                  │
-│  │ FSM (pure function, core/fsm.py)     │◄──┘                  │
-│  │ Stopwatch                            │                       │
-│  │ Scoring                              │                       │
-│  │ Pico serial (inputs/pico_link.py)    │                       │
-│  └──────────────┬───────────────────────┘                       │
-│                 │ WebSocket broadcast                            │
-│  scanmania-web.service                                          │
-│  ┌──────────────▼───────────────────────┐                       │
-│  │ FastAPI + uvicorn                    │                       │
-│  │ /signin  /gm  /admin                 │                       │
-│  │ /display/in  /display/out            │                       │
-│  └──────────────────────────────────────┘                       │
+│  scanmania.service   — ONE process, one asyncio loop            │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ core/fsm.py        pure transition function, no I/O        │ │
+│  │ core/runner.py     event drain, side effects, timers       │ │
+│  │ core/stopwatch.py  monotonic_ns; the server owns the clock │ │
+│  │                                                            │ │
+│  │ iobackend/   Modbus master, preset resolution, reconcile   │ │
+│  │              loop, Art-Net DMX (hazer + room lights)       │ │
+│  │ inputs/      Arduino Opta over Modbus TCP (plate, cp1,     │ │
+│  │              cp2, stop). Pico/USB is superseded, ADR 0004  │ │
+│  │ vision/      RTSP decode, dot detection, baselines,        │ │
+│  │              evidence thumbnails                           │ │
+│  │ audio/       pygame.mixer bed + one-shot cues              │ │
+│  │ persist/     SQLite + local snapshots. No cloud, ADR 0008  │ │
+│  │ web/         FastAPI + uvicorn, WebSocket broadcast 10 Hz  │ │
+│  │              /signin /gm /admin /display/in /display/out   │ │
+│  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
-│  scanmania-kiosk.service                                       │
-│  ┌────────────────────┐          ┌───────────────────────┐      │
-│  │ Local snapshots    │          │ X session             │      │
-│  │ Cloud POST         │          │ Chromium × 2 (kiosk)  │      │
-│  │ Snapshots/exports  │          │ HDMI1: /display/in    │      │
-│  └────────────────────┘          │ HDMI2: /display/out   │      │
-│                                  └───────────────────────┘      │
+│  scanmania-kiosk.service                                        │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ X session (no window manager — geometry is explicit)       │ │
+│  │ Chromium × 2: HDMI-2 /display/in, HDMI-1 /display/out      │ │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
 └─────────────────────────────────────────────────────────────────┘
        │ Ethernet (Modbus TCP)          │ USB (serial, 115200)
        ▼                               ▼
@@ -93,25 +87,27 @@ Vision detects break on beam b07
 | Link | Protocol | Notes |
 |------|----------|-------|
 | NUC → relay boards | Modbus TCP, function 0x0F (write coils) + 0x01 (read coils) | One async connection per board, 200 ms timeout |
-| NUC ← Pico | USB CDC serial, 115200, ASCII line protocol | See `docs/protocols/pico-serial.md` |
-| NUC ← cameras | RTSP (one decode per stream) | 8 × 1024×576 @ 25 fps, locked exposure |
-| Browser ← NUC | WebSocket (10 Hz broadcast) + HTTP/static | See `docs/protocols/websocket.md` |
-| NUC → cloud | HTTPS POST, idempotency key per run | See `docs/protocols/cloud-api.md` |
+| NUC ← Opta | Modbus TCP (function 0x02, discrete inputs), polled | `inputs/modbus_inputs.py`. The Pico/USB path in ADR 0004 is superseded. |
+| NUC ← cameras | RTSP (one decode per stream) | 8 × 1920×1080, locked exposure. ROIs are frame pixels — see invariant 3. |
+| Browser ← NUC | WebSocket (10 Hz broadcast) + HTTP/static | `web/server.py` |
 
 ## Services
 
 | Unit | Restart | Owns |
 |------|---------|------|
-| `scanmania-io` | always, 2 s | Modbus connections, coil state, reconciliation |
-| `scanmania-vision` | always, 2 s | Camera decode, detection, MJPEG stream |
-| `scanmania-core` | always, 2 s | FSM, stopwatch, Pico link, event log |
-| `scanmania-web` | always, 2 s | HTTP + WebSocket, static frontends |
-| `scanmania-kiosk` | user unit | X session, two Chromium kiosk windows |
+| `scanmania` | always, 2 s | Everything: FSM, Modbus, inputs, vision, audio, DB, HTTP + WebSocket |
+| `scanmania-kiosk` | always | X session, two Chromium kiosk windows |
+
+Two units, not six. `deploy/` contains exactly these. The kiosk unit `Wants=`
+the game, which is why stopping the game means stopping the kiosk **first** or
+it drags the game back up within seconds.
 
 systemd hardware watchdog enabled via `RuntimeWatchdogSec`. A kernel hang reboots the NUC into `SELF_TEST → ATTRACT`.
 
-> On the NUC these are currently collapsed into a single `scanmania.service` plus
-> `scanmania-kiosk.service`. The split above is the target, not the deployed shape.
+> An earlier design split this into `scanmania-io` / `-vision` / `-core` / `-web`
+> over unix sockets. That split was never built and is not planned; the single
+> process is the design. ADR 0005 records the systemd-not-docker decision, and
+> its six-unit sketch is historical.
 
 ## Coil reconciliation
 
@@ -167,7 +163,7 @@ treatment to any new panel.
 
 ## State machine summary
 
-See `docs/game-rules.md` for prose. Key states:
+Key states (there is no separate game-rules doc; this section is the prose):
 
 ```
 BOOT → SELF_TEST → ATTRACT → REGISTERED → ARM → COUNTDOWN → RUN_SEG_1 → RUN_SEG_2 → RUN_SEG_3

@@ -161,9 +161,12 @@ failed step has left something energised.** Nothing is halted in that case --
 the box deliberately stays up so you can see what failed. Walk the container
 before cutting power.
 
-The entrance light is `always_on` and the DMX layer refuses to dim it on every
-other path, including when the process dies. This is the one sanctioned
-exception, and it exists because the operator is standing at the breaker.
+The entrance light is `always_on`, which means only a LIGHT CUE may dim it
+(ADR 0010): it is dark from sign-in to the result, and lit in attract, master,
+aborted and fault — the states where somebody is walking in or out. `blackout()`,
+which is what a dying process calls, RESTORES it. `power_down()` is the one path
+that leaves it genuinely dark, and it exists because the operator is standing at
+the breaker.
 
 ### Dark but still running
 

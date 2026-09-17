@@ -7,6 +7,52 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Documentation
+
+- **ADR 0010 records that the entrance light is cue-controlled.** The absolute
+  it replaces — `always_on`, never dimmed by software — was asserted in
+  `CLAUDE.md`, `docs/deployment.md`, `config/hardware.yaml` and an earlier
+  CHANGELOG entry, and had not been true since the cue table took the entrance
+  over. It is an egress guarantee, so a reader in an emergency would have
+  believed the stronger version. All four now state the real rule: only a cue
+  may dim it, `blackout()` restores it, and `power_down()` is the one path that
+  leaves it dark.
+
+- **The admin-lockout recovery in `docs/security.md` could not work.** It named
+  `journalctl -u scanmania-core` (no such unit — there are two, `scanmania` and
+  `scanmania-kiosk`) and told the operator to set the password in
+  `/etc/scanmania/secrets.env`, which nothing reads. Both units read
+  `/etc/default/scanmania`. Corrected, with `-b` added so the command returns
+  *this* boot's password rather than a stale one.
+
+- **`docs/architecture.md` described a system that was never built** — four
+  services over unix sockets, an MJPEG stream, a cloud POST, and four dangling
+  `docs/protocols/*` links. The diagram and the service table now show the two
+  units that exist, and the protocol table drops cloud sync (ADR 0008), fixes
+  the camera resolution (1920×1080, not 1024×576 — invariant 3 makes that
+  load-bearing) and names the Opta rather than the Pico.
+
+- **ADR 0004 marked superseded** — physical inputs are an Arduino Opta over
+  Modbus TCP, not a Pico over USB. The "microcontroller, not an SBC" reasoning
+  still stands; the microcontroller and its transport changed.
+
+- **`docs/glossary.md` contradicted ADR 0009** in five definitions (a channel
+  drives a 5-laser segment, not one emitter; no dot is tied to a relay; ROIs
+  live under `mazes.<name>.cameras.<cam>.dots`; baselines are not captured
+  during the count-in ramp; preflight no longer checks beam ratios).
+
+- Corrected three of my own CHANGELOG errors: an entry claiming `mazes.yaml`
+  said five flashes when it still said three (the comment is fixed too), a haze
+  value that the box had since re-tuned, and a byte-identical duplicate entry.
+
+- `count_in.arm_preset` was read at runtime but existed only as a code default;
+  it is in `game.yaml` now. `preset_settle_ms` had been orphaned under the
+  wrong comment block, reading as if it violated a range printed above it. Six
+  `__init__.py` files gained the module docstring CLAUDE.md requires, two
+  inline metric strings now use their constants, and the dead `sync.*` metric
+  constants from cloud sync are gone.
+
+
 ### Added
 
 - **The count-in is synced to the soundtrack.** `game.mp3` carries its own
@@ -151,7 +197,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   taken the room to a hard 0. A lit maze over a black room read as a fault
   rather than a result.
 
-  Both shows now flash the verdict three times on the same cadence as the
+  Both shows flashed the verdict three times (later raised to five) on the same cadence as the
   house-light cue and end solid. Neither loops: a show that ends leaves its
   last preset applied and the reconciler holds it there, so the final step *is*
   the hold — no long `hold_ms`, and no relay moving while it waits.
@@ -163,21 +209,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `result` matches that level exactly, because FINISHED and RESULT are two
   states but one continuous moment to anyone watching, and a mismatch drops the
   room a step partway through for no visible reason.
-
-- **Signing a player in while they already stand on the plate now arms at
-  once.** Inputs are edge-triggered, which is right for a game driven by people
-  stepping on things — but a plate that is *already* held down when the GM
-  finishes typing the name never sends another `PlateHigh`, so the box sat in
-  REGISTERED and the player had to step off and back on with a queue watching.
-
-  Entering REGISTERED now asks the inputs backend for the plate's current
-  level instead of waiting for an edge, and enqueues a `PlateHigh` if it is
-  already down. `input_level()` is new on all three backends (Opta/Modbus reads
-  its existing poll cache; the Pico link and the fake now keep one). The FSM is
-  untouched and still pure — it sees an ordinary event and applies its usual
-  guards. Best-effort by design: a backend that cannot answer, or a link that
-  is down, falls back to the edge exactly as before.
-
 
 - **The maze stayed lit for 30 s after the stop button.** The house-light flash
   was right — the thing still on afterwards was the lasers. `clean` and `bust`
@@ -227,7 +258,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
-- **Default haze 35 -> 50** (`hardware.yaml`), tuned in the container.
+- **Default haze raised** (`hardware.yaml`, `hazer.default_haze`), tuned live in the container across several passes. The committed value is whatever the last `config: live tuning from scanmania-cc` commit set — `deploy.sh` commits the box's own edits, so read the file rather than this line.
 
 - **Chromium background networking off in `kiosk.sh`.** The box is offline at a
   venue and Chromium still spent its startup trying to register for Google

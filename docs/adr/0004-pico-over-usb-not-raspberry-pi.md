@@ -1,6 +1,9 @@
 # ADR 0004: Raspberry Pi Pico over USB for physical inputs, not a full SBC
 
-**Status:** Accepted
+**Status:** Superseded — physical inputs are an Arduino Opta over Modbus TCP
+(`inputs/modbus_inputs.py`, `inputs/firmware/opta/`). The reasoning below still
+holds for why a microcontroller rather than an SBC; only the microcontroller
+and its transport changed.
 **Date:** 2024-01-15
 
 ## Context

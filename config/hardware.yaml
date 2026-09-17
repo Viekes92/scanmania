@@ -197,9 +197,11 @@ hazer:
       entrance:
         channel: 5               # decoder ch3
         default: 255
-        # Never switched off by software, not even on shutdown. An Art-Net node
-        # holds the last frame it received, so this is the state the container
-        # is left in when the process exits — and a dark box with people in it
-        # and no lit exit is the one state worth hard-coding against.
+        # always_on means "only a light cue may dim it" — see ADR 0010. It is
+        # dark from sign-in to the result and lit in attract/master/aborted/
+        # fault, the states where somebody is walking in or out. Two absolutes
+        # remain: blackout() RESTORES it, so a dying process leaves the way out
+        # lit whatever the last cue said, and power_down() is the only path
+        # that leaves it dark — end of day, operator at the breaker.
         always_on: true
 

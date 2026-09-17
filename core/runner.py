@@ -1615,7 +1615,7 @@ class GameRunner:
         if problems:
             reason = "; ".join(problems)
             log.error("Preflight FAILED: %s", reason)
-            metrics.emit("preflight.failed", 1.0, {"reason": reason})
+            metrics.emit(metrics.PREFLIGHT_FAILED, 1.0, {"reason": reason})
             await self.put_event(PreflightFail(reason=reason))
             return
         await self.put_event(PreflightPass())
@@ -2205,7 +2205,7 @@ class GameRunner:
                         self.context.detection_mode = self._mode_before_stall or "assisted"
                         log.warning("vision recovered — detection back to %s",
                                     self.context.detection_mode)
-                        metrics.emit("vision.recovered", 1.0)
+                        metrics.emit(metrics.VISION_RECOVERED, 1.0)
             else:
                 log.warning("vision_listener: unknown event kind %r", kind)
 

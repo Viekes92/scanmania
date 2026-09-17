@@ -22,10 +22,23 @@ So an unset variable cannot lock the operator out of a live container, `__main__
 random password at boot, exports it into the process environment, and logs it at WARNING:
 
 ```
-journalctl -u scanmania-core | grep 'temporary admin password'
+journalctl -u scanmania -b | grep 'temporary admin password'
 ```
 
-Set the variable in `/etc/scanmania/secrets.env` to make it permanent.
+The unit is `scanmania` (there is no `scanmania-core`; the only two units are
+`scanmania` and `scanmania-kiosk`), and `-b` limits it to the current boot —
+the password is regenerated on every start, so an older one in the journal is
+misleading rather than useful.
+
+Make it permanent in **`/etc/default/scanmania`**, which is the file both units
+read via `EnvironmentFile=`:
+
+```
+SCANMANIA_ADMIN_PASSWORD=...
+```
+
+then `systemctl restart scanmania`. (`/etc/scanmania/secrets.env` is read by
+nothing — putting it there looks like it worked and silently does not.)
 
 This is a shared password over plain HTTP on a trusted LAN. It is not a user system, and it is not
 a substitute for network isolation.

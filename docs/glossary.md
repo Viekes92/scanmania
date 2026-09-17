@@ -5,7 +5,7 @@ Terms used throughout the codebase, config files, and docs. When in doubt, use t
 ---
 
 **beam**
-A single laser line, from emitter to ceiling. Identified by a string id (e.g. `b07`). Has one relay channel, one ROI on the camera, one set of detection thresholds. "Breaking a beam" = something enters the beam path, blocking it.
+A single laser line, from emitter to ceiling. Identified by a string id (e.g. `b07`). A relay channel drives a SEGMENT of 5 colinear lasers, so one channel means 5 ceiling dots. No dot is tied to a relay — see ADR 0009. "Breaking a beam" = something enters the beam path, blocking it.
 
 **dot**
 The bright spot a laser beam makes on the ceiling. This is what the camera watches. Dot present = beam intact. Dot gone = beam broken. The camera watches dots, not the beam line.
@@ -14,7 +14,7 @@ The bright spot a laser beam makes on the ceiling. This is what the camera watch
 A physical group of beams in one section of the container (e.g. cluster 1 = the first obstacle). Clusters map to game segments. Multiple beams per cluster; multiple clusters per board.
 
 **channel**
-A single relay output on a Waveshare board (1–16). One channel drives one laser emitter. The mapping from `beam.id` → `relay_channel` → board address is recorded in `config/beams.json` and `config/hardware.yaml`.
+A single relay output on a Waveshare board (1–16). One channel drives one SEGMENT: 5 emitters that switch together. The mapping from `beam.id` → `relay_channel` → board address is recorded in `config/beams.json` and `config/hardware.yaml`.
 
 **preset**
 A named laser configuration defined in `config/mazes.yaml`: a list of channels to energise. Examples: `blackout`, `attract`, `segment_1`, `bust`. Applied with a single `write_coils` call per board.
@@ -44,10 +44,10 @@ The staff member running sessions with an iPad. Always present. Responsible for 
 A separate FSM state where the gamemaster drives hardware directly: fire any preset, toggle individual channels, control the stopwatch manually. For demos, VIP runs, and fault-finding. Runs in master mode are excluded from the leaderboard by default. Accessed via long-press on `/gm` or from `/admin`.
 
 **ROI** (Region of Interest)
-The circular area in the camera frame that corresponds to one beam's ceiling dot. Defined in `config/beams.json` as `{cx, cy, r}` in pixels. Fixed per installation — if the camera moves, ROIs are invalid.
+The circular area in the camera frame that corresponds to one beam's ceiling dot. Defined in `config/beams.json` under `mazes.<name>.cameras.<cam>.dots` as `{cx, cy, r, baseline, masked}`. The 45 top-level `beams` entries are the relay wiring record and are NOT read at runtime in pixels. Fixed per installation — if the camera moves, ROIs are invalid.
 
 **baseline**
-The reference brightness reading for a beam's dot under normal lit conditions. Captured during pulse 0 of the count-in flash. Updated as a rolling EMA in `ATTRACT`. Frozen during a run. The denominator in `ratio = value / baseline`.
+The reference brightness reading for a beam's dot under normal lit conditions. Captured by `tools/capture.py` or Admin -> Calibration and stored in `beams.json`. (`count_in.baseline_pulse_index` is parsed and unused — nothing measures a baseline during the ramp). Updated as a rolling EMA in `ATTRACT`. Frozen during a run. The denominator in `ratio = value / baseline`.
 
 **ratio**
 `mean_top20_pct(ROI pixels) / baseline`. Below `break_ratio` for N consecutive frames = broken. Above `clear_ratio` for N frames = clear. Hysteresis prevents chatter at the boundary.
@@ -56,7 +56,7 @@ The reference brightness reading for a beam's dot under normal lit conditions. C
 The FSM state where the system is waiting for the player to step onto the start plate before a count-in. The start-plate HIGH event triggers the ready blink and pre-flight beam check.
 
 **pre-flight gate**
-The check at ARM (before count-in): every unmasked beam must read above `break_ratio`. Failure names the beam and blocks the count-in. The highest-value diagnostic in the system.
+The check at ARM (before count-in): the relay boards answer, vision is not stalled, the dot count is sane, and the stop button is not already pressed. Failure names the beam and blocks the count-in. The highest-value diagnostic in the system.
 
 **detection mode**
 `auto` — confirmed break immediately busts.

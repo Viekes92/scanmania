@@ -66,6 +66,11 @@ count_in:
   # baselines come from beams.json, and the FSM applies maze_1 at GO before
   # detection is armed. (baseline_pulse_index below is parsed and unused.)
   flash_preset: all_on
+
+  # What stays lit at ARM: the boxed-in shape the player stands inside while
+  # waiting for the count-in. Read at runtime by _handle_ready_blink; it was
+  # only ever a code default, which meant changing it required a code change.
+  arm_preset: arm_box
   # MUST match the preset that will be active at GO. The baseline is captured against this preset.
   # Changing this without changing maze_1 in mazes.yaml is a bug. See plan.md §4.3.
 
@@ -135,6 +140,11 @@ snapshot_keep: 48
 # Those lasers are physically still coming on, so a dark reading means nothing
 # yet. Channels lit in both the old and new shape are NOT paused — they keep
 # being watched straight through the transition. Sane range 100-500 ms.
+#
+# NOTE: 800 is above that range on purpose — it was raised for the real relay
+# boards, whose coils take longer to settle than the original estimate.
+preset_settle_ms: 800
+
 # Pause between a checkpoint firing and the maze taking its next shape. The
 # player is stepping over the checkpoint as it fires, and a shape that changes
 # under their feet is both startling and unfair.
@@ -144,13 +154,13 @@ snapshot_keep: 48
 # snap-immediately behaviour. Sane range 0-1000 ms.
 checkpoint_shape_delay_ms: 300
 
-preset_settle_ms: 800
-
 # ---------------------------------------------------------------------------
 # Audio — the container's soundtrack.
 #
-# Files are .wav under sounds_dir and are swapped by dropping a new file in and
-# keeping the name, or by changing the name here. A name that does not resolve
+# The BED streams and belongs in .mp3/.ogg — eight hours of .wav is 5 GB. CUES
+# are decoded into RAM at startup and must fire instantly, so those stay short
+# .wav. Swap either by dropping a new file in under the same name, or by
+# changing the name here. A name that does not resolve
 # is a log line and silence, never a crash: audio is decoration and must never
 # be able to end a run.
 #

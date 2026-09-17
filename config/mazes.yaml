@@ -156,12 +156,12 @@ shows:
   # FLASH the verdict, then HOLD it.
   #
   # The maze flashes with the house lights (cue `finished` / `busted` below, on
-  # the same three-beat cadence) and then settles solid until RESET swaps in
+  # the same five-beat cadence) and then settles solid until RESET swaps in
   # the attract show. Neither of these loops: a show that ends leaves its last
   # preset applied and the reconciler keeps re-asserting it, so the final step
   # IS the hold — no long hold_ms needed, and no relay moves while it waits.
   #
-  # Three flashes is 6 whole-board writes per run on top of the count-in ramp.
+  # FIVE flashes is 10 whole-board writes per run on top of the count-in ramp.
   # That is a deliberate cost, not an oversight: keep it in mind before adding
   # more, because every step here is 45 channels switching at once.
   bust:
@@ -260,7 +260,7 @@ light_cues:
   # shape stays the brightest thing in the container. A true blackout with the
   # maze solid read as a fault rather than a result.
   #
-  # The flash itself stays hard (fade: false) and on the same three-beat
+  # The flash itself stays hard (fade: false) and on the same five-beat
   # cadence as the laser shows above, so the room and the maze flash together.
   finished:
     description: "clean run — flash, then very dim while the verticals read"

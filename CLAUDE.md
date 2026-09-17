@@ -42,7 +42,9 @@ Frontends:
 - `/gm`           — gamemaster console (iPad, includes player sign-in)
 - `/admin`        — admin portal (laptop)
 - `/display/in`   — in-container stopwatch display (HDMI 1)
-- `/display/out`  — outdoor display: MJPEG feed + stopwatch + leaderboard (HDMI 2)
+- `/display/out`  — outdoor display: stopwatch + leaderboard (HDMI 2). No camera
+                    feed: `vision/mjpeg.py` was removed and BACK_CAM_URL is
+                    hardcoded null, so the black background is by design.
 
 ## How to run the tests
 
@@ -52,16 +54,18 @@ pytest tests/ -v
 
 Green means the pure-logic core is covered: every FSM transition (including false starts,
 out-of-order checkpoints, all detection modes), scoring, stopwatch and
-the reconciler. It does **not** mean the I/O layers are covered — `vision/`, `web/`,
-`inputs/`, `iobackend/modbus.py`, `config/loader.py` and `persist/db.py` have no tests, and
+the reconciler. It does **not** mean the I/O layers are covered — `inputs/`,
+`iobackend/modbus.py`, `config/loader.py` and `persist/db.py` have no tests, and `vision/`
+and `web/` are only partly covered (`test_maze_dots.py`, `test_vision_service.py`,
+`test_audit_fixes.py`), and
 the fakes are handed to the runner as inert stubs rather than driven through their own
 event pipelines. See `docs/testing.md`.
 
 ## Invariants — do not break these
 
 1. **`core/fsm.py` is a pure function.** No I/O, no `await`, no clock reads, no side effects. `transition(state, event, ctx)` returns `(new_state, [SideEffect, ...])`. Metrics are returned as `EmitMetric` effects, never emitted inline. Tests run 10 000 transitions with no mocks.
-2. **The server owns the stopwatch.** `time.monotonic_ns()` in `core/stopwatch.py` only. Never `datetime.now()`, never `Date.now()` in a browser. Browsers interpolate from server broadcasts and hard-correct on each message.
-3. **`config/beams.json` is the only source of truth for ROIs and thresholds.** `tools/capture.py` and the admin portal write to it; nothing else creates or modifies beam geometry. ROIs live under `mazes.<name>.cameras.<cam>.dots` — one capture per maze, because each shape lights about half the floor and a dot's baseline depends on which of its neighbours are lit. The 45 entries under `beams` are the relay wiring record and are **not** read at runtime. ROIs are frame pixels, so the capture resolution is stored beside them: a substream resolution change silently invalidates every saved ROI. See ADR 0009.
+2. **The server owns the stopwatch.** `time.monotonic_ns()` in `core/stopwatch.py` only. Never `datetime.now()`. A browser may call `Date.now()` for wall-clock display ("finished at 14:32") but must never compute a DURATION from it — the stopwatch interpolates from `performance.now()` and hard-corrects on every server broadcast. Browsers interpolate from server broadcasts and hard-correct on each message.
+3. **`config/beams.json` is the only source of truth for ROIs and thresholds.** `tools/capture.py` and the admin portal write to it; nothing else creates or modifies beam geometry. ROIs live under `mazes.<name>.cameras.<cam>.dots` — one capture per maze, because each shape lights about half the floor and a dot's baseline depends on which of its neighbours are lit. The 45 entries under `beams` are the relay wiring record and are **not** read at runtime. ROIs are frame pixels, so the capture resolution is stored beside them: a resolution change on the MAIN stream (which is what we decode) silently invalidates every saved ROI. See ADR 0009.
 4. **Never write coils outside `iobackend/presets.py`.** Every coil write goes through `apply_preset()`, `apply_all_off()`, `apply_channels()` or `apply_direct()`. The one sanctioned exception is `iobackend/reconcile.py`, which re-asserts desired state and documents itself as such. A direct `write_coils()` leaves `_desired` stale and the reconciler undoes the write within 500 ms.
 5. **Vision suppresses events when unsure.** Frame gap > 300 ms → no break events emitted, auto-drop to `manual` detection mode. An uncalibrated preset watches nothing at all. More than `max_simultaneous_breaks` dots dark at once is a hardware fault, not a player, and is suppressed. A false positive ends someone's run in front of a queue; silence is always safer.
 6. **Gameplay never awaits the network.** Cloud sync was removed (ADR 0008); there is no outbox and no remote endpoint. The rule still binds every remaining network path — Modbus to the relay boards, Art-Net to the hazer, RTSP to the cameras, WebSocket to the frontends: the game path writes to SQLite and returns. `persist/backup.py` does local snapshots only and is never awaited from the game path.
@@ -74,7 +78,7 @@ core/       Pure logic: FSM, stopwatch, scoring, events dataclasses, metrics fa�
 iobackend/  Modbus master, preset resolution, reconciliation loop, Art-Net DMX
             (hazer + room lights), FSM-driven light cues. fake.py is mandatory.
 inputs/     Pico USB serial link + MicroPython firmware. fake.py is mandatory.
-vision/     RTSP decode, dot detection, baseline, evidence thumbnails, MJPEG out. fake.py is mandatory.
+vision/     RTSP decode, dot detection, baseline, evidence thumbnails. fake.py is mandatory. (No MJPEG — removed.)
 audio/      The soundtrack: player.py owns the device, cues.py maps FSM states
             onto it, fake.py is mandatory. Sounds live in sounds/ as .wav.
 persist/    SQLite schema + migrations, local snapshots, CSV exports. No cloud sync.
@@ -96,11 +100,11 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
 
 ## Conventions
 
-- **Event types:** `SCREAMING_SNAKE_CASE`, defined exclusively in `core/events.py`. Every field documented, every emitter and consumer noted.
+- **Event types:** PascalCase dataclasses (`PlateHigh`, `Cp1Pressed`), defined exclusively in `core/events.py`. The `SCREAMING_SNAKE_CASE` names in that file are FSM *states*, not events. Every field documented, every emitter and consumer noted.
 - **Metric names:** `<domain>.<thing>.<verb|state>` snake_case — `relay.mismatch`, `run.completed`, `vision.stall`. Constants live in `core/metrics.py`; add new names there, not inline.
 - **Config keys:** add to the YAML/JSON file + a one-line comment with purpose and sane range + validation in `config/loader.py`.
 - **Commit format:** `<scope>: <what changed>` e.g. `fsm: handle false-start during COUNTDOWN`.
-- **DMX:** one universe, one owner — `iobackend/dmx.py`. Every Art-Net frame carries all 512 channels, so a second sender would zero the first one's work twice a second. Patch: ch1 hazer blower, ch2 haze, ch3 left, ch4 right, ch5 entrance. Run `python3 tools/dmxpatch.py` for the live sheet; it is generated from config, never hand-maintained. Haze is **duty-cycled** (`haze_burst_s` / `haze_interval_s`) because continuous output at any usable level is too much. Light levels come from `light_cues` in `mazes.yaml`, keyed by FSM state. The entrance is `always_on` and the DMX layer refuses to dim it — on every path except one: `DmxController.power_down()`, reached only from an explicit end-of-day shutdown request, where the operator is at the breaker and wants the box actually dark. `blackout()`, which is what a dying process calls, still leaves the entrance lit. COUNTDOWN and every RUN state are forced dark in code, over any cue and over the GM's work-light switch.
+- **DMX:** one universe, one owner — `iobackend/dmx.py`. Every Art-Net frame carries all 512 channels, so a second sender would zero the first one's work twice a second. Patch: ch1 hazer blower, ch2 haze, ch3 left, ch4 right, ch5 entrance. Run `python3 tools/dmxpatch.py` for the live sheet; it is generated from config, never hand-maintained. Haze is **duty-cycled** (`haze_burst_s` / `haze_interval_s`) because continuous output at any usable level is too much. Light levels come from `light_cues` in `mazes.yaml`, keyed by FSM state. The entrance is `always_on`, which now means **only a light cue may dim it** (`allow_always_on=True`, passed by `lightshow._apply()` alone) — see ADR 0010. It is dark from sign-in to the result and lit in attract/master/aborted/fault, the states where somebody is walking in or out. Two absolutes remain: `blackout()`, which is what a dying process calls, RESTORES it, and `DmxController.power_down()` is the only path that leaves it dark — end of day, operator at the breaker. COUNTDOWN and every RUN state are forced dark in code, over any cue and over the GM's work-light switch.
 - **Audio:** decoration, and it must never be able to end a run — a missing
   file, a dead sound card or a mixer that will not start are all silence plus a
   log line, never an exception on the game path. `audio.music` in `game.yaml` is

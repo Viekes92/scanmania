@@ -49,6 +49,11 @@ log = logging.getLogger(__name__)
 
 # The NUC boots faster than the PoE switch, so the relay boards are routinely
 # unreachable for the first few seconds of a venue power-up.
+# How long to wait after darkening the room before reading the cameras for the
+# ambient gate. Must comfortably exceed the light fade (lights.fade_ms) plus a
+# couple of frame periods, or the sample measures the room on its way down.
+_AMBIENT_SETTLE_S = 2.0
+
 _SELF_TEST_RETRY_S = 5.0
 # How long to keep probing before declaring FAULT.
 #
@@ -1038,25 +1043,37 @@ class GameRunner:
                 log.warning("recalibrate: could not suspend the work lights: %s", exc)
         if _hazer is not None and hasattr(_hazer, "lights_state"):
             try:
+                # SNAP every fixture to 0, not just the always_on ones, and
+                # with fade=False.
+                #
+                # set_work_lights(False) above goes through the cue player,
+                # whose _all_off() FADES over lights.fade_ms — 800 ms. The
+                # settle below was also 800 ms, so the ambient sample landed
+                # mid-ramp and measured a half-lit container. Art-Net capture
+                # during a real run of this: the room was still at 54/255 when
+                # the cameras were read and only reached 0 afterwards, which
+                # made every blob count meaningless and refused calibrations
+                # that should have passed.
                 for _n, _st in _hazer.lights_state().items():
-                    if not _st.get("always_on"):
-                        continue
                     # Remember the level it is ON, not its configured default —
                     # that is what "put it back" has to mean.
                     _dimmed.append((_n, int(_st.get("target", 255))))
                     _hazer.set_light(_n, 0, fade=False, allow_always_on=True)
                 if _dimmed:
-                    log.info("recalibrate: %s dark for the capture",
+                    log.info("recalibrate: %s snapped dark for the capture",
                              ", ".join(n for n, _ in _dimmed))
             except Exception as exc:
-                log.warning("recalibrate: could not dim the entrance: %s", exc)
+                log.warning("recalibrate: could not darken the room: %s", exc)
 
         try:
             # Ambient gate. Every ROI captured with the house lights on is wrong,
             # and the person who left them on is the same person clicking this.
             if self._resolver and self.io:
                 await self._resolver.apply_all_off(self.io)
-            await asyncio.sleep(0.8)
+            # Long enough for the relays to physically release AND for frames
+            # taken in the dark to reach us. 0.8 s was cutting it exactly at
+            # the light fade, so the measurement raced the thing it measures.
+            await asyncio.sleep(_AMBIENT_SETTLE_S)
             amb = await ambient_blobs(streams, params)
             worst = max(amb.values()) if amb else 0
             if worst > _MAX_AMBIENT_BLOBS:

@@ -232,6 +232,12 @@ class DetectionConfig:
     # dozens. Replaces the old per-channel "all 5 of its dots dark" rule, which
     # needed a dot-to-channel mapping we no longer have. Sane range 6-25.
     max_simultaneous_breaks: int = 10
+    # ...and FEWER than this many, ON ONE CAMERA, is not a person either. A
+    # body crossing a curtain blocks several of its lasers at once; a single
+    # dot flickering is haze drifting, a marginal r=4 dot, or sensor noise. In
+    # assisted mode every one of those raised the CONFIRM/VETO dialog in front
+    # of the GM. 1 restores the old any-single-dot behaviour. Sane range 1-5.
+    min_simultaneous_breaks: int = 1
     # Hysteresis thresholds, as a fraction of a dot's baseline. These used to be
     # read from beams[0] — one entry of the 45-channel wiring record that
     # invariant 3 says is not read at runtime — so one entry supplied the
@@ -596,6 +602,9 @@ def load_beams(path: Path | None = None) -> BeamsConfig:
             max_simultaneous_breaks=_ranged(
                 det.get("max_simultaneous_breaks", 10), 1, 100, 10,
                 "detection.max_simultaneous_breaks"),
+            min_simultaneous_breaks=_ranged(
+                det.get("min_simultaneous_breaks", 1), 1, 5, 1,
+                "detection.min_simultaneous_breaks"),
             **_ratios(det),
         ),
     )

@@ -133,16 +133,34 @@ def test_frames_are_routed_by_camera(cfg):
 # The count rule
 # ---------------------------------------------------------------------------
 
-def test_one_blocked_dot_is_a_break(cfg):
+def test_one_blocked_dot_is_a_break_only_below_the_cluster_threshold(cfg):
+    """
+    One dark dot busts when `min_simultaneous_breaks` is 1, and is IGNORED at 3.
+
+    The shipped value is 3: a body crossing a curtain blocks several of its
+    lasers at once, while a lone dot going dark is haze, a marginal r=4 dot or
+    sensor noise — and in assisted mode each of those put the CONFIRM/VETO
+    dialog in front of the GM mid-run. This pins both sides of the knob, since
+    the single-dot contract changed deliberately rather than by accident.
+    """
+    dots = cfg.beams.mazes["maze_1"].cameras["SM-CAM-11"].dots
+
+    cfg.beams.detection.min_simultaneous_breaks = 1
     breaks, faults = [], []
     d = _detector(cfg, breaks, faults)
     d.set_maze("maze_1", settle_ms=0)
     d.arm("run-1", grace_ms=0)
-
-    dots = cfg.beams.mazes["maze_1"].cameras["SM-CAM-11"].dots
     _pump(d, _frame(dots[1:]), "SM-CAM-11", _n(cfg))       # one dark
+    assert breaks == ["SM-CAM-11:d0"], "at a threshold of 1 a single dot must bust"
+    assert faults == []
 
-    assert breaks == ["SM-CAM-11:d0"], "a single blocked laser must bust"
+    cfg.beams.detection.min_simultaneous_breaks = 3
+    breaks, faults = [], []
+    d = _detector(cfg, breaks, faults)
+    d.set_maze("maze_1", settle_ms=0)
+    d.arm("run-2", grace_ms=0)
+    _pump(d, _frame(dots[1:]), "SM-CAM-11", _n(cfg))       # the same one dark
+    assert breaks == [], "at a threshold of 3 one dot must not raise the dialog"
     assert faults == []
 
 
@@ -202,6 +220,9 @@ def test_all_dots_lit_is_no_event(cfg):
 
 
 def test_the_darkest_dot_is_the_one_reported(cfg):
+    # About which dot is picked, not about the cluster rule — pin the
+    # threshold so the shipped value cannot change what this test means.
+    cfg.beams.detection.min_simultaneous_breaks = 1
     """Whatever a body is most squarely blocking is the best evidence crop."""
     breaks = []
     d = _detector(cfg, breaks)

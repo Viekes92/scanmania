@@ -204,6 +204,11 @@ class VisionService:
                 if gap_ms > self._stall_threshold_ms:
                     self._mark_stall(cam_id)
 
+            # Expire detector faults here rather than relying on status().
+            # status() is only called when a dashboard is open, so on a box
+            # nobody is looking at, a transient fault stayed latched forever.
+            self._expire_fault()
+
     def _expire_fault(self) -> str | None:
         """
         Forget a detector fault once the detector has been healthy for a while.
@@ -226,6 +231,15 @@ class VisionService:
                      healthy_s, self._fault_reason)
             self._fault_reason = None
             self._fault_since_ns = None
+            # ANNOUNCE the recovery. Clearing _fault_reason only made the
+            # dashboard look better: the ("stall", True) queued by
+            # _on_detector_fault was never retracted, because the only emitter
+            # of ("stall", False) is _sync_detector_stall(), which is driven by
+            # CAMERA stalls. With no camera stalled it was never called again,
+            # so a single mass-dark — the maze changing at a checkpoint is
+            # enough — dropped detection to manual for the rest of the SESSION,
+            # not the run. Nothing said so; the run simply stopped detecting.
+            self._sync_detector_stall()
         return self._fault_reason
 
     # ------------------------------------------------------------------

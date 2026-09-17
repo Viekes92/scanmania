@@ -185,3 +185,69 @@ def test_retiring_releases_the_capture_on_the_abandoned_worker():
         time.sleep(0.01)
     assert released, "the capture was never released by the retiring worker"
     ex.pool.shutdown(wait=False)
+
+
+def _fake_state(cam: str, idx: int, ratio: float):
+    """A real _DotState, so the test cannot drift from the class it exercises."""
+    from vision.detect import _DotState
+    from config.loader import Dot
+    st = _DotState(Dot(id=f"{cam}:d{idx}", cx=idx, cy=0, r=4,
+                       baseline=10.0, masked=False), cam, 3)
+    st.is_dark = True
+    st.last_ratio = ratio
+    return st
+
+
+def test_one_lonely_dot_does_not_raise_the_gm_dialog():
+    """
+    A body crossing a curtain blocks several of its lasers at once. A single
+    dot going dark is haze drifting, a marginal r=4 dot, or sensor noise — and
+    in assisted mode every one of those put the CONFIRM/VETO dialog in front of
+    the GM mid-run.
+    """
+    from vision.detect import DotDetector
+    import config.loader as loader
+
+    cfg = loader.load_beams()
+    cfg.detection.min_simultaneous_breaks = 3
+    fired: list = []
+    d = DotDetector(cfg, on_break=lambda *a, **k: fired.append(a),
+                    on_clear=lambda *a, **k: None,
+                    metrics_emit=lambda *a, **k: None)
+    d._armed = True
+    d._arm_time_ns = None
+
+    def _dark(cam: str, n: int):
+        d._states = {cam: {f"d{i}": _fake_state(cam, i, 0.1 - i * 0.01)
+                           for i in range(n)}}
+        d._reported_dark = set()
+        d._decide(0)
+
+    _dark("SM-CAM-11", 1)
+    assert fired == [], "a single dark dot still raised a break"
+    _dark("SM-CAM-11", 2)
+    assert fired == [], "two dark dots still raised a break"
+    _dark("SM-CAM-11", 3)
+    assert fired, "three dots on one camera is a body and must report"
+
+
+def test_two_cameras_each_flickering_once_is_not_a_body():
+    """Counted per camera: two unrelated single-dot glitches are two glitches."""
+    from vision.detect import DotDetector
+    import config.loader as loader
+
+    cfg = loader.load_beams()
+    cfg.detection.min_simultaneous_breaks = 3
+    fired: list = []
+    d = DotDetector(cfg, on_break=lambda *a, **k: fired.append(a),
+                    on_clear=lambda *a, **k: None,
+                    metrics_emit=lambda *a, **k: None)
+    d._armed = True
+    d._arm_time_ns = None
+
+    d._states = {}
+    for cam in ("SM-CAM-11", "SM-CAM-12", "SM-CAM-13"):
+        d._states[cam] = {"d0": _fake_state(cam, 0, 0.1)}
+    d._reported_dark = set()
+    d._decide(0)
+    assert fired == [], "three dots spread over three cameras reported as a body"

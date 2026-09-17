@@ -125,6 +125,8 @@ class DotDetector:
 
         self._n = beams_config.detection.consecutive_frames
         self._max_burst = beams_config.detection.max_simultaneous_breaks
+        self._min_burst = getattr(beams_config.detection,
+                                  "min_simultaneous_breaks", 1)
 
         # camera_id -> {dot_id: _DotState}, for the maze currently lit.
         self._states: dict[str, dict[str, _DotState]] = {}
@@ -379,11 +381,28 @@ class DotDetector:
                     self._on_fault(f"{len(dark)} dots dark at once", timestamp_ns)
             return
 
+        # ...and too FEW is not a person either. A body crossing a curtain
+        # blocks several of its lasers at once, so a real intrusion shows up as
+        # a cluster ON ONE CAMERA. A lone dot going dark is haze drifting
+        # through, a marginal r=4 dot, or sensor noise — and in assisted mode
+        # every one of those put the CONFIRM/VETO dialog in front of the GM.
+        #
+        # Counted per camera, not globally: two unrelated single-dot flickers
+        # on two cameras are two glitches, not one body.
+        per_cam: dict[str, list] = {}
+        for st in dark:
+            per_cam.setdefault(st.camera, []).append(st)
+        best_cam, cluster = max(per_cam.items(), key=lambda kv: len(kv[1]))
+        if len(cluster) < self._min_burst:
+            return
+
         if not self._can_emit_break(timestamp_ns):
             return
 
-        # Report the darkest dot — the one a body is most squarely blocking.
-        worst = min(dark, key=lambda st: st.last_ratio)
+        # Report the darkest dot of the cluster — the one a body is most
+        # squarely blocking — so the bust names a dot on the camera that
+        # actually saw it.
+        worst = min(cluster, key=lambda st: st.last_ratio)
 
         # Announce a given dot ONCE, not once per frame.
         #

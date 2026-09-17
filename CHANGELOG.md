@@ -7,6 +7,42 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Detection dropped to manual at the first maze change and never came back.**
+  A mass-dark burst — and a maze changing at a checkpoint is enough — calls
+  `_on_detector_fault`, which queues `("stall", True)` and drops detection to
+  manual per invariant 5. Nothing ever retracted it: the only emitter of
+  `("stall", False)` is `_sync_detector_stall()`, which is driven by CAMERA
+  stalls, so with no camera stalled it was never called again. `_expire_fault()`
+  cleared the dashboard string and emitted nothing — and it only ran when
+  somebody polled `status()`, so on an unattended box the fault latched
+  forever.
+
+  The recovery is announced now, and expiry runs from the watchdog rather than
+  from whoever happens to open a dashboard. This is almost certainly the
+  "bugging out after the first maze": detection silently stopped for the rest
+  of the session, with nothing on screen to say so.
+
+### Added
+
+- **`detection.min_simultaneous_breaks` (default 1, shipped 3).** Too FEW dark
+  dots is not a person either. A body crossing a curtain blocks several of its
+  lasers at once, so a real intrusion is a cluster **on one camera**; a lone dot
+  going dark is haze drifting, a marginal r=4 dot, or sensor noise. In assisted
+  mode each of those raised the CONFIRM/VETO dialog in front of the GM mid-run.
+
+  Counted per camera, not globally — two unrelated single-dot flickers on two
+  cameras are two glitches, not one body — and the reported dot is the darkest
+  of the qualifying cluster, so a bust still names a dot on the camera that saw
+  it. This sits under the existing `max_simultaneous_breaks`, giving a band:
+  fewer than 3 is noise, more than 10 is a hardware fault, between is a player.
+
+  It trades a missed single-laser clip for a quiet dialog, which is the
+  direction invariant 5 already prefers — a false positive ends someone's run
+  in front of a queue; silence is recoverable.
+
+
 ### Documentation
 
 - **ADR 0010 records that the entrance light is cue-controlled.** The absolute

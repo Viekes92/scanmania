@@ -141,8 +141,8 @@ class PlateLow:
     """
     Emitted by: inputs/pico_link.py when the start plate contact opens.
     Consumed by: FSM in ARM and COUNTDOWN states.
-    In ARM: player left before count-in → ARM → REGISTERED.
-    In COUNTDOWN: false start → COUNTDOWN → ARM with blackout.
+    NOT consumed in ARM: the FSM deliberately ignores it there (a player shifting their weight on the plate must not cancel the count-in).
+    NOT consumed in COUNTDOWN either — false starts are not handled; see tests/test_fsm.py, which asserts the ignore.
     """
     type: str = field(default="PlateLow", init=False)
 

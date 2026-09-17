@@ -11,7 +11,10 @@ Invariant: RUN states are always fully dark, whatever the cue file says and
            raises the reading and a genuinely broken beam can still read above
            break_ratio — a MISSED break, where a player runs clean through a
            beam they broke. That fails in the direction nobody sees.
-Invariant: the entrance light is never touched. The DMX layer refuses to dim it.
+Invariant: only a CUE may dim the entrance (allow_always_on=True, passed from
+           _apply() alone) — it is dark from sign-in to the result and lit
+           wherever somebody is walking in or out. blackout() restores it, and
+           power_down() is the only path that leaves it dark. See ADR 0010.
 
 A cue is a list of steps; each step sets levels and holds. Loop for ambient
 states, one-shot for moments:

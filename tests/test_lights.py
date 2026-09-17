@@ -4,7 +4,7 @@ tests/test_lights.py — DMX room lights and the state-driven cues.
 Inputs:  HazerController with a lights config; LightCuePlayer with cues
 Outputs: assertions on channel mapping, the entrance guard, fades, and the
          rule that a run is always dark
-Invariant: the entrance is never switched off, and COUNTDOWN/RUN states are
+Invariant: the entrance is dimmed only by a cue (ADR 0010), and COUNTDOWN/RUN states are
            dark regardless of cue or GM override.
 """
 

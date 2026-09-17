@@ -76,10 +76,19 @@ blanking_off() {
     xset s noblank  || echo "WARN: xset s noblank failed" >&2
 }
 blanking_off
+# Re-check after a beat, and retry once. Querying in the same instant as the
+# write reports the OLD state, which made this warn on a server that had in
+# fact just been set correctly — and a warning that cries wolf is how the real
+# one gets ignored.
+sleep 0.5
 if xset q | grep -q "DPMS is Enabled"; then
-    echo "WARN: DPMS is still enabled — the panels may blank" >&2
+    blanking_off
+    sleep 0.5
+fi
+if xset q | grep -q "DPMS is Enabled"; then
+    echo "WARN: DPMS is still enabled after two attempts — the panels may blank" >&2
 else
-    echo "screen blanking and DPMS disabled"
+    echo "screen blanking and DPMS disabled (timeout $(xset q | awk '/timeout:/{print $2; exit}'))"
 fi
 
 unclutter -idle 0.5 -root &

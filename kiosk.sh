@@ -75,21 +75,10 @@ blanking_off() {
     xset -dpms      || echo "WARN: xset -dpms failed" >&2
     xset s noblank  || echo "WARN: xset s noblank failed" >&2
 }
+# Called here AND again after the xrandr mode setting below, because
+# configuring an output re-enables DPMS: this ran before xrandr, so the setting
+# was silently undone every startup and the panels blanked ten minutes later.
 blanking_off
-# Re-check after a beat, and retry once. Querying in the same instant as the
-# write reports the OLD state, which made this warn on a server that had in
-# fact just been set correctly — and a warning that cries wolf is how the real
-# one gets ignored.
-sleep 0.5
-if xset q | grep -q "DPMS is Enabled"; then
-    blanking_off
-    sleep 0.5
-fi
-if xset q | grep -q "DPMS is Enabled"; then
-    echo "WARN: DPMS is still enabled after two attempts — the panels may blank" >&2
-else
-    echo "screen blanking and DPMS disabled (timeout $(xset q | awk '/timeout:/{print $2; exit}'))"
-fi
 
 unclutter -idle 0.5 -root &
 
@@ -191,6 +180,22 @@ launch() {   # launch <name> <WxH> <x-offset> <url>
 }
 
 echo "Launching:"
+# AFTER xrandr. Configuring an output turns DPMS back on, so disabling it
+# before the mode set — which is what this script did — achieved nothing. The
+# supervision loop re-asserts it too, which is what was quietly rescuing the
+# panels five seconds later.
+blanking_off
+sleep 0.5
+if xset q | grep -q "DPMS is Enabled"; then
+    blanking_off
+    sleep 0.5
+fi
+if xset q | grep -q "DPMS is Enabled"; then
+    echo "WARN: DPMS still enabled after the mode set — the panels may blank" >&2
+else
+    echo "screen blanking off (saver timeout $(xset q | awk '/timeout:/{print $2; exit}'), DPMS disabled)"
+fi
+
 [ -n "${MODE_IN:-}" ]  && launch in  "$MODE_IN"  0       "$SERVER/display/in"
 [ -n "${MODE_OUT:-}" ] && launch out "$MODE_OUT" "$W_IN" "$SERVER/display/out"
 

@@ -342,6 +342,27 @@ class DotDetector:
 
     def _decide(self, timestamp_ns: int) -> None:
         """Act on the COUNT of dark dots, not on which ones."""
+        # Only while ARMED. Unarmed, no break can be emitted anyway
+        # (_can_emit_break refuses), so the only thing this could still do is
+        # raise the mass-dark fault — and between runs "most dots are dark" is
+        # the INTENDED state, not a hardware failure.
+        #
+        # This stopped every run dead. ARM lights `arm_box` — three channels,
+        # so the player is boxed in rather than standing in the dark — while
+        # the detector stays pointed at maze_1's 137 dots, because preflight
+        # needs a calibrated dot count to check. ~130 of those dots are
+        # therefore legitimately dark, the rule called it "31 dots dark at
+        # once", vision dropped to manual and the FSM went ARM -> FAULT. Five
+        # test runs in a row never reached the count-in.
+        #
+        # The mismatch between "what is watched" and "what is lit" is
+        # deliberate here; what was wrong was judging it.
+        if not self._armed:
+            self._reported_dark.clear()
+            if self._fault_reported:
+                self._fault_reported = False
+            return
+
         # See _reported_dark below: a break is announced once per dot, not once
         # per frame, or a player standing in a beam produces ~6 events/second.
         # auto_masked dots are NOT sampled any more (process_frame skips them),

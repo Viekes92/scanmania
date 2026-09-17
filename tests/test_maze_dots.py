@@ -394,3 +394,42 @@ def test_apply_baselines_carries_drift_across_a_maze_change(cfg):
     dots = cfg.beams.mazes["maze_2"].cameras["SM-CAM-11"].dots
     _pump(d2, _frame(dots), "SM-CAM-11", _n(cfg) + 2)
     assert breaks == []
+
+
+def test_arm_does_not_report_a_fault_for_the_maze_it_is_not_lighting(cfg):
+    """
+    ARM lights `arm_box` — three channels, so the player is boxed in rather
+    than standing in the dark — while the detector stays pointed at the full
+    maze, because preflight needs a calibrated dot count to check. Nearly every
+    watched dot is therefore legitimately dark.
+
+    Judging that was fatal: the mass-dark rule called it a hardware fault,
+    vision dropped to manual and the FSM went ARM -> FAULT. Five consecutive
+    test runs on the box never reached the count-in.
+    """
+    # Mirror the box: far more dark dots than the mass-dark limit. On the real
+    # maze that is ~130 of 137 against a limit of 10.
+    cfg.beams.detection.max_simultaneous_breaks = 5
+    breaks, faults = [], []
+    d = _detector(cfg, breaks, faults)
+    d.set_maze("maze_1", settle_ms=0)
+    # NOT armed — this is ARM, before GO.
+    _pump(d, _frame([]), "SM-CAM-11", _n(cfg))       # every dot dark
+
+    assert faults == [], f"ARM reported a hardware fault: {faults}"
+    assert breaks == [], "an unarmed detector emitted a break"
+
+
+def test_the_same_darkness_IS_a_fault_once_armed(cfg):
+    """The rule itself is right — it just must not run before GO."""
+    # The fixture camera has 8 dots; drop the limit below that so "all dark"
+    # is genuinely a mass-dark rather than a large break.
+    cfg.beams.detection.max_simultaneous_breaks = 5
+    breaks, faults = [], []
+    d = _detector(cfg, breaks, faults)
+    d.set_maze("maze_1", settle_ms=0)
+    d.arm("run-1", grace_ms=0)
+    _pump(d, _frame([]), "SM-CAM-11", _n(cfg))       # every dot dark
+
+    assert faults, "a genuine mass-dark during a run was not reported"
+    assert breaks == [], "mass-dark must suppress, never bust"

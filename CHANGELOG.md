@@ -9,6 +9,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Every run went ARM → FAULT: the detector judged a maze that was not lit.**
+  Five consecutive test runs on the box never reached the count-in.
+
+  ARM lights `arm_box` — three channels, so the player is boxed in rather than
+  standing in the dark — while the detector stays pointed at maze_1's 137 dots,
+  because preflight needs a calibrated dot count to check. Roughly 130 of those
+  dots are therefore legitimately dark, and the mass-dark rule reported "31 dots
+  dark at once", dropped vision to manual, and the FSM went ARM → FAULT.
+
+  `_decide()` now only runs while detection is ARMED. Unarmed, no break can be
+  emitted anyway — `_can_emit_break` refuses — so the only thing it could still
+  do was raise that fault, and between runs "most dots are dark" is the
+  intended state rather than a hardware failure. The mismatch between what is
+  watched and what is lit is deliberate at ARM; judging it was the bug. The
+  rule itself is unchanged and still fires during a run.
+
+
+### Fixed
+
 - **The kiosk froze and was never relaunched.** `kiosk.sh`'s supervision loop
   opened with `wait -n`, which blocks until a background job **terminates** — so
   the health check below it only ran after a Chromium *process* died, and

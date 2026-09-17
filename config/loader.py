@@ -243,11 +243,16 @@ class DetectionConfig:
     # Sane range 45-120, and re-measure after changing break_ratio, which is
     # what moves the player figure.
     max_simultaneous_breaks: int = 60
-    # ...and FEWER than this many, ON ONE CAMERA, is not a person either. A
-    # body crossing a curtain blocks several of its lasers at once; a single
-    # dot flickering is haze drifting, a marginal r=4 dot, or sensor noise. In
-    # assisted mode every one of those raised the CONFIRM/VETO dialog in front
-    # of the GM. 1 restores the old any-single-dot behaviour. Sane range 1-5.
+    # ...and FEWER than this many, ON ONE CAMERA, is not a person either.
+    #
+    # Set to 1 — any single dot — and that is deliberate. Above 1 this requires
+    # dots to be dark SIMULTANEOUSLY, which structurally misses a swipe: an arm
+    # sweeping across a curtain darkens one dot, clears it, then darkens the
+    # next, so two are rarely dark in the same frame. Raising it was a defence
+    # against a noise floor of ~55 phantom dots per camera, which the
+    # recalibration took to 0; it now guards against nothing and costs real
+    # detections. Sane range 1-5, and only raise it if the measured noise floor
+    # justifies it.
     min_simultaneous_breaks: int = 1
     # Hysteresis thresholds, as a fraction of a dot's baseline. These used to be
     # read from beams[0] — one entry of the 45-channel wiring record that

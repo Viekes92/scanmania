@@ -634,13 +634,13 @@
     }
   ],
   "detection": {
-    "consecutive_frames": 2,
+    "consecutive_frames": 1,
     "arm_grace_ms": 150,
     "stall_threshold_ms": 300,
     "global_break_rate_limit": 6,
     "flap_count_threshold": 5,
     "flap_window_s": 60,
-    "min_simultaneous_breaks": 2,
+    "min_simultaneous_breaks": 1,
     "break_ratio": 0.5,
     "clear_ratio": 0.65,
     "max_simultaneous_breaks": 60

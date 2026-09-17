@@ -9,6 +9,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **A swipe through a beam was structurally undetectable.** Not a pipeline
+  problem: every frame of every camera is analysed synchronously with no queue
+  and nothing discarded, measured at 25.0 fps with 17-24 ms frame age on all
+  eight during a real run. The confirm rules were throwing the swipe away.
+
+  - `min_simultaneous_breaks` 2 → **1**. Above 1 this requires dots to be dark
+    *in the same frame*, and a sweep does the opposite — it darkens one dot,
+    clears it, then darkens the next. Two are rarely dark together, so the rule
+    penalised exactly the motion it should catch. It was raised as a defence
+    against ~55 phantom dots per camera; the recalibration took that to 0, so
+    it was guarding against nothing and costing real detections.
+  - `consecutive_frames` 2 → **1**. An arm crosses a beam in roughly 40 ms —
+    one frame at 25 fps — so demanding two consecutive dark frames discarded
+    the fastest and most obvious way to break a beam.
+
+
+### Fixed
+
 - **Detection dropped to manual mid-run: the mass-dark limit was measuring a
   player, not a fault.** `max_simultaneous_breaks` was 10, counted across ALL
   cameras. Recording a normal run showed a real player darkening **12-43 dots

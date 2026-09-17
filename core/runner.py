@@ -812,7 +812,9 @@ class GameRunner:
         # Entering MASTER: kill all background tasks and clear run context
         if new_state == "MASTER" and old_state != "MASTER":
             for attr in ("_show_task", "_count_in_task", "_arm_timeout_task",
-                         "_result_timeout_task", "_max_run_task"):
+                         "_result_timeout_task", "_max_run_task",
+                         "_deferred_preset_task", "_registered_timeout_task",
+                         "_assisted_task"):
                 self._cancel_task(attr)
             # Clear stale run context so next game session starts fresh
             self.context.run_id = None
@@ -855,7 +857,8 @@ class GameRunner:
         # Cancel all outstanding timers
         for attr in ("_arm_timeout_task", "_result_timeout_task", "_max_run_task",
                      "_count_in_task", "_show_task", "_self_test_task",
-                     "_assisted_task", "_registered_timeout_task"):
+                     "_assisted_task", "_registered_timeout_task",
+                     "_deferred_preset_task"):
             self._cancel_task(attr)
         self.context.run_id = None
         self.context.player_id = None
@@ -972,7 +975,12 @@ class GameRunner:
         # Sanctioned because MASTER is required to get here, so the only person
         # who could be inside is the GM who clicked this, and it is put back in
         # the finally below on every path out — refusal, exception or clean save.
-        _prev_work = None
+        # A SENTINEL, not None: None is now a legitimate value for the
+        # override ("the cue table decides"), and testing `is not None` meant
+        # the restore below was skipped on the normal path — leaving the work
+        # lights latched OFF after every calibration.
+        _UNSET = object()
+        _prev_work: object = _UNSET
         _dimmed: list[tuple[str, int]] = []
         _hazer = getattr(self, "hazer", None)
         if self.lights is not None:
@@ -1073,7 +1081,7 @@ class GameRunner:
                     _hazer.set_light(_n, _lvl, fade=False, allow_always_on=True)
                 except Exception as exc:
                     log.error("recalibrate: FAILED to relight '%s': %s", _n, exc)
-            if self.lights is not None and _prev_work is not None:
+            if self.lights is not None and _prev_work is not _UNSET:
                 try:
                     self.lights.set_work_lights(_prev_work)
                 except Exception as exc:
@@ -1138,6 +1146,12 @@ class GameRunner:
         # changing shape at a checkpoint.
         if self._refuse_after_power_down(f"ApplyPreset({effect.preset_name!r})"):
             return
+
+        # Any preset write supersedes a pending deferred one. Without this a
+        # checkpoint's 300 ms shape change outlived the blackout meant to end
+        # it: tap MASTER mid-window and the lasers came back on 300 ms after
+        # the container went dark, with the GM walking into it.
+        self._cancel_task("_deferred_preset_task")
 
         delay_ms = 0
         if getattr(effect, "defer", False):
@@ -1212,6 +1226,9 @@ class GameRunner:
         log.info("[SideEffect] PlayShow(%r)", effect.show_name)
         if self._refuse_after_power_down(f"PlayShow({effect.show_name!r})"):
             return
+        # A show owns the coils, so a pending deferred preset must not land in
+        # the middle of it — see _handle_apply_preset.
+        self._cancel_task("_deferred_preset_task")
         # Cancel any currently playing show
         self._cancel_task("_show_task")
 
@@ -1558,12 +1575,19 @@ class GameRunner:
         # broken stop circuit makes every run end the instant it starts, and
         # from the floor that looks like the game is simply broken with no
         # clue why. Say it here, once, before anyone queues up.
+        # Ask the backend for the level. The old form zipped _input_map.VALUES
+        # (insertion order) against _prev_states (indexed by input number), so
+        # a reordered map in hardware.yaml paired the names to the wrong
+        # inputs — and it read two private attributes PicoLink does not have,
+        # so under that backend the check silently never fired at all.
+        stop_level = None
         try:
-            states = dict(zip(getattr(self.inputs, "_input_map", {}).values(),
-                              getattr(self.inputs, "_prev_states", [])))
-        except Exception:
-            states = {}
-        if states.get("stop"):
+            getter = getattr(self.inputs, "input_level", None)
+            if callable(getter):
+                stop_level = getter("stop")
+        except Exception as exc:
+            log.warning("preflight: could not read the stop button: %s", exc)
+        if stop_level == 1:
             problems.append(
                 "the stop button reads as PRESSED before the run started — it "
                 "is normally closed, so this is usually a cut wire or an "

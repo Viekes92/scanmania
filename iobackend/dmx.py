@@ -80,7 +80,23 @@ class DmxController:
         cfg = lights or {}
         self._lights: dict[str, dict] = {}
         for name, spec in (cfg.get("fixtures") or {}).items():
-            ch = int(spec["channel"]) - 1
+            # A DMX frame is 512 slots. Nothing validated this, and the two
+            # failure modes were both silent-to-catastrophic: channel 0 gave
+            # ch=-1, which Python happily writes to dmx[511] — the wrong
+            # fixture, no error — and anything above 512 raised IndexError
+            # inside _send(), which is unguarded in the keepalive loop, so the
+            # task died and the node froze on its last frame forever.
+            try:
+                raw_ch = int(spec["channel"])
+            except (KeyError, TypeError, ValueError):
+                log.error("DMX fixture %r has no usable channel — ignoring", name)
+                continue
+            if not 1 <= raw_ch <= 512:
+                log.error("DMX fixture %r: channel %d is outside 1-512 — "
+                          "ignoring it rather than corrupting the frame",
+                          name, raw_ch)
+                continue
+            ch = raw_ch - 1
             lvl = int(spec.get("default", 255))
             self._lights[name] = {"ch": ch, "level": float(lvl), "target": lvl,
                                   "fade_from": float(lvl), "fade_start": None,
@@ -153,7 +169,10 @@ class DmxController:
         dmx[self._fan_ch] = self._fan
         dmx[self._haze_ch] = self._haze if self._output_haze() else 0
         for st in self._lights.values():
-            dmx[st["ch"]] = max(0, min(255, int(round(st["level"]))))
+            ch = st["ch"]
+            if not 0 <= ch < len(dmx):      # unreachable via __init__; see above
+                continue
+            dmx[ch] = max(0, min(255, int(round(st["level"]))))
         packet = _build_artdmx(self._universe, dmx)
         try:
             self._sock.sendto(packet, (self._ip, ARTNET_PORT))

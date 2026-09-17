@@ -467,7 +467,7 @@ def load_hardware() -> HardwareConfig:
             nuc_ip=net.get("nuc_ip", "172.16.0.1"),
             web_port=net.get("web_port", 8000),
         ),
-        hazer=hazer_d,  # pass raw dict — __main__.py reads it directly
+        hazer=_validate_hazer(hazer_d),  # pass raw dict — __main__.py reads it directly
         inputs=d.get("inputs"),
     )
 
@@ -727,6 +727,45 @@ def _ratios(det: dict) -> dict:
                   br, cl)
         br, cl = 0.4, 0.65
     return {"break_ratio": br, "clear_ratio": cl}
+
+
+def _validate_hazer(h: dict | None) -> dict | None:
+    """
+    Range-check the hazer block, which is otherwise a raw untyped dict.
+
+    `hazer` and `inputs` are handed to __main__.py as plain dicts and read with
+    .get() defaults, so nothing enforced the ranges the comments promise. A
+    typo'd `default_haze` silently fell back to the code default of 128 — more
+    than twice the level tuned in the container, and too much haze breaks
+    detection as surely as none.
+
+    Clamps rather than raises: sound and haze are decoration, and a bad value
+    must not stop the box booting into a playable state at a venue.
+    """
+    if not isinstance(h, dict):
+        return h
+    out = dict(h)
+    for key, lo, hi, default in (("universe", 0, 32_767, 1),
+                                 ("fan_channel", 1, 512, 1),
+                                 ("haze_channel", 1, 512, 2),
+                                 ("default_fan", 0, 255, 200),
+                                 ("default_haze", 0, 255, 128)):
+        if key in out:
+            out[key] = _ranged(out[key], lo, hi, default, f"hazer.{key}")
+    for key, default in (("haze_burst_s", 0.0), ("haze_interval_s", 0.0)):
+        if key in out:
+            out[key] = _ranged(out[key], 0.0, 3600.0, default, f"hazer.{key}")
+    fixtures = ((out.get("lights") or {}).get("fixtures") or {})
+    for name, spec in list(fixtures.items()):
+        if not isinstance(spec, dict):
+            continue
+        if "channel" in spec:
+            spec["channel"] = _ranged(spec["channel"], 1, 512, 1,
+                                      f"hazer.lights.fixtures.{name}.channel")
+        if "default" in spec:
+            spec["default"] = _ranged(spec["default"], 0, 255, 255,
+                                      f"hazer.lights.fixtures.{name}.default")
+    return out
 
 
 def _parse_audio(d: dict) -> AudioConfig:

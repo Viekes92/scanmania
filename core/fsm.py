@@ -303,6 +303,17 @@ def _break_effects_for_mode(ctx: FSMContext, event: BreakConfirmed, current_run_
                 save evidence, broadcast (GM gets CONFIRM/VETO prompt)
     manual:   → stay in current RUN state (advisory only), broadcast
     """
+    # Already adjudicating a break: keep the first one. The GM is looking at
+    # that dot and its evidence thumbnail, and the stopwatch is halted at that
+    # moment. A player walking out of the maze clips more beams, and each one
+    # used to overwrite pending_break — silently re-aiming the decision at a
+    # different dot and re-arming the full assisted deadline — so CONFIRM
+    # recorded a bust on the last beam broken on the way out, timed at the
+    # first. Only reachable in assisted mode; auto goes straight to BUSTED.
+    if ctx.pending_break:
+        return _log_ignored(current_run_state, event,
+                            {"reason": "break_while_adjudicating"})
+
     mode = ctx.detection_mode
 
     if mode == DetectionMode.auto:
@@ -508,6 +519,18 @@ def _handle_global(state: str, event: Any, ctx: FSMContext) -> tuple[str, list] 
     # GmAbort — valid in RUN states, COUNTDOWN, REGISTERED, ARM only.
     if etype is GmAbort and state in (RUN_SEG_1, RUN_SEG_2, RUN_SEG_3, COUNTDOWN, REGISTERED, ARM):
         effects = [ApplyPreset("blackout"), StopStopwatch(), DisarmDetection()]
+        # Clear the pending break BEFORE the row is written, exactly as
+        # _abort_effects does. _handle_save_run falls back to
+        # ctx.pending_break for busting_beam_id, so an ABORTED run was being
+        # recorded as busted on a dot no human adjudicated — and the GM
+        # console's confirm/veto overlay, which keys purely off pending_break,
+        # hung over the result with both buttons inert.
+        #
+        # This path is the one that matters: the assisted decision timeout
+        # dispatches GmAbort automatically, so it fired without anyone
+        # choosing it. The original fix landed only on MaxRunExceeded.
+        ctx.pending_break = None
+        ctx.assisted_halt_elapsed_ms = None
         if ctx.run_id and state in RUN_STATES:
             effects += [
                 SaveRun(outcome=RunOutcome.aborted, run_id=ctx.run_id),

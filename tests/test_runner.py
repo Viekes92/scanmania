@@ -1520,17 +1520,63 @@ def test_recalibration_keeps_the_hand_tuned_params():
     assert cams["SM-CAM-11"]["params"] == tuned, "recapture overwrote the tuning"
 
 
-def test_a_recapture_that_loses_most_dots_is_not_saved():
-    """Far more likely someone in the container, a door open, or a camera that
+@pytest.mark.asyncio
+async def test_a_recapture_that_loses_most_dots_is_not_saved(
+        fake_config, fake_io, fake_inputs, fake_vision, db):
+    """
+    Far more likely someone in the container, a door open, or a camera that
     dropped out than a real change of that size — and saving it would replace a
-    working calibration with a broken one."""
-    report = {
-        "mazes": {"maze_1": {"total_was": 137, "total_now": 40, "_candidate": {}}},
-        "notes": [],
-    }
-    lost = [m for m, d in report["mazes"].items()
-            if d["total_was"] and d["total_now"] < d["total_was"] * 0.75]
-    assert lost == ["maze_1"], "the believability gate would not have caught this"
+    working calibration with a broken one.
+
+    This used to build a dict, re-implement the gate inside the test body and
+    assert its own list comprehension; recalibrate() was never called, so
+    deleting the real gate left it green. It drives the real thing now.
+    """
+    import vision.recalibrate as _vr
+
+    r = GameRunner(config=fake_config, io_backend=fake_io,
+                   inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    await r.dispatch(BootComplete())
+    await r.dispatch(SelfTestPass())
+    await _drain(r, iterations=5, pause=0)
+    await r.dispatch(MasterModeEngage())
+    await _drain(r, iterations=5, pause=0)
+    assert r.state == "MASTER"
+    r.vision._streams = {"SM-CAM-11": object()}
+
+    # Pretend beams.json already knows about 100 dots on this camera.
+    prev = {"maze_1": {"cameras": {"SM-CAM-11": {
+        "dots": [{"id": f"SM-CAM-11:d{i}", "cx": i, "cy": 0, "r": 4,
+                  "baseline": 9.0, "masked": False} for i in range(100)]}}}}
+    r.config.beams.mazes = prev
+
+    async def _clean_ambient(streams, params):
+        return {"SM-CAM-11": 0}
+
+    async def _lost_most(streams, params, previous=None):
+        # Only 10 of the 100 come back.
+        return {"SM-CAM-11": {"w": 1920, "h": 1080, "params": {}, "dots": [
+            {"id": f"SM-CAM-11:d{i}", "cx": i, "cy": 0, "r": 4,
+             "baseline": 9.0, "masked": False} for i in range(10)]}}
+
+    written = []
+    mp = pytest.MonkeyPatch()
+    mp.setattr(_vr, "ambient_blobs", _clean_ambient)
+    mp.setattr(_vr, "recapture_maze", _lost_most)
+    async def _record(report):
+        written.append(report)
+        return True
+    mp.setattr(r, "_write_calibration", _record)
+    try:
+        out = await r.recalibrate(mazes=["maze_1"], apply=True)
+    finally:
+        mp.undo()
+
+    assert out["applied"] is False, "a capture that lost 90% of the dots was saved"
+    assert written == [], "_write_calibration ran despite the gate"
+    assert any("NOT saved" in n for n in out["notes"]), out["notes"]
+    for a in ("_show_task", "_arm_timeout_task", "_result_timeout_task"):
+        r._cancel_task(a)
 
 
 @pytest.mark.asyncio
@@ -1547,8 +1593,12 @@ async def test_preflight_names_a_stuck_stop_button(
     r = GameRunner(config=fake_config, io_backend=fake_io,
                    inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
     r.context.detection_mode = "manual"        # isolate the input check
-    fake_inputs._input_map = {0: "plate", 1: "cp1", 2: "cp2", 3: "stop"}
-    fake_inputs._prev_states = [False, False, False, True]   # stop stuck on
+    # Through the public accessor, not the backend's private attrs. The old
+    # form zipped _input_map.values() against _prev_states, which only agreed
+    # by luck of insertion order and did not exist at all on PicoLink — so the
+    # test could never have caught either bug.
+    await fake_inputs.trigger_input("stop", 1)                # stop stuck on
+    assert fake_inputs.input_level("stop") == 1
 
     await r._handle_beam_preflight_check(BeamPreflightCheck())
     ev = r._event_queue.get_nowait()
@@ -1564,7 +1614,7 @@ async def test_preflight_passes_with_the_stop_button_at_rest(
     r = GameRunner(config=fake_config, io_backend=fake_io,
                    inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
     r.context.detection_mode = "manual"
-    fake_inputs._input_map = {0: "plate", 1: "cp1", 2: "cp2", 3: "stop"}
+    await fake_inputs.trigger_input("stop", 0)                # at rest
     fake_inputs._prev_states = [False, False, False, False]
 
     await r._handle_beam_preflight_check(BeamPreflightCheck())
@@ -1589,12 +1639,22 @@ async def test_a_deferred_preset_switches_detector_and_coils_together(
     r._current_preset = "maze_1"
     fake_config.game.checkpoint_shape_delay_ms = 200
 
-    await r._handle_apply_preset(ApplyPreset("maze_2", defer=True))
-    # Straight after the call, nothing has moved yet.
-    assert r._current_preset == "maze_1", "the detector switched before the coils"
+    def coils_now():
+        return [tuple(b.coils) for b in fake_io.all_boards()]
 
-    await asyncio.sleep(0.35)
+    before = coils_now()
+    await r._handle_apply_preset(ApplyPreset("maze_2", defer=True))
+
+    # HALFWAY THROUGH the delay — not immediately. create_task only schedules,
+    # so asserting at t=0 passed even with _apply_maze hoisted above the sleep,
+    # which is the exact bug this test claims to guard against.
+    await asyncio.sleep(0.1)
+    assert r._current_preset == "maze_1", "the detector switched before the coils"
+    assert coils_now() == before, "the coils moved before the delay elapsed"
+
+    await asyncio.sleep(0.25)
     assert r._current_preset == "maze_2", "the deferred switch never happened"
+    assert coils_now() != before, "the detector moved but the coils never did"
     r._cancel_task("_deferred_preset_task")
 
 
@@ -1752,7 +1812,12 @@ async def test_a_backend_that_cannot_report_levels_still_works(
     await _drain(r, iterations=5, pause=0)
     await r.dispatch(PlayerRegistered(player_id="p-plate", nickname="Ada"))
     await _drain(r, iterations=5, pause=0)
+    # Still REGISTERED is necessary but not sufficient — it is equally true
+    # with the whole feature deleted. The discriminating part is that the
+    # backend was consulted and its refusal handled, not that nothing blew up.
     assert r.state == "REGISTERED"
+    assert not hasattr(r.inputs, "input_level"), "fixture no longer models an old backend"
+    assert r._event_queue.empty(), "a synthetic PlateHigh was enqueued anyway"
     for a in ("_show_task", "_registered_timeout_task"):
         r._cancel_task(a)
 
@@ -1820,7 +1885,24 @@ async def test_boot_self_test_waits_out_a_slow_router(
     await r._run_self_test()
 
     assert calls["n"] >= 4, "it gave up before the boards came back"
-    assert r.state != "FAULT", "a slow router still latched FAULT"
+    # Not merely "not FAULT" — that is equally true of "nothing happened".
+    # Leaving SELF_TEST at all is what proves the probe concluded and passed.
+    assert r.state not in ("SELF_TEST", "FAULT", "BOOT"), \
+        f"the self test never concluded (state={r.state})"
+
+    # The actual regression was the WINDOW: six attempts five seconds apart
+    # gave ~25 s against a router that takes ~120. Prove the deadline is read
+    # from config rather than a fixed attempt count.
+    calls["n"] = 0
+    fake_config.game.self_test_boot_timeout_s = 0      # window already spent
+    r2 = GameRunner(config=fake_config, io_backend=fake_io,
+                    inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
+    await r2.dispatch(BootComplete())
+    await r2._run_self_test()
+    assert calls["n"] == 1, \
+        f"a zero-length window still retried {calls['n']} times — attempt-counted, not timed"
+    for a in ("_show_task", "_self_test_task"):
+        r2._cancel_task(a)
     for a in ("_show_task", "_self_test_task"):
         r._cancel_task(a)
 

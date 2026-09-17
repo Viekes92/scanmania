@@ -232,6 +232,12 @@ class PicoLink:
     # ------------------------------------------------------------------
 
     def _set_connected(self, value: bool) -> None:
+        if not value:
+            # Forget the cached levels. They are edge-derived, so anything that
+            # changed while the link was down was never reported: a plate that
+            # was held when the cable pulled would still read as held after the
+            # reconnect, and sign-in would arm a run with nobody standing on it.
+            self._levels.clear()
         if self._connected != value:
             self._connected = value
             log.info("PicoLink: link %s", "UP" if value else "DOWN")

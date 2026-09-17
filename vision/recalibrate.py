@@ -102,6 +102,23 @@ async def ambient_blobs(streams: dict[str, Any], params: dict[str, dict]) -> dic
     return out
 
 
+def _was_masked(prev_cam: dict | None, cx: int, cy: int) -> bool:
+    """
+    Was there a masked dot at roughly this position before?
+
+    Matched on position, not id: ids are positional (`cam:dN`, reading order),
+    so a recapture that changes a camera's dot count renumbers everything after
+    the change and carrying the flag by id would move it to the wrong dot.
+    """
+    for dot in ((prev_cam or {}).get("dots") or []):
+        if not dot.get("masked"):
+            continue
+        if (abs(int(dot.get("cx", -999)) - cx) <= _MATCH_TOL_PX
+                and abs(int(dot.get("cy", -999)) - cy) <= _MATCH_TOL_PX):
+            return True
+    return False
+
+
 async def recapture_maze(streams: dict[str, Any], params: dict[str, dict],
                          previous: dict | None = None) -> dict:
     """
@@ -128,11 +145,17 @@ async def recapture_maze(streams: dict[str, Any], params: dict[str, dict],
             # wrote geometry without baselines would leave every dot blind
             # (baseline <= 0 is skipped by process_frame) — a green console in
             # front of a maze detecting nothing.
+            # Masked dots stay masked. This wrote False unconditionally, so
+            # an Admin -> Calibration Save silently un-masked every dot an
+            # operator had deliberately taken out of detection — a reflection,
+            # a dead laser — and it would start busting players again with
+            # nothing in the UI to say why. Carried by POSITION, because the
+            # ids are positional and a recapture renumbers them.
             "dots": [
                 {"id": f"{cid}:d{i}", "cx": cx, "cy": cy, "r": r,
                  "baseline": round(float(sample_circle(frame, cx, cy, r)), 3)
                              if frame is not None else 0.0,
-                 "masked": False}
+                 "masked": _was_masked(prev.get(cid), cx, cy)}
                 for i, (cx, cy, r) in enumerate(dots)
             ],
         }

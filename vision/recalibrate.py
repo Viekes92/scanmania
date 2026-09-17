@@ -42,6 +42,12 @@ _PASS_GAP_S = 0.6
 # A dot found in two passes within this many pixels is the same dot.
 _MATCH_TOL_PX = 6
 
+# Frames to median before looking for dots or measuring a baseline. Matches
+# tools/capture.py's _MEDIAN_FRAMES; a single frame carries enough sensor noise
+# to lose the dimmer dots and to bias every baseline.
+_MEDIAN_FRAMES = 7
+_FRAME_GAP_S = 0.04          # ~one frame at 25 fps
+
 # With every laser off, a correctly dark container shows almost nothing. More
 # blobs than this means ambient light — house lights on, or a door open onto a
 # sunlit yard — and every ROI captured under it would be wrong.
@@ -72,14 +78,44 @@ def _cluster(passes: list[list[tuple[int, int, int]]]) -> list[tuple[int, int, i
     return out
 
 
+async def _median_frames(streams: dict[str, Any], n: int = _MEDIAN_FRAMES
+                        ) -> dict[str, np.ndarray]:
+    """
+    A per-camera median of n consecutive frames.
+
+    tools/capture.py medians 7 frames for exactly this reason and this path did
+    not, which made the two calibration routes disagree by about 30%: on a
+    single raw frame the marginal dots flicker across the threshold, fail the
+    3-of-5 persistence rule below, and get dropped. A recalibration therefore
+    reported losing a third of the dots the capture tool had just found, and
+    the believability gate — correctly — refused to save it.
+
+    It matters more for the BASELINE than for the geometry. The baseline is the
+    reference every runtime ratio is divided by, so measuring it off one noisy
+    frame bakes that frame's noise into every comparison for the rest of the
+    day: a few percent low and the dot reads permanently bright, so real breaks
+    are missed.
+    """
+    stacks: dict[str, list] = {cid: [] for cid in streams}
+    for _ in range(max(1, n)):
+        for cid, stream in streams.items():
+            f = getattr(stream, "last_frame", None)
+            if f is not None:
+                stacks[cid].append(f)
+        await asyncio.sleep(_FRAME_GAP_S)
+    out = {}
+    for cid, frames in stacks.items():
+        if frames:
+            out[cid] = np.median(np.stack(frames), axis=0).astype(np.uint8)
+    return out
+
+
 async def _sample(streams: dict[str, Any], params: dict[str, dict]) -> dict[str, list]:
     """Run _PASSES over every live camera and cluster what persists."""
     per_cam: dict[str, list[list]] = {cid: [] for cid in streams}
     for _ in range(_PASSES):
-        for cid, stream in streams.items():
-            frame = getattr(stream, "last_frame", None)
-            if frame is None:
-                continue
+        frames = await _median_frames(streams)
+        for cid, frame in frames.items():
             try:
                 per_cam[cid].append(find_dots(frame, params.get(cid) or DEFAULT_PARAMS))
             except Exception as exc:
@@ -129,11 +165,16 @@ async def recapture_maze(streams: dict[str, Any], params: dict[str, dict],
     compares against to decide whether the result is believable.
     """
     found = await _sample(streams, params)
+    # Median again for the BASELINE measurement, for the same reason: this
+    # number is the divisor for every ratio the detector computes afterwards.
+    medians = await _median_frames(streams)
     prev = previous or {}
     cameras: dict[str, dict] = {}
     for cid, dots in found.items():
         stream = streams[cid]
-        frame = getattr(stream, "last_frame", None)
+        frame = medians.get(cid)
+        if frame is None:
+            frame = getattr(stream, "last_frame", None)
         h, w = (frame.shape[0], frame.shape[1]) if frame is not None else (0, 0)
         cameras[cid] = {
             "w": w,

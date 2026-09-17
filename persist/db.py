@@ -487,9 +487,15 @@ class Database:
         """
         where_clauses = ["r.outcome = 'clean'", "r.elapsed_ms IS NOT NULL"]
         params: list[Any] = []
+        # The per-player "best run" subquery has to be scoped the SAME way as
+        # the outer query, or the two disagree — see below.
+        best_scope_sql = ""
+        best_scope_params: list[Any] = []
 
         if scope == "daily":
             start, end = day_bounds()
+            best_scope_sql = " AND r2.started_at >= ? AND r2.started_at < ?"
+            best_scope_params = [start, end]
             # Bounded on BOTH sides. With only a lower bound, a session recorded
             # while the clock was wrong (dead CMOS battery, blocked NTP) pinned
             # junk times to the daily board permanently.
@@ -508,11 +514,13 @@ class Database:
                     SELECT MIN(r2.elapsed_ms) FROM runs r2
                     WHERE r2.player_id = r.player_id
                       AND r2.outcome = 'clean' AND r2.elapsed_ms IS NOT NULL
+                      {best_scope_sql}
                   )
             GROUP BY r.player_id
             ORDER BY r.elapsed_ms ASC, r.started_at ASC
             LIMIT ?
         """
+        params.extend(best_scope_params)
         params.append(limit)
 
         async with self._db.execute(query, params) as cur:

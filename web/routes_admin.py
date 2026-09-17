@@ -919,7 +919,7 @@ def register_routes(
 
         `day` is an ISO date (YYYY-MM-DD) selecting a past operating day;
         omitted means today. The operating day rolls over at
-        SCANMANIA_DAY_START_HOUR (default 06:00 local), so a session running
+        SCANMANIA_DAY_START_HOUR (default 09:00 local), so a session running
         past midnight stays on one export.
         """
         if day:

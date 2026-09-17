@@ -185,29 +185,43 @@ class VisionService:
         """
         while True:
             await asyncio.sleep(_WATCHDOG_INTERVAL_S)
-            now_ns = time.monotonic_ns()
-            for cam_id, stream in self._streams.items():
-                last = stream.last_frame_ns
-                if last is None:
-                    # Not a stall during startup — but a camera that has NEVER
-                    # delivered is exactly as blind as one that stopped, and
-                    # this branch made it invisible to the gate preflight
-                    # reads. One dead PoE port meant ~20 dots silently unwatched
-                    # while the console reported no stall, and a player ran
-                    # clean through that quarter of the maze all day.
-                    started = self._started_ns.get(cam_id)
-                    if started is not None and (
-                            (now_ns - started) / 1_000_000 > _FIRST_FRAME_GRACE_MS):
-                        self._mark_stall(cam_id)
-                    continue
-                gap_ms = (now_ns - last) / 1_000_000
-                if gap_ms > self._stall_threshold_ms:
-                    self._mark_stall(cam_id)
+            try:
+                self._watchdog_pass()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                # Never let one bad pass kill the loop. This is the ONLY thing
+                # that catches a camera which freezes with its TCP connection
+                # open, and invariant 5's suppression depends on it — a dead
+                # watchdog means stalls stop being noticed entirely, silently,
+                # for the rest of the session.
+                log.warning("vision watchdog pass failed: %s", exc)
 
-            # Expire detector faults here rather than relying on status().
-            # status() is only called when a dashboard is open, so on a box
-            # nobody is looking at, a transient fault stayed latched forever.
-            self._expire_fault()
+    def _watchdog_pass(self) -> None:
+        """One sweep: mark stalled cameras, then expire any detector fault."""
+        now_ns = time.monotonic_ns()
+        for cam_id, stream in self._streams.items():
+            last = stream.last_frame_ns
+            if last is None:
+                # Not a stall during startup — but a camera that has NEVER
+                # delivered is exactly as blind as one that stopped, and
+                # this branch made it invisible to the gate preflight
+                # reads. One dead PoE port meant ~20 dots silently unwatched
+                # while the console reported no stall, and a player ran
+                # clean through that quarter of the maze all day.
+                started = self._started_ns.get(cam_id)
+                if started is not None and (
+                        (now_ns - started) / 1_000_000 > _FIRST_FRAME_GRACE_MS):
+                    self._mark_stall(cam_id)
+                continue
+            gap_ms = (now_ns - last) / 1_000_000
+            if gap_ms > self._stall_threshold_ms:
+                self._mark_stall(cam_id)
+
+        # Expire detector faults here rather than relying on status().
+        # status() is only called when a dashboard is open, so on a box
+        # nobody is looking at, a transient fault stayed latched forever.
+        self._expire_fault()
 
     def _expire_fault(self) -> str | None:
         """

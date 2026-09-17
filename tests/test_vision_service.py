@@ -251,3 +251,41 @@ def test_two_cameras_each_flickering_once_is_not_a_body():
     d._reported_dark = set()
     d._decide(0)
     assert fired == [], "three dots spread over three cameras reported as a body"
+
+
+@pytest.mark.asyncio
+async def test_a_detector_fault_does_not_latch_detection_into_manual():
+    """
+    A mass-dark burst drops detection to manual (invariant 5). Something has to
+    put it back.
+
+    Nothing did: _on_detector_fault queued ("stall", True), and the only
+    emitter of ("stall", False) is _sync_detector_stall(), which is driven by
+    CAMERA stalls. With no camera stalled it was never called again, so one
+    transient — a maze changing at a checkpoint is enough — left detection in
+    manual for the rest of the SESSION, with nothing on screen to say so.
+    """
+    import config.loader as loader
+    from vision.service import VisionService
+
+    svc = VisionService.__new__(VisionService)      # no cameras, no threads
+    svc._queue = asyncio.Queue()
+    svc._stalled_cameras = set()
+    svc._last_emitted_stall = None
+    svc._fault_reason = None
+    svc._fault_since_ns = None
+    svc._fault_clear_after_s = 0.0
+    svc._detector = type("D", (), {"in_fault": False,
+                                   "set_stalled": lambda self, v: None})()
+    svc._metrics_emit = lambda *a, **k: None
+
+    svc._on_detector_fault("12 dots dark at once", 0)
+    kind, stalled, _ = svc._queue.get_nowait()
+    assert (kind, stalled) == ("stall", True), "the fault did not suppress"
+
+    # The detector recovers; the fault expires.
+    svc._expire_fault()
+    assert svc._fault_reason is None, "the fault never cleared"
+    kind, stalled, _ = svc._queue.get_nowait()
+    assert (kind, stalled) == ("stall", False), \
+        "recovery was never announced — detection stays manual forever"

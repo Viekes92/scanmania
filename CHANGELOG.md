@@ -9,6 +9,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **The daily leaderboard silently dropped returning players.** The
+  "one row per player" subquery took `MIN(elapsed_ms)` over a player's ENTIRE
+  history while the outer query was filtered to today, so the two disagreed: if
+  someone's best-ever run was set on an earlier day, no run from today could
+  equal it and they vanished from today's board completely. On a two-month tour
+  that quietly empties the daily board of regulars — the exact people most
+  likely to check it. The subquery is scoped the same way as the outer query
+  now; the all-time board is unchanged.
+
+- **The vision watchdog could die and take stall detection with it.** Its loop
+  body had no exception guard, and it is the only thing that catches a camera
+  frozen with its TCP connection open — invariant 5's suppression depends on
+  it. One bad pass killed it for the rest of the session, silently. The pass is
+  isolated now: log and carry on.
+
+- `docs`/`routes_admin` claimed `SCANMANIA_DAY_START_HOUR` defaults to 06:00.
+  It is 09:00.
+
+
+### Fixed
+
 - **Detection dropped to manual at the first maze change and never came back.**
   A mass-dark burst — and a maze changing at a checkpoint is enough — calls
   `_on_detector_fault`, which queues `("stall", True)` and drops detection to

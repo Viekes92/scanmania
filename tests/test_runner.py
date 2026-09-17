@@ -1544,11 +1544,20 @@ async def test_a_recapture_that_loses_most_dots_is_not_saved(
     assert r.state == "MASTER"
     r.vision._streams = {"SM-CAM-11": object()}
 
-    # Pretend beams.json already knows about 100 dots on this camera.
-    prev = {"maze_1": {"cameras": {"SM-CAM-11": {
-        "dots": [{"id": f"SM-CAM-11:d{i}", "cx": i, "cy": 0, "r": 4,
-                  "baseline": 9.0, "masked": False} for i in range(100)]}}}}
-    r.config.beams.mazes = prev
+    # REAL dataclasses, exactly as config/loader.py produces them. This test
+    # used to assign raw dicts, which is not the shape the loader returns —
+    # so it passed while the live path raised
+    # "'MazeROIs' object has no attribute 'get'" and the admin Calibration
+    # button 500'd. A fixture that invents its own shape cannot catch that.
+    from config.loader import MazeROIs, CameraCapture, Dot
+    r.config.beams.mazes = {
+        "maze_1": MazeROIs(name="maze_1", cameras={
+            "SM-CAM-11": CameraCapture(
+                camera="SM-CAM-11", w=1920, h=1080, params={"thr": 8},
+                dots=[Dot(id=f"SM-CAM-11:d{i}", cx=i, cy=0, r=4,
+                          baseline=9.0, masked=False) for i in range(100)]),
+        }),
+    }
 
     async def _clean_ambient(streams, params):
         return {"SM-CAM-11": 0}

@@ -65,6 +65,51 @@ _SELF_TEST_BOOT_TIMEOUT_S = 180.0
 _SELF_TEST_WARM_TIMEOUT_S = 25.0
 
 
+def _beams_as_plain(mazes) -> dict:
+    """
+    `config.beams.mazes` in the plain JSON shape this path reads and writes.
+
+    config/loader.py parses beams.json into MazeROIs / CameraCapture / Dot
+    DATACLASSES, but recalibration reads the previous capture with .get() and
+    hands it to vision/recalibrate.py, which also speaks dicts because what it
+    returns is written straight back to beams.json. Those two shapes met here
+    and nothing reconciled them: the admin Calibration button raised
+    `'MazeROIs' object has no attribute 'get'` and returned a 500, so the
+    feature had never once run against the real config.
+
+    Tolerates either shape, so a caller passing raw JSON (a test, a file just
+    read) still works.
+    """
+    out: dict = {}
+    for name, mz in (mazes or {}).items():
+        if isinstance(mz, dict):
+            out[name] = mz
+            continue
+        cams: dict = {}
+        for cid, cap in (getattr(mz, "cameras", None) or {}).items():
+            if isinstance(cap, dict):
+                cams[cid] = cap
+                continue
+            cams[cid] = {
+                "w": getattr(cap, "w", 0),
+                "h": getattr(cap, "h", 0),
+                "params": dict(getattr(cap, "params", None) or {}),
+                "dots": [
+                    d if isinstance(d, dict) else {
+                        "id": getattr(d, "id", ""),
+                        "cx": getattr(d, "cx", 0),
+                        "cy": getattr(d, "cy", 0),
+                        "r": getattr(d, "r", 0),
+                        "baseline": getattr(d, "baseline", 0.0),
+                        "masked": bool(getattr(d, "masked", False)),
+                    }
+                    for d in (getattr(cap, "dots", None) or [])
+                ],
+            }
+        out[name] = {"name": name, "cameras": cams}
+    return out
+
+
 class MasterModeRequired(RuntimeError):
     """Raised when a master-mode-only operation is attempted outside MASTER."""
 
@@ -955,8 +1000,10 @@ class GameRunner:
 
         existing = {}
         try:
-            existing = (self.config.beams.mazes or {}) if self.config else {}
-        except Exception:
+            existing = _beams_as_plain(
+                (self.config.beams.mazes or {}) if self.config else {})
+        except Exception as exc:
+            log.warning("recalibrate: could not read the existing capture: %s", exc)
             existing = {}
 
         params = {cid: (blk or {}).get("params") or {}

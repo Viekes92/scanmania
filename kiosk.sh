@@ -47,11 +47,41 @@ CHROME_FLAGS=(
 Xorg :0 -nolisten tcp vt7 &
 XPID=$!
 trap 'kill $XPID 2>/dev/null' EXIT
-sleep 2
 
 export DISPLAY=:0
-xset s off -dpms 2>/dev/null
-xset s noblank 2>/dev/null
+
+# WAIT for X to accept connections instead of guessing.
+#
+# This was `sleep 2`, and the guess was wrong: Xorg on this box needs about
+# five seconds to reach "Connected outputs", so every xset below ran against a
+# server that was not listening yet and failed — silently, because the errors
+# went to /dev/null. Screen blanking therefore kept X's DEFAULT 600 s timeout,
+# and ten minutes into a show both panels went black while Chromium carried on
+# running behind them, title counter still ticking. That is the kiosk
+# "stopping" after a while.
+for _i in $(seq 1 60); do
+    xset q >/dev/null 2>&1 && break
+    sleep 0.5
+done
+if ! xset q >/dev/null 2>&1; then
+    echo "X did not accept connections within 30 s — exiting so systemd retries" >&2
+    exit 1
+fi
+
+# Never swallow these again: a failure here is invisible until a panel goes
+# dark mid-show, which is the worst possible time to find out.
+blanking_off() {
+    xset s off      || echo "WARN: xset s off failed" >&2
+    xset -dpms      || echo "WARN: xset -dpms failed" >&2
+    xset s noblank  || echo "WARN: xset s noblank failed" >&2
+}
+blanking_off
+if xset q | grep -q "DPMS is Enabled"; then
+    echo "WARN: DPMS is still enabled — the panels may blank" >&2
+else
+    echo "screen blanking and DPMS disabled"
+fi
+
 unclutter -idle 0.5 -root &
 
 # Highest-resolution mode on $1 that runs at >= MIN_HZ. xrandr lists modes
@@ -234,6 +264,10 @@ while true; do
     # Reap any job that did exit, without blocking, so a crashed Chromium does
     # not sit as a zombie for the life of the unit.
     jobs -rp >/dev/null 2>&1 || true
+    # Re-assert blanking-off. Costs nothing, and means a panel cannot go dark
+    # mid-show because something re-enabled DPMS behind us.
+    xset s off >/dev/null 2>&1 || true
+    xset -dpms >/dev/null 2>&1 || true
     for name in in out; do
         [ "$name" = "in" ]  && [ -z "${MODE_IN:-}" ]  && continue
         [ "$name" = "out" ] && [ -z "${MODE_OUT:-}" ] && continue

@@ -9,6 +9,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **The kiosk panels went black ten minutes into every show.** `kiosk.sh` calls
+  `xset s off -dpms` to stop X blanking the screens, but it ran two seconds
+  after launching Xorg — and Xorg on this box needs about five to accept
+  connections. The calls failed against a server that was not listening yet,
+  and `2>/dev/null` hid it, so blanking silently kept X's default 600 s
+  timeout. `xset q` on the box confirmed it: `DPMS is Enabled`, `Monitor is
+  Off`, while Chromium was still running and its title counter still ticking.
+
+  It now waits for X to accept connections rather than guessing, checks the
+  result instead of discarding it, warns if DPMS is still enabled afterwards,
+  and re-asserts it on every supervision pass.
+
+### Changed
+
+- **`min_simultaneous_breaks` 3 → 2.** Measured from the recorded runs: an arm
+  through a beam produces **2 dark dots on the best camera**, so a threshold of
+  3 meant a player had to block about four beams to be caught. 3 was chosen
+  when the detector was finding 55 phantom dots per camera in a dark room; with
+  the new calibration the noise floor is 0, so the extra margin buys nothing.
+
+
+### Fixed
+
 - **Every run went ARM → FAULT: the detector judged a maze that was not lit.**
   Five consecutive test runs on the box never reached the count-in.
 

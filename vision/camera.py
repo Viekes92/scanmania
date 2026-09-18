@@ -188,7 +188,14 @@ class CameraStream:
     Stall detection: if the gap between decoded frames exceeds _STALL_THRESHOLD_MS
     the on_stall callback fires and is_stalled becomes True until frames resume.
 
-    Boot-time drift check: call check_drift() after connect() to compare the live
+    No drift check. check_drift() was removed: it had ZERO callers, the ref/
+    frames it compared against never existed, and the metric was wrong for the
+    job anyway — a single global phase correlation is dominated by the static
+    ceiling, while dot ROIs are 0.2-0.3% of the frame, so the per-dot drift
+    ADR 0009 describes was invisible to it. Its 2 px threshold was also ~2x
+    tighter than any real dot's tolerance (min 4.25 px, median 7.75 px).
+    Geometry drift is checked by Admin -> Calibration -> Check, which compares
+    found dots against the stored ROIs per dot.
     image against a stored reference frame. A shift > 2 px means the camera moved.
     """
 
@@ -209,6 +216,7 @@ class CameraStream:
         self._last_frame_ns: int | None = None
         self._last_frame: np.ndarray | None = None
         self._stalled: bool = False
+        self._backoff_s: float = _RECONNECT_MIN_S
         self._fps_accumulator: list[float] = []  # inter-frame intervals (s)
 
     # ------------------------------------------------------------------
@@ -222,24 +230,33 @@ class CameraStream:
         Runs until cancelled. Reconnects with capped backoff on failure.
         """
         log.info("CameraStream '%s': starting, url=%s", self._config.id, self._config.url)
-        backoff = _RECONNECT_MIN_S
+        # Reset lives on the instance and is done by _open_and_read the moment
+        # a frame actually arrives.
+        #
+        # It used to sit on the line after `await self._open_and_read()`, which
+        # is unreachable: that method contains no return statement at all, only
+        # raises, so it can never fall through. The backoff therefore doubled
+        # 2 -> 4 -> 8 -> 16 -> 30 and NEVER reset for the life of the process.
+        # By late afternoon a single blip cost ~36 s of reconnect wait — and
+        # because one stalled camera suppresses the whole detector, that is the
+        # entire fleet blind for longer than a run.
+        self._backoff_s = _RECONNECT_MIN_S
         try:
             while True:
                 try:
                     await self._open_and_read()
-                    backoff = _RECONNECT_MIN_S
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
                     log.warning("CameraStream '%s': stream error (%s), "
                                 "reconnecting in %.0f s",
-                                self._config.id, exc, backoff)
+                                self._config.id, exc, self._backoff_s)
                 self._release()
-                await asyncio.sleep(backoff)
+                await asyncio.sleep(self._backoff_s)
                 # Capped backoff. Eight cameras retrying flat-out every 2 s
                 # after a switch reboot is a connect storm that also occupies a
                 # reader thread per attempt.
-                backoff = min(backoff * 2, _RECONNECT_MAX_S)
+                self._backoff_s = min(self._backoff_s * 2, _RECONNECT_MAX_S)
         finally:
             # A cancelled task used to jump straight past the release, orphaning
             # an ffmpeg subprocess that kept its RTSP session — which is what
@@ -355,6 +372,9 @@ class CameraStream:
                 if len(self._fps_accumulator) > 60:
                     self._fps_accumulator.pop(0)
 
+            # A frame arrived, so this connection works: forget the backoff
+            # that got us here. Anything else leaves it ratcheted up forever.
+            self._backoff_s = _RECONNECT_MIN_S
             self._last_frame_ns = now_ns
             self._last_frame = frame
 
@@ -365,55 +385,6 @@ class CameraStream:
     # Boot-time drift check
     # ------------------------------------------------------------------
 
-    def check_drift(self, reference_path: str) -> float:
-        """
-        Compare the current live frame to the stored reference using phase correlation
-        on the red channel. Returns the Euclidean shift in pixels.
-
-        Raises RuntimeError if no frame has been decoded yet.
-        Calls on_drift if shift > _DRIFT_THRESHOLD_PX.
-        """
-        if self._last_frame is None:
-            raise RuntimeError(
-                f"CameraStream '{self._config.id}': no frame available for drift check"
-            )
-
-        ref = cv2.imread(reference_path)
-        if ref is None:
-            raise RuntimeError(f"Could not load reference frame from '{reference_path}'")
-
-        live = self._last_frame
-
-        # Resize reference to match live if needed
-        if ref.shape[:2] != live.shape[:2]:
-            ref = cv2.resize(ref, (live.shape[1], live.shape[0]))
-
-        # Red channel isolation
-        ref_red = ref[:, :, 2].astype(np.float32)
-        live_red = live[:, :, 2].astype(np.float32)
-
-        shift, _ = cv2.phaseCorrelate(ref_red, live_red)
-        drift_px = float(np.hypot(shift[0], shift[1]))
-
-        log.info(
-            "CameraStream '%s': drift check shift=(%.2f, %.2f) drift=%.2f px",
-            self._config.id, shift[0], shift[1], drift_px,
-        )
-
-        if drift_px > _DRIFT_THRESHOLD_PX:
-            log.warning(
-                "CameraStream '%s': CAMERA_MOVED — drift=%.2f px (threshold=%.1f px)",
-                self._config.id, drift_px, _DRIFT_THRESHOLD_PX,
-            )
-            self._on_drift(self._config.id, drift_px)
-
-        return drift_px
-
-    # ------------------------------------------------------------------
-    # Properties
-    # ------------------------------------------------------------------
-
-    @property
     def fps(self) -> float:
         """Current decoded FPS (rolling average of last 60 inter-frame intervals)."""
         if not self._fps_accumulator:

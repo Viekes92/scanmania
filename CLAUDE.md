@@ -67,7 +67,10 @@ event pipelines. See `docs/testing.md`.
 2. **The server owns the stopwatch.** `time.monotonic_ns()` in `core/stopwatch.py` only. Never `datetime.now()`. A browser may call `Date.now()` for wall-clock display ("finished at 14:32") but must never compute a DURATION from it — the stopwatch interpolates from `performance.now()` and hard-corrects on every server broadcast. Browsers interpolate from server broadcasts and hard-correct on each message.
 3. **`config/beams.json` is the only source of truth for ROIs and thresholds.** `tools/capture.py` and the admin portal write to it; nothing else creates or modifies beam geometry. ROIs live under `mazes.<name>.cameras.<cam>.dots` — one capture per maze, because each shape lights about half the floor and a dot's baseline depends on which of its neighbours are lit. The 45 entries under `beams` are the relay wiring record and are **not** read at runtime. ROIs are frame pixels, so the capture resolution is stored beside them: a resolution change on the MAIN stream (which is what we decode) silently invalidates every saved ROI. See ADR 0009.
 4. **Never write coils outside `iobackend/presets.py`.** Every coil write goes through `apply_preset()`, `apply_all_off()`, `apply_channels()` or `apply_direct()`. The one sanctioned exception is `iobackend/reconcile.py`, which re-asserts desired state and documents itself as such. A direct `write_coils()` leaves `_desired` stale and the reconciler undoes the write within 500 ms.
-5. **Vision suppresses events when unsure.** Frame gap > 300 ms → no break events emitted, auto-drop to `manual` detection mode. An uncalibrated preset watches nothing at all. More than `max_simultaneous_breaks` dots dark at once is a hardware fault, not a player, and is suppressed. A false positive ends someone's run in front of a queue; silence is always safer.
+5. **Vision suppresses events when unsure.** A dot whose baseline is below
+   `detection.min_baseline` is not watched at all and is reported as `blind`,
+   because `ratio = value/baseline` on a near-zero baseline is noise divided by
+   noise (ADR 0011). Frame gap > 300 ms → no break events emitted, auto-drop to `manual` detection mode. An uncalibrated preset watches nothing at all. More than `max_simultaneous_breaks` dots dark at once is a hardware fault, not a player, and is suppressed. A false positive ends someone's run in front of a queue; silence is always safer.
 6. **Gameplay never awaits the network.** Cloud sync was removed (ADR 0008); there is no outbox and no remote endpoint. The rule still binds every remaining network path — Modbus to the relay boards, Art-Net to the hazer, RTSP to the cameras, WebSocket to the frontends: the game path writes to SQLite and returns. `persist/backup.py` does local snapshots only and is never awaited from the game path.
 7. **Never resume a run after a restart.** There is no checkpoint file and nothing is resumed, so `runner.py` starts clean every time. The record-keeping half is now covered too: the run row is written **pessimistically at GO** with `outcome: in_progress`, and `close_orphaned_runs()` settles any such row as `aborted` at the next boot. A crash mid-run leaves a truthful record; it never leaves a resumable one.
 
@@ -137,7 +140,20 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
 
 ## Things that look wrong but aren't
 
-- **Baseline frozen during a run.** Correct. Adapting mid-run slowly accepts a broken beam as normal. Rolling EMA only runs in `ATTRACT`.
+- **Baseline frozen during a run.** Correct. Adapting mid-run slowly accepts a
+  broken beam as normal. The EMA is frozen from **ARM entry** (not GO) to
+  DISARM — ARM lights `arm_box` while the detector still watches the maze, so
+  every sample in between is of an *unlit* dot, and feeding those to the EMA
+  walked baselines down to the dark level with a 4 s time constant. They were
+  then frozen in at GO and the maze was silently blind for the rest of the
+  session. `update_ema` additionally refuses any sample outside 0.5x-2x of the
+  calibrated value.
+- **The rolling EMA barely runs at all, and that is fine.** It was documented as
+  running in `ATTRACT`. It cannot: the only presets with ROI captures are
+  `maze_1/2/3`, and the attract show lights `all_on`, which has none — so there
+  are no dots to sample. Baselines are calibration-time constants in all but
+  name. Do not "fix" this by giving the attract show a maze step without also
+  thinking about what an unattended EMA can do to a run.
 - **`monotonic_ns()` everywhere, never wall clock.** Correct. Wall clock can jump (NTP, DST). `events.ts_wall` stores wall time for human readability only; nothing computes durations from it.
 - **FSM returns side effects as data, doesn't execute them.** Correct. This is what makes `test_fsm.py` fast and deterministic without any mocks.
 - **The count-in starts 4 s after the GM taps COUNT IN.** Deliberate, and not

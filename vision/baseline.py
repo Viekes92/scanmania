@@ -1,11 +1,18 @@
 """
 vision/baseline.py — rolling EMA and flash-capture baselines, per dot per maze.
 
-Inputs:  brightness samples from DotDetector; dot ids; config path for persistence
-Outputs: current baseline float per dot; writes updated values back to beams.json
-Invariant: the rolling EMA (alpha=0.01) runs only in ATTRACT — freeze() at RUN start,
-           unfreeze() at RESET. Frozen baselines never move, however many samples
-           arrive, so the detector cannot slowly accept a broken beam as normal.
+Inputs:  brightness samples from DotDetector; dot ids
+Outputs: current baseline float per dot. NOTHING is written back to beams.json —
+         save_to_config() exists and has no caller, deliberately: beams.json is
+         the calibration record (invariant 3) and an EMA write-back would make
+         this a second writer of it.
+Invariant: the rolling EMA is frozen from ARM entry to DISARM, so a run can
+           never adapt to a broken beam. In practice it barely runs at all: the
+           only presets with ROI captures are maze_1/2/3, and those are lit only
+           during a run, so ATTRACT (which lights all_on) has no dots to sample.
+           Baselines are therefore calibration-time constants in all but name.
+Invariant: a sample outside 0.5x-2x of the calibrated value is REFUSED, so a
+           caller feeding unlit dots cannot walk a baseline down to darkness.
 Invariant: baselines are scoped to a maze. The same dot is a different brightness
            under maze_1 and maze_2, because its neighbours differ.
 """
@@ -42,6 +49,9 @@ class BaselineManager:
         for maze_name, rois in beams_config.mazes.items():
             for dot in rois.all_dots():
                 self._baselines[f"{maze_name}/{dot.id}"] = dot.baseline
+        # What calibration measured. update_ema refuses to stray far from it.
+        self._calibrated: dict[str, float] = dict(self._baselines)
+        self._rejected: set[str] = set()
         self._frozen: bool = False
         self._maze: str | None = None
 
@@ -89,6 +99,26 @@ class BaselineManager:
         if self._frozen:
             return
         key = self._key(dot_id)
+
+        # Refuse a sample that is nowhere near what calibration measured.
+        #
+        # Belt and braces behind the freeze in VisionService. The EMA's fixed
+        # point is whatever it is fed, so being fed UNLIT dots walks the
+        # baseline down to the dark level with a 4 s time constant — after
+        # which a blocked dot's residual glow divided by a near-zero baseline
+        # never falls below break_ratio and the maze is silently blind. That
+        # happened because ARM lights arm_box while the detector still watches
+        # the maze's dots. A legitimate haze drift is a few percent per minute;
+        # a halving is never a baseline update, it is a bug feeding us garbage.
+        cal = self._calibrated.get(key, 0.0)
+        if cal > 0 and not (0.5 * cal <= sample <= 2.0 * cal):
+            if key not in self._rejected:
+                self._rejected.add(key)
+                log.warning("BaselineManager: refusing EMA sample %.1f for %s "
+                            "(calibrated %.1f) — out of the 0.5x-2x sanity "
+                            "band, logged once per dot", sample, key, cal)
+            return
+
         current = self._baselines.get(key, sample)
         # Bootstrap: a dot with no usable baseline takes the first real sample.
         updated = sample if current <= 0 else alpha * sample + (1.0 - alpha) * current

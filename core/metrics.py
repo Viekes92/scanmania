@@ -25,6 +25,17 @@ RUN_COMPLETED          = "run.completed"
 RUN_VOIDED             = "run.voided"
 BREAK_DETECTED         = "break.detected"
 BREAK_MANUAL           = "break.manual"
+# A break that arrived after the run had already been decided. The break path
+# is the SLOWER of the two (camera + decode + two queues, against a 20 Hz
+# button poll), so a beam genuinely broken just before the stop press can lose
+# the race and the run is recorded clean. It used to vanish at DEBUG with no
+# metric at all, which made the size of the problem unmeasurable.
+BREAK_AFTER_VERDICT    = "break.after_verdict"
+# Milliseconds the stopwatch sat frozen while a GM adjudicated an assisted-mode
+# break that they then vetoed. The player keeps running during that window and
+# the clock does not, so the time is a gift. Measured, not yet corrected — see
+# the note in _handle_start_stopwatch.
+ASSISTED_HALT_MS       = "run.assisted_halt_ms"
 DETECTION_MODE_CHANGED = "detection.mode_changed"
 BEAM_MASKED            = "beam.masked"
 VISION_RECOVERED       = "vision.recovered"

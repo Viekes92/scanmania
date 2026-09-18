@@ -41,39 +41,8 @@ import numpy as np
 # small CORNER blobs — dot-sized by area, and indistinguishable from dots by any
 # test this function applies. min_area is what rejects them, and the real
 # defence is the ambient guard: house lights off.
-DEFAULT_PARAMS = {
-    "thr": 25,          # absolute threshold on the top-hat signal, 0-255
-    "tophat": 21,       # structuring element, px. Bigger than a dot, smaller
-                        # than the gap between two dots. Measured at 1920x1080:
-                        # dots are 10-16 px across, spacing 30-65 px
-    "min_area": 40,     # px. Measured at 1080p: a dot is ~200 px of area and a
-                        # light-fitting corner artefact ~12, so 40 clears both
-                        # by 5x. Below this it is sensor noise — or the CORNER of
-                        # something large. See the note below
-    "max_area": 900,    # px. Above this it is a reflection or a light fitting
-}
-
-# A STARTING POINT for a 1920x1080 main stream, not an answer. Every one of these
-# is a slider on the page, and the right value differs per camera — that is the
-# whole reason params are stored per camera.
-#
-# Both bounds err LARGE, deliberately, because the two failure directions are
-# not symmetric:
-#   tophat too large  -> slightly weaker background subtraction, dots still found
-#   tophat too small  -> the dot exceeds the kernel, becomes a RING, fragments
-#                        into arcs, and one dot is counted three times or lost
-#   max_area too large -> a reflection sneaks in, visible on the preview
-#   max_area too small -> the brightest near dots are silently discarded
-# Tighten them on the page against a lit maze. Do not tighten them blind — and
-# prefer the per-camera "apply measured" button, which derives the kernel from
-# the dot size and spacing this camera actually sees. Both scale with resolution
-# and with distance to the ceiling, so no single default fits eight cameras.
-#
-# max_area does NOT reject a light fitting. Anything larger than the kernel has
-# its interior removed by the top-hat, so a bright rectangle survives as four
-# small CORNER blobs — dot-sized by area, and indistinguishable from dots by any
-# test this function applies. min_area is what rejects them, and the real
-# defence is the ambient guard: house lights off.
+# NOTE: this dict was defined TWICE, identically. The second shadowed the
+# first, so editing the first had no effect whatsoever and nothing failed.
 DEFAULT_PARAMS = {
     "thr": 25,          # absolute threshold on the top-hat signal, 0-255
     "tophat": 21,       # structuring element, px. Bigger than a dot, smaller

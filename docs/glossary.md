@@ -50,7 +50,7 @@ The circular area in the camera frame that corresponds to one beam's ceiling dot
 The reference brightness reading for a beam's dot under normal lit conditions. Captured by `tools/capture.py` or Admin -> Calibration and stored in `beams.json`. (`count_in.baseline_pulse_index` is parsed and unused — nothing measures a baseline during the ramp). Updated as a rolling EMA in `ATTRACT`. Frozen during a run. The denominator in `ratio = value / baseline`.
 
 **ratio**
-`mean_top20_pct(ROI pixels) / baseline`. Below `break_ratio` for N consecutive frames = broken. Above `clear_ratio` for N frames = clear. Hysteresis prevents chatter at the boundary.
+`mean_top20_pct(ROI pixels) / baseline`. Below `break_ratio` for N consecutive frames = broken. Above `clear_ratio` for N frames = clear. Hysteresis prevents chatter at the boundary. The shipped N is **1**, so there is no temporal filtering: one frame decides. A dot whose baseline is below `detection.min_baseline` is not watched at all (ADR 0011).
 
 **arm / ARM state**
 The FSM state where the system is waiting for the player to step onto the start plate before a count-in. The start-plate HIGH event triggers the ready blink and pre-flight beam check.

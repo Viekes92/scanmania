@@ -168,12 +168,30 @@ class VisionService:
             self._sync_detector_stall()
 
     def _sync_detector_stall(self) -> None:
-        """Any stalled camera suppresses the whole detector (invariant 5)."""
+        """
+        Publish suppression as the OR of the two conditions that cause it.
+
+        A camera stall and a detector fault are different things, and
+        _last_emitted_stall is a single flag serving both. It used to be
+        written independently by each path, so whichever condition cleared
+        FIRST spoke for both: a camera recovering emitted ("stall", False) and
+        restored auto detection while a mass-dark fault was still fully live
+        and the detector was still returning early on every frame. The game
+        reported that it was policing runs when it was not.
+
+        set_stalled() still tracks the CAMERA condition alone — that is the one
+        that means "frames are not arriving". The fault condition suppresses
+        inside _decide on its own.
+        """
         stalled = bool(self._stalled_cameras)
         self._detector.set_stalled(stalled)
-        if stalled != self._last_emitted_stall:
-            self._last_emitted_stall = stalled
-            self._queue.put_nowait(("stall", stalled, sorted(self._stalled_cameras)))
+        suppressed = stalled or self._fault_reason is not None
+        if suppressed != self._last_emitted_stall:
+            self._last_emitted_stall = suppressed
+            reasons = sorted(self._stalled_cameras)
+            if self._fault_reason:
+                reasons.append(self._fault_reason)
+            self._queue.put_nowait(("stall", suppressed, reasons))
 
     async def _watchdog(self) -> None:
         """
@@ -335,6 +353,24 @@ class VisionService:
         self._detector.disarm()
         self._baselines.unfreeze()
 
+    # ------------------------------------------------------------------
+    # Baseline freeze, independent of arming
+    # ------------------------------------------------------------------
+
+    def freeze_baselines(self) -> None:
+        """
+        Stop folding samples into the rolling baseline, before ARM.
+
+        arm() already freezes, but arming happens at GO — and between ARM and
+        GO the coils are on arm_box while the detector is still pointed at the
+        maze, so every sample is of an UNLIT dot. With a 4 s time constant and
+        an arm timeout of three minutes, a chatty GM was enough to walk every
+        baseline down to the dark level, which was then frozen in at GO and
+        carried by the process for the rest of the day. The whole maze reads
+        as permanently lit and no block is ever deep enough to register.
+        """
+        self._baselines.freeze()
+
     def is_armed(self) -> bool:
         return self._detector.is_armed
 
@@ -363,9 +399,9 @@ class VisionService:
         log.error("vision fault: %s", reason)
         self._fault_reason = reason
         self._fault_since_ns = time.monotonic_ns()
-        if self._last_emitted_stall is not True:
-            self._last_emitted_stall = True
-            self._queue.put_nowait(("stall", True, [reason]))
+        # Through the shared publisher, so the retraction is governed by BOTH
+        # conditions rather than by whichever one happens to clear first.
+        self._sync_detector_stall()
 
     def reload(self, config) -> None:
         """
@@ -378,6 +414,7 @@ class VisionService:
         """
         old_urls = {c.id: c.url for c in self._config.hardware.cameras}
         new_urls = {c.id: c.url for c in config.hardware.cameras}
+        carried_masks = set(getattr(self._detector, "_auto_masked", set()) or set())
         self._config = config
         self._stall_threshold_ms = config.beams.detection.stall_threshold_ms
         self._baselines = BaselineManager(config.beams)
@@ -390,6 +427,29 @@ class VisionService:
             on_fault=self._on_detector_fault,
         )
         self._fault_reason = None
+        # Carry the auto-masks across. A dot masked for flapping is a dot known
+        # to be faulty; rebuilding the detector re-armed it, and it could only
+        # be re-masked by flapping another flap_count_threshold times — every
+        # one of which is a ruined run.
+        if carried_masks:
+            self._detector._auto_masked |= carried_masks
+            for cam in self._detector._states.values():
+                for st in cam.values():
+                    if st.dot.id in carried_masks:
+                        st.auto_masked = True
+
+        # Re-apply suppression to the NEW detector, and retract the old
+        # announcement if nothing is suppressing any more.
+        #
+        # The fresh DotDetector starts unstalled and set_stalled was never
+        # re-applied, while _mark_stall is edge-guarded so the watchdog never
+        # re-marks a camera already in the set. Saving beams.json during a
+        # camera outage therefore produced a detector that did not know it
+        # should be suppressing — invariant 5 silently off. Symmetrically,
+        # clearing _fault_reason here without announcing it left the box in
+        # manual with no path back.
+        self._last_emitted_stall = None
+        self._sync_detector_stall()
         log.info("VisionService reloaded: %d maze capture(s)",
                  len(config.beams.mazes))
         if old_urls != new_urls:

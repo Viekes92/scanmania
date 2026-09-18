@@ -29,6 +29,24 @@ Per frame, per unmasked beam:
    after `ratio > clear_ratio` for N frames. Asymmetric thresholds prevent boundary chatter.
 4. `N = 3` at 30 fps gives approximately 100 ms detection latency.
 
+> **Superseded in part (2026-09-18).** The box ships `consecutive_frames = 1`
+> at 25 fps and 1920x1080, not N=3 at 30 fps and 1024x576. N was lowered
+> deliberately: at 25 fps, N=3 is 120 ms, and an arm crossing a beam is gone
+> inside that. Do not budget the noise immunity this line implies — there is
+> none on the temporal axis. What replaced it is refusing to watch dots whose
+> measurement cannot mean anything (ADR 0011), which costs no latency.
+>
+> Guaranteed detection is therefore ~75-80 ms of continuous occlusion, not the
+> ~45 ms a full-extinction model predicts: a blocked dot retains 23-45% of its
+> lit value (measured from real busts), so a block must cover most of one
+> exposure before the ratio crosses 0.5. Halving that means halving the frame
+> period, which is a camera setting and is gated on moving `process_frame` off
+> the event-loop thread first.
+>
+> The exposure/AWB lock this ADR mandates is NOT enforced anywhere in code.
+> `check_drift()` was removed in 2026-09 — it had no callers and the `ref/`
+> frames it needed never existed.
+
 The camera is locked: exposure, gain, white balance, and focus fixed. Auto-adjustment is
 disabled. A boot-time drift check compares a stored reference frame; if shift > 2 px, raise
 `CAMERA_MOVED` and drop to `manual` detection mode.

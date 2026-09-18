@@ -127,6 +127,8 @@ class DotDetector:
         self._max_burst = beams_config.detection.max_simultaneous_breaks
         self._min_burst = getattr(beams_config.detection,
                                   "min_simultaneous_breaks", 1)
+        self._min_baseline = getattr(beams_config.detection,
+                                     "min_baseline", 40.0)
 
         # camera_id -> {dot_id: _DotState}, for the maze currently lit.
         self._states: dict[str, dict[str, _DotState]] = {}
@@ -143,10 +145,25 @@ class DotDetector:
 
         self._recent_break_times: collections.deque[int] = collections.deque()
         self._stalled: bool = False
+        # Flap history and auto-masks live HERE, not on _DotState.
+        #
+        # set_maze rebuilds every _DotState from config, so both used to be
+        # thrown away on every preset change — twice per run at the
+        # checkpoints, and ~2.5 times a SECOND during the attract show. The
+        # rule needs 5 breaks in 60 s, and the counter was cleared long before
+        # the fifth ever arrived, so the one automatic defence against a dot
+        # that keeps breaking on its own could never fire. Worse, each of those
+        # 5 breaks is a ruined run, so the defence has to survive between them
+        # or it is not a defence.
+        self._flap_times: dict[str, collections.deque] = {}
+        self._auto_masked: set[str] = set()
+        # Cameras whose frames no longer match their capture resolution. Their
+        # dots are not sampled, so is_dark is frozen — see _decide.
+        self._excluded_cameras: set[str] = set()
         self._fault_reported: bool = False
         # Dots already announced as broken, so one body standing in a beam is
         # one event rather than six a second.
-        self._reported_dark: set[int] = set()
+        self._reported_dark: set[str] = set()
         # Presets already reported as having no capture, so the attract show
         # cannot flood the journal.
         self._no_capture_warned: set[str] = set()
@@ -167,6 +184,7 @@ class DotDetector:
         Silence is the safe failure — a missed break is recoverable, a phantom
         bust in front of a queue is not.
         """
+        prev_maze = self._maze
         self._maze = preset
         self._states = {}
         self._capture_size = {}
@@ -188,15 +206,29 @@ class DotDetector:
             return
 
         for cam_id, cap in rois.cameras.items():
-            self._states[cam_id] = {
-                d.id: _DotState(d, cam_id, self._n)
-                for d in cap.dots if not d.masked
-            }
+            states = {}
+            for d in cap.dots:
+                if d.masked:
+                    continue
+                st = _DotState(d, cam_id, self._n)
+                # Carry the flap history and any auto-mask across the rebuild.
+                st.flap_times = self._flap_times.setdefault(
+                    d.id, collections.deque())
+                st.auto_masked = d.id in self._auto_masked
+                states[d.id] = st
+            self._states[cam_id] = states
             if cap.w and cap.h:
                 self._capture_size[cam_id] = (cap.w, cap.h)
         # Newly lit dots are still coming on. Give the relays and the camera a
         # moment before believing a dark reading.
-        self._settle_until_ns = time.monotonic_ns() + settle_ms * 1_000_000
+        #
+        # Only when the SHAPE actually changed. Re-applying the preset that is
+        # already lit — a show step that repeats itself, a redundant write —
+        # used to restart the window, so a sequence of same-preset applies
+        # faster than settle_ms held the detector permanently blind with
+        # nothing in any log to say so.
+        if preset != prev_maze:
+            self._settle_until_ns = time.monotonic_ns() + settle_ms * 1_000_000
         log.info("watching maze '%s': %d dots across %d camera(s)",
                  preset, self.watching, len(self._states))
 
@@ -218,6 +250,11 @@ class DotDetector:
         self._arm_grace_ms = grace_ms
         log.info("DotDetector armed for run='%s' grace_ms=%d (%d dots)",
                  run_id, grace_ms, self.watching)
+        # Not just the per-dot state: the report latch too. It happened to be
+        # empty because _decide clears it while unarmed — but that only runs if
+        # a frame actually reached _decide, which a stall or an empty state map
+        # prevents. Correctness should not depend on a frame having arrived.
+        self._reported_dark.clear()
         for cam in self._states.values():
             for st in cam.values():
                 st.dark_consecutive = st.lit_consecutive = 0
@@ -265,8 +302,8 @@ class DotDetector:
             if not self._frame_matches_capture(cid, frame):
                 continue
             for st in (self._states.get(cid) or {}).values():
-                if st.auto_masked or st.baseline <= 0:
-                    continue            # masked, or never calibrated
+                if not self._sampled(st):
+                    continue   # masked, never calibrated, or below min_baseline
                 value = sample_circle(frame, st.dot.cx, st.dot.cy, st.dot.r)
                 st.last_ratio = value / st.baseline
                 self._update_dot(st)
@@ -293,7 +330,17 @@ class DotDetector:
             return True
         h, w = frame.shape[:2]
         if (w, h) == want:
+            self._excluded_cameras.discard(cid)
             return True
+        self._excluded_cameras.add(cid)
+        # is_dark is frozen at whatever it was when sampling stopped, so reset
+        # it — otherwise a dot that happened to be dark at that instant counts
+        # toward max_simultaneous_breaks forever, and can be REPORTED as a
+        # break by a camera that has not produced a valid frame in hours. Same
+        # bug already fixed for masked dots; this path was not covered.
+        for st in (self._states.get(cid) or {}).values():
+            st.is_dark = False
+            st.dark_consecutive = st.lit_consecutive = 0
         if cid not in self._size_warned:
             self._size_warned.add(cid)
             log.error("%s: frame is %dx%d but its ROIs were captured at %dx%d — "
@@ -337,8 +384,17 @@ class DotDetector:
 
     @property
     def in_fault(self) -> bool:
-        """True while the detector is currently suppressing on a mass-dark."""
-        return self._fault_reported
+        """
+        True while ANY detector-level condition is currently suppressing.
+
+        It used to report the mass-dark latch alone, so _expire_fault called
+        the detector healthy 30 s after a RESOLUTION MISMATCH and restored auto
+        detection — while _frame_matches_capture was still rejecting every
+        frame from that camera. A camera whose stream reverted to its old
+        resolution went permanently unsampled with the game claiming to watch
+        it.
+        """
+        return self._fault_reported or bool(self._excluded_cameras)
 
     def _decide(self, timestamp_ns: int) -> None:
         """Act on the COUNT of dark dots, not on which ones."""
@@ -371,9 +427,11 @@ class DotDetector:
         # counting toward max_simultaneous_breaks, and eventually tipped the
         # detector into a permanent mass-dark fault. stats() already excludes
         # them; this did not.
-        dark = [st for cam in self._states.values()
+        dark = [st for cid, cam in self._states.items()
                 for st in cam.values()
-                if st.is_dark and not getattr(st, "auto_masked", False)]
+                if st.is_dark
+                and cid not in self._excluded_cameras
+                and self._sampled(st)]
 
         if not dark:
             self._reported_dark.clear()
@@ -383,7 +441,19 @@ class DotDetector:
             return
         # Drop dots that have cleared, so the same dot can legitimately break
         # again later in the run.
-        self._reported_dark &= {id(st) for st in dark}
+        still_dark = {st.dot.id for st in dark}
+        cleared = self._reported_dark - still_dark
+        self._reported_dark &= still_dark
+        # A dot that re-lit is the single best signal separating a body from a
+        # flap — a body holds a dot dark for hundreds of ms, noise is back on
+        # the next frame. The detector computed this set and threw it away:
+        # on_clear is declared, documented in the module header, and was never
+        # once called, so only vision/fake.py ever emitted it.
+        for dot_id in cleared:
+            try:
+                self._on_clear(dot_id, timestamp_ns)
+            except Exception:
+                log.exception("on_clear raised for %s", dot_id)
 
         # A body blocks a handful. Dozens at once is the maze changing, a relay
         # not firing, or a camera glitch — never a player. Calling that a break
@@ -402,18 +472,43 @@ class DotDetector:
                     self._on_fault(f"{len(dark)} dots dark at once", timestamp_ns)
             return
 
-        # ...and too FEW is not a person either. A body crossing a curtain
-        # blocks several of its lasers at once, so a real intrusion shows up as
-        # a cluster ON ONE CAMERA. A lone dot going dark is haze drifting
-        # through, a marginal r=4 dot, or sensor noise — and in assisted mode
-        # every one of those put the CONFIRM/VETO dialog in front of the GM.
+        # ...and too FEW is not a person either — WHEN THIS IS ENABLED.
+        #
+        # The shipped value is 1, which makes the test below a no-op, and that
+        # is deliberate: above 1 it requires dots dark SIMULTANEOUSLY, which
+        # structurally misses a swipe (an arm darkens one dot, clears it, then
+        # the next). This paragraph used to argue the opposite — the
+        # pre-2026-09 position, when a noise floor of ~55 phantom dots per
+        # camera made a lone dark dot meaningless. Recalibration took that
+        # floor to 0, and min_baseline now removes what was left, so the
+        # defence described here is carried by not watching noise in the first
+        # place — which costs no latency, unlike requiring a second dot.
         #
         # Counted per camera, not globally: two unrelated single-dot flickers
         # on two cameras are two glitches, not one body.
+        # Announce a given dot once, not once per frame — but choose the
+        # cluster from the dots NOT yet announced.
+        #
+        # The report-once guard used to sit AFTER this selection and `return`
+        # outright, with no fall-through. So while one dot stayed dark, no
+        # other dot on ANY camera could be reported: a player who parked one
+        # deep dot walked the rest of the maze unwatched, and a chronically
+        # dark dot shadowed every real break behind it indefinitely. The latch
+        # is still load-bearing (see below); it just has to filter the
+        # candidates rather than veto the verdict.
+        candidates = [st for st in dark if st.dot.id not in self._reported_dark]
+        if not candidates:
+            return
+
         per_cam: dict[str, list] = {}
-        for st in dark:
+        for st in candidates:
             per_cam.setdefault(st.camera, []).append(st)
-        best_cam, cluster = max(per_cam.items(), key=lambda kv: len(kv[1]))
+        # Ties go to the camera holding the DEEPEST dot, not to whichever
+        # camera happens to come first in beams.json. Config file ordering must
+        # never decide which camera a bust is attributed to.
+        best_cam, cluster = max(
+            per_cam.items(),
+            key=lambda kv: (len(kv[1]), -min(st.last_ratio for st in kv[1])))
         if len(cluster) < self._min_burst:
             return
 
@@ -435,10 +530,7 @@ class DotDetector:
         # decision timer. The documented 60 s auto-ABORT could therefore never
         # fire: the game sat in a RUN state with a frozen clock and an
         # in_progress row until a human intervened.
-        key = id(worst)
-        if key in self._reported_dark:
-            return
-        self._reported_dark.add(key)
+        self._reported_dark.add(worst.dot.id)
         self._confirm_break(worst, timestamp_ns)
 
     def _can_emit_break(self, timestamp_ns: int) -> bool:
@@ -478,6 +570,7 @@ class DotDetector:
             st.flap_times.popleft()
         if len(st.flap_times) >= self._cfg.detection.flap_count_threshold:
             st.auto_masked = True
+            self._auto_masked.add(st.dot.id)
             log.warning("DotDetector: auto-masking %s — %d breaks in %d s",
                         st.dot.id, len(st.flap_times),
                         self._cfg.detection.flap_window_s)
@@ -523,8 +616,21 @@ class DotDetector:
         return False
 
     def _sampled(self, st: "_DotState") -> bool:
-        """A dot this detector will actually look at on the next frame."""
-        return not st.auto_masked and st.baseline > 0
+        """
+        A dot this detector will actually look at on the next frame.
+
+        The min_baseline floor is the important half. ratio = value/baseline,
+        so a dot whose lit baseline is a handful of counts is dividing noise by
+        noise: at baseline 0.68 a drop of 0.34 of one count ends a run. Those
+        dots are not beams — find_dots enrols on GRAYSCALE contrast while
+        sample_circle measures R-(G+B)/2, and a bright colourless blob (corner
+        glare, an edge fitting) passes the first and scores ~0 on the second.
+        Not watching them is invariant 5: when the measurement cannot mean
+        anything, say nothing.
+        """
+        return (not st.auto_masked
+                and st.baseline > 0
+                and st.baseline >= self._min_baseline)
 
     def stats(self) -> dict:
         """
@@ -540,7 +646,8 @@ class DotDetector:
         for cid, states in self._states.items():
             cams[cid] = {
                 "watched": sum(1 for st in states.values() if self._sampled(st)),
-                "blind": sum(1 for st in states.values() if st.baseline <= 0),
+                "blind": sum(1 for st in states.values()
+                             if not st.auto_masked and not self._sampled(st)),
                 "dark": sum(1 for st in states.values()
                             if st.is_dark and self._sampled(st)),
                 "masked": sum(1 for st in states.values() if st.auto_masked),
@@ -566,6 +673,9 @@ class DotDetector:
                     st.auto_masked = False
                     st.flap_times.clear()
                     n += 1
+        self._auto_masked.clear()
+        for times in self._flap_times.values():
+            times.clear()
         if n:
             log.info("DotDetector: cleared %d auto-mask(s)", n)
         return n

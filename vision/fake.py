@@ -132,6 +132,9 @@ class FakeVision:
         self._arm_time_ns = time.monotonic_ns()
         log.info("FakeVision: armed for run='%s' grace_ms=%d", run_id, grace_ms)
 
+    def freeze_baselines(self) -> None:
+        """No-op: the fake has no rolling baseline. Mirrors VisionService."""
+
     def disarm(self) -> None:
         self._armed = False
         self._run_id = None

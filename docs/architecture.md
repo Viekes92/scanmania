@@ -77,7 +77,7 @@ Player crosses checkpoint 1
     the player is still in the container and those beams are still real
 
 Vision detects break on beam b07
-  → vision/detect.py: ratio < break_ratio for N=3 frames
+  → vision/detect.py: ratio < break_ratio for N frames (SHIPPED N=1, see ADR 0002)
   → vision/evidence.py: saves JPEG crop
   → runner.py: dispatches BREAK_CONFIRMED(beam_id="b07") to FSM
   → FSM returns (BUSTED, [StopStopwatch, ApplyPreset("bust"), BuzzerOn, LogRun])

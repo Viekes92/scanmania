@@ -7,6 +7,196 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — detection (from a twelve-agent review of vision/ and the detection path)
+
+- **ARM walked every baseline down to the dark level, then froze it in at GO.**
+  The worst bug in the system and the one behind the field symptoms ("I had to
+  stand there for a second", "only if I block like 4 with my arm").
+  `_handle_ready_blink` points the detector at `maze_1` — correct, preflight
+  needs the dot count — and then lights `arm_box` with no matching
+  `_apply_maze`. So from ARM to GO the detector samples dots whose lasers are
+  OFF, and `DotDetector` feeds the rolling EMA precisely when it is unarmed.
+  Time constant 4.0 s; `arm_timeout_ms` is 180000. Measured against the real
+  `BaselineManager`: 2 s at ARM leaves baselines at 61% of calibrated, 10 s at
+  10%, 20 s at 3%. `set_maze` then pushes those values in at GO and `arm()`
+  freezes them for the run, and nothing restores them for the life of the
+  process. As the baseline decays the ratio RISES, so a break needs an ever
+  deeper block to cross 0.5 — which is exactly the reported symptom.
+  Fixed by freezing the baseline on ARM entry (not GO), which also covers the
+  count-in ramp, and does not break preflight the way re-pointing the detector
+  would. `update_ema` now additionally refuses any sample outside 0.5x-2x of
+  the calibrated value.
+
+- **15 of 594 dots had baselines inside the noise floor and were armed.** The
+  shipped calibration is sharply bimodal: 15 dots at 0.68-16.05, the other 579
+  at 85.50-209.0, nothing in the gap. `process_frame` skipped only
+  `baseline <= 0`, so the worst — baseline **0.68** — ended a run on a drop of
+  0.34 of one 8-bit count, and `stats()` reported it healthy. These are not
+  beams: `dots.py` enrols on GRAYSCALE top-hat while `detect.py` measures
+  `R-(G+B)/2`, which is pure chroma (a grey patch reads 0.000 at every
+  brightness), so bright colourless glare passes the finder and scores ~0 on
+  the measurement. New `detection.min_baseline` (default 40, inside the empty
+  gap) stops watching them and reports them as `blind`. See ADR 0011.
+
+- **One latched dot muted the other seven cameras.** The report-once guard sat
+  AFTER the cluster and darkest-dot selection and `return`ed outright with no
+  fall-through, so while one dot stayed dark no other dot on any camera could
+  be reported. A player parking one deep dot walked the rest of the maze
+  unwatched; a chronically dark dot shadowed every real break indefinitely. It
+  now filters the candidates before selection. Keyed by dot id rather than
+  `id()`, which can be recycled. Cluster-size ties now go to the camera holding
+  the deepest dot instead of to whichever camera comes first in `beams.json` —
+  config file ordering must not decide attribution.
+
+- **A single frame hiccup latched detection into manual for the session.**
+  `_auto_dropped_to_manual` was cleared unconditionally and the restore
+  attempted conditionally on `detection_mode == "manual"` — but `VisionStalled`
+  is queued, not applied, and a camera noticing a gap on frame arrival calls
+  `_on_stall` then `_on_frame` with no await between them, so both stall tuples
+  are consumed before the drain runs either. The restore was skipped, the flag
+  consumed, and the FSM then set manual with nothing left to undo it. Survived
+  FORCE RESET, console green throughout. Recovery is now queued as
+  `DetectionModeChanged` so the drain applies drop and restore in order.
+
+- **`on_clear` was declared, documented, and never once called.** Only
+  `vision/fake.py` emitted it, so the fake diverged from the real detector on a
+  documented output. `_decide` computed the cleared set and discarded it. Now
+  emitted — a dot re-lighting is the single best signal separating a body from
+  a flap.
+
+- **The flap auto-mask could never fire.** `flap_times` and `auto_masked` lived
+  on `_DotState`, which `set_maze` rebuilds on every preset change — twice per
+  run at the checkpoints and ~2.5 times a second during the attract show. The
+  rule needs 5 breaks in 60 s and the counter was cleared long before the
+  fifth. Both now live on the detector and survive the rebuild, and are carried
+  across `VisionService.reload()`.
+
+- **Cameras excluded by the resolution guard kept voting with a frozen
+  `is_dark`.** Same bug already fixed for masked dots; this path was not
+  covered. Their dots could count toward `max_simultaneous_breaks` forever and
+  be reported as a break by a camera that had not produced a valid frame in
+  hours. `in_fault` now also covers the mismatch condition, so `_expire_fault`
+  can no longer declare the detector healthy while it rejects every frame.
+
+- **A camera stall recovering retracted a live detector fault.** One
+  `_last_emitted_stall` served both conditions, so whichever cleared first
+  spoke for both: the game restored auto detection while a mass-dark fault was
+  still suppressing every frame. Both conditions now publish through
+  `_sync_detector_stall`, which emits on their OR.
+
+- **`reload()` handed back an unsuppressed detector.** The fresh `DotDetector`
+  starts unstalled and `set_stalled` was never re-applied, while `_mark_stall`
+  is edge-guarded so the watchdog never re-marks an already-stalled camera —
+  saving `beams.json` during a camera outage silently turned invariant 5 off.
+  It also cleared `_fault_reason` without announcing it, leaving manual with no
+  path back. `reload()` now re-publishes suppression.
+
+- **The reconnect backoff never reset.** `_open_and_read` contains no `return`
+  statement at all — only raises — so the reset on the line after the call was
+  unreachable. Backoff doubled 2-4-8-16-30 and stayed at 30 for the life of the
+  process; late in a show day one blip blinded the whole fleet for ~36 s,
+  longer than a run. Reset now happens the moment a frame arrives.
+
+### Fixed — calibration and config
+
+- **Admin -> Calibration -> Save wrote `beams.json` and reloaded nothing.**
+  `reload_config` takes a required argument and was called bare, raising
+  `TypeError` on every save. The except swallowed it and the caller still
+  appended "saved; detection reloaded", so the live detector kept the
+  pre-calibration ROIs while the operator was told the opposite — on the one
+  workflow you run *because* something already moved. Now loads the config and
+  passes it, and only claims the reload when it happened.
+
+- **Recalibration could silently delete a whole camera.** A camera that
+  delivered no frames is absent from the candidate, so it contributed to
+  neither side of the 25% believability gate — losing all its dots moved both
+  totals identically. The save then replaced the camera map wholesale. The gate
+  now iterates `set(prev) | set(cams)`, so a vanished camera counts as `now=0`.
+
+- **Six detection keys had no range validation.**
+  `global_break_rate_limit: 0` makes `len(deque) >= 0` always true, so no break
+  is ever emitted again with a fully healthy-looking console;
+  `flap_count_threshold: 0` auto-masks every dot on its first break. Same bug
+  class as the `max_simultaneous_breaks` fallback fixed yesterday, left
+  un-clamped on the neighbouring keys. All six now go through `_ranged`, and
+  their fallbacks track what the box actually runs (`consecutive_frames` fell
+  back to 3 — 120 ms, misses a swipe — while live is 1).
+
+- **`preset_settle_ms` had three different defaults.** The safety check was fed
+  `d.get(..., 800)` while the parse used `d.get(..., 250)` and the documented
+  floor is 750, so dropping the key ran the box below the floor while the check
+  that exists to catch exactly that stayed silent. Read once now. A review
+  proposed deriving the floor from `timeout_ms` (1300 ms) — rejected, with the
+  reasoning recorded in the code: that is the path where the repair has already
+  failed, so waiting longer buys nothing and costs guaranteed blindness on
+  every preset change.
+
+- **Re-applying the preset already lit restarted the settle window**, so a
+  sequence of same-preset applies faster than `settle_ms` held the detector
+  permanently blind with nothing in any log. The window now only restarts when
+  the shape actually changes.
+
+### Changed
+
+- A `BreakConfirmed` arriving after the run was decided is now counted
+  (`break.after_verdict`) instead of vanishing at DEBUG. The break path is the
+  SLOWER of the two — camera, decode, two queues against a 20 Hz button poll —
+  so a beam genuinely broken just before the stop press can lose the race and
+  record a clean run. Counting them is the prerequisite for deciding whether to
+  adjudicate on timestamps.
+- An assisted-mode veto now logs and emits `run.assisted_halt_ms`: the clock is
+  frozen while the GM decides but the player keeps running, so that time is a
+  gift. Deliberately measured rather than corrected — whether an adjudication
+  is charged to the player is a game-design call, and the in-container display
+  freezes with the clock, so a player may well slow down.
+- `_self_test_task` is now cancelled on entering MASTER. It was the only task
+  the MASTER cancel set omitted, so a self-test kept probing all three boards
+  during master-mode coil work, contending for the same per-board lock.
+
+### Removed
+
+- `CameraStream.check_drift()` — zero callers, and the `ref/` frames it compared
+  against never existed. The metric was also wrong for the job: a global phase
+  correlation is dominated by the static ceiling while dot ROIs are 0.2-0.3% of
+  the frame, so the per-dot drift ADR 0009 describes was invisible to it, and
+  its 2 px threshold was ~2x tighter than any real dot's tolerance. Geometry
+  drift is checked by Admin -> Calibration -> Check.
+- The duplicate `DEFAULT_PARAMS` in `vision/dots.py`. It was defined twice,
+  identically; the second shadowed the first, so editing the first had no
+  effect and nothing failed.
+
+### Documentation
+
+- ADR 0011 added: a watched dot must carry a red signal.
+- ADR 0002 annotated: its `N = 3 at 30 fps` latency figure describes a
+  configuration the box has not run for some time, and the exposure/AWB lock it
+  mandates is not enforced anywhere in code.
+- CLAUDE.md corrected: the rolling EMA does not run in ATTRACT and never could
+  (the attract show lights `all_on`, which has no ROI capture), so baselines are
+  calibration-time constants in all but name.
+
+### Known, not fixed
+
+- `process_frame` runs on the asyncio event-loop thread (only `cap.read()` is in
+  the executor), so 200 numpy sampling calls/second share a thread with the
+  event drain, Modbus writes and the reconciler. Measured on a Mac: queue
+  latency p50 4.90 ms -> 0.154 ms and max 41.2 ms -> 1.39 ms with the load
+  removed. Because `last_frame_ns` is stamped on that same thread, a saturated
+  loop can manufacture the very stalls that drop detection to manual. This is
+  the gate on any frame-rate increase and needs measurement on the NUC first.
+- The count-in ramp applies the flash after sleeping `on_ms` and all-off after
+  `off_ms`, so each pulse is dark for `on_ms` and lit for `off_ms` — inverted
+  against the `[on_ms, off_ms]` contract. Per-pulse total is unchanged so the
+  3-2-1 still reads correctly. NOT fixed: the ramp was hand-tuned by eye against
+  this behaviour, and correcting the code without re-tuning would shift the
+  edges against the voice-over baked into `game.mp3`.
+- The stopwatch starts after three Modbus writes at GO and stops at drain time;
+  both authoritative timestamps (`host_ns`, `ts_ns`) are unpacked and discarded.
+  Net bias is small by coincidence, jitter is +/-50-150 ms. Fixing it lengthens
+  future clean times relative to every time already on the leaderboard, so it is
+  a season-boundary decision rather than a drive-by.
+
+
 ### Fixed
 
 - **`max_simultaneous_breaks` silently fell back to the value it had just been

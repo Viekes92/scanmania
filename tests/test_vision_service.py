@@ -191,8 +191,12 @@ def _fake_state(cam: str, idx: int, ratio: float):
     """A real _DotState, so the test cannot drift from the class it exercises."""
     from vision.detect import _DotState
     from config.loader import Dot
+    # A REAL baseline. 10.0 was synthetic and is now below detection.
+    # min_baseline (40), so these dots would not be sampled at all and the
+    # test would pass for the wrong reason. The shipped calibration runs
+    # 85.5-209.0 with a median of ~165.
     st = _DotState(Dot(id=f"{cam}:d{idx}", cx=idx, cy=0, r=4,
-                       baseline=10.0, masked=False), cam, 3)
+                       baseline=165.0, masked=False), cam, 3)
     st.is_dark = True
     st.last_ratio = ratio
     return st
@@ -209,6 +213,10 @@ def test_one_lonely_dot_does_not_raise_the_gm_dialog():
     import config.loader as loader
 
     cfg = loader.load_beams()
+    # NOTE: the SHIPPED value is 1, which makes this rule a no-op in
+    # production — deliberately, because requiring simultaneous dots misses a
+    # swipe. This test pins 3 to exercise the clustering code itself; it is not
+    # evidence that the box behaves this way. See DetectionConfig.
     cfg.detection.min_simultaneous_breaks = 3
     fired: list = []
     d = DotDetector(cfg, on_break=lambda *a, **k: fired.append(a),
@@ -289,3 +297,72 @@ async def test_a_detector_fault_does_not_latch_detection_into_manual():
     kind, stalled, _ = svc._queue.get_nowait()
     assert (kind, stalled) == ("stall", False), \
         "recovery was never announced — detection stays manual forever"
+
+
+def test_one_latched_dot_does_not_mute_the_other_cameras():
+    """
+    The report-once latch must filter candidates, not veto the verdict.
+
+    It used to sit AFTER the cluster pick and `return` outright, so while one
+    dot stayed dark NO other dot on ANY camera could be reported. A player who
+    parked one deep dot walked the rest of the maze unwatched, and a
+    chronically dark dot shadowed every real break behind it indefinitely.
+    """
+    from vision.detect import DotDetector
+    import config.loader as loader
+
+    cfg = loader.load_beams()
+    fired: list = []
+    d = DotDetector(cfg, on_break=lambda *a, **k: fired.append(a[0]),
+                    on_clear=lambda *a, **k: None,
+                    metrics_emit=lambda *a, **k: None)
+    d._armed = True
+    d._arm_time_ns = None
+    # Camera A holds the deepest dot; camera B has one of its own.
+    d._states = {
+        "SM-CAM-11": {"d0": _fake_state("SM-CAM-11", 0, 0.10),
+                      "d1": _fake_state("SM-CAM-11", 1, 0.20)},
+        "SM-CAM-23": {"d0": _fake_state("SM-CAM-23", 0, 0.15)},
+    }
+
+    d._decide(0)
+    assert len(fired) == 1, "the first break should be announced"
+    first = fired[0]
+
+    # Same frame conditions: the latched dot must not silence everything else.
+    d._decide(1)
+    assert len(fired) == 2, (
+        "a second dark dot was swallowed because another dot was still latched")
+    assert fired[1] != first, "the same dot was announced twice"
+
+
+def test_a_dot_whose_baseline_is_noise_is_not_watched():
+    """
+    ratio = value/baseline, so a tiny baseline divides noise by noise.
+
+    The shipped calibration carried 15 such dots out of 594 — bright in
+    grayscale (which is what find_dots enrols on) and colourless in
+    R-(G+B)/2 (which is what sample_circle measures). The worst sat at
+    baseline 0.68, where break_ratio 0.5 ends a run on a drop of 0.34 of one
+    8-bit count.
+    """
+    from vision.detect import DotDetector
+    import config.loader as loader
+
+    cfg = loader.load_beams()
+    fired: list = []
+    d = DotDetector(cfg, on_break=lambda *a, **k: fired.append(a),
+                    on_clear=lambda *a, **k: None,
+                    metrics_emit=lambda *a, **k: None)
+    d._armed = True
+    d._arm_time_ns = None
+
+    junk = _fake_state("SM-CAM-21", 0, 0.01)
+    junk.baseline = 0.68                      # the real worst dot in beams.json
+    d._states = {"SM-CAM-21": {"d0": junk}}
+
+    d._decide(0)
+    assert fired == [], "a dot with a noise-floor baseline ended a run"
+    assert d.stats()["cameras"]["SM-CAM-21"]["watched"] == 0
+    assert d.stats()["cameras"]["SM-CAM-21"]["blind"] == 1, (
+        "the unwatchable dot must be REPORTED as blind, not hidden")

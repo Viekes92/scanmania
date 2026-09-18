@@ -260,6 +260,21 @@ class DetectionConfig:
     # threshold for all ~225 dots and editing any other did nothing.
     break_ratio: float = 0.4
     clear_ratio: float = 0.65
+    # A dot whose lit baseline is below this is not watched at all.
+    #
+    # The ratio is value/baseline, so a tiny baseline makes the ratio a
+    # division of noise by noise. The shipped calibration contained 15 such
+    # dots out of 594 — bright in GRAYSCALE, which is what find_dots enrols on,
+    # and almost colourless in R-(G+B)/2, which is what sample_circle measures.
+    # The worst sat at baseline 0.68, where break_ratio 0.5 ends a run on a drop
+    # of 0.34 of one 8-bit count. They are container-corner glare and edge
+    # fittings, not beams, and they either phantom-bust a player or sit dark
+    # forever and — via _reported_dark — shadow every real break behind them.
+    #
+    # 40 is chosen from the data, not by feel: the shipped baselines are
+    # bimodal, 15 dots at 0.68-16.05 and the other 579 at 85.50-209.0. Any floor
+    # inside that 5.3x gap removes exactly the 15. Sane range 20-80.
+    min_baseline: float = 40.0
 
 
 @dataclass
@@ -609,12 +624,38 @@ def load_beams(path: Path | None = None) -> BeamsConfig:
         beams=beams,
         mazes=_parse_mazes(d),
         detection=DetectionConfig(
-            consecutive_frames=det.get("consecutive_frames", 3),
-            arm_grace_ms=det.get("arm_grace_ms", 150),
-            stall_threshold_ms=det.get("stall_threshold_ms", 300),
-            global_break_rate_limit=det.get("global_break_rate_limit", 6),
-            flap_count_threshold=det.get("flap_count_threshold", 5),
-            flap_window_s=det.get("flap_window_s", 60),
+            # All six of these were raw det.get() with no bounds. That is the
+            # bug _ranged exists to prevent, left un-clamped on the keys next
+            # to the one it was written for: global_break_rate_limit=0 makes
+            # `len(deque) >= 0` always true, so NO break is ever emitted again
+            # and the console still reports a fully watched, fault-free maze.
+            # flap_count_threshold=0 auto-masks every dot on its first break.
+            #
+            # The fallbacks also have to match what the box actually runs, or a
+            # beams.json that predates a key silently reverts behaviour:
+            # consecutive_frames fell back to 3 (120 ms, misses a swipe) while
+            # live is 1.
+            consecutive_frames=_ranged(
+                det.get("consecutive_frames", 1), 1, 10, 1,
+                "detection.consecutive_frames"),
+            arm_grace_ms=_ranged(
+                det.get("arm_grace_ms", 150), 50, 500, 150,
+                "detection.arm_grace_ms"),
+            stall_threshold_ms=_ranged(
+                det.get("stall_threshold_ms", 300), 100, 2_000, 300,
+                "detection.stall_threshold_ms"),
+            global_break_rate_limit=_ranged(
+                det.get("global_break_rate_limit", 6), 1, 60, 6,
+                "detection.global_break_rate_limit"),
+            flap_count_threshold=_ranged(
+                det.get("flap_count_threshold", 5), 2, 50, 5,
+                "detection.flap_count_threshold"),
+            flap_window_s=_ranged(
+                det.get("flap_window_s", 60), 5, 600, 60,
+                "detection.flap_window_s"),
+            min_baseline=_ranged(
+                det.get("min_baseline", 40.0), 20.0, 80.0, 40.0,
+                "detection.min_baseline"),
             # Fallback and bounds MUST track the dataclass default above. They
             # did not: the default was raised to 60 because 10 fires on a real
             # player, but this still fell back to 10 whenever the key was
@@ -713,6 +754,14 @@ def _check_settle_vs_reconcile(settle_ms: int) -> None:
     as a hardware fault, and the player was busted for a relay that did not
     close.
     """
+    # The 250 ms allowance covers the REALISTIC repair: the reconciler notices
+    # within one interval, then reads and writes, both of which complete in a
+    # few tens of ms on a healthy bus. A review proposed deriving the floor
+    # from timeout_ms instead (500 + 4*200 = 1300), which was rejected: that is
+    # the path where BOTH the read and the write time out, and on that path the
+    # repair has not happened, so waiting longer does not help — it only trades
+    # a rare unrepaired write for 1300 ms of guaranteed suppression on every
+    # preset change, three times per run.
     from iobackend.reconcile import _RECONCILE_INTERVAL_S
     floor_ms = int(_RECONCILE_INTERVAL_S * 1000) + 250
     if settle_ms < floor_ms:
@@ -840,7 +889,13 @@ def load_game() -> GameConfig:
     d = _load_yaml("game.yaml")
     _ci = d.get("count_in", {}) or {}
     _check_count_in_preset(_ci.get("preset", "maze_1"))
-    _check_settle_vs_reconcile(int(d.get("preset_settle_ms", 800) or 800))
+    # Read ONCE. The check used to be handed d.get(..., 800) while the parse
+    # below used d.get(..., 250) — so dropping the key ran the box at 250 ms,
+    # under the documented floor, while the check that exists to catch exactly
+    # that evaluated 800 and stayed silent.
+    settle_ms = _ranged(d.get("preset_settle_ms", 800), 0, 5_000, 800,
+                        "game.preset_settle_ms")
+    _check_settle_vs_reconcile(settle_ms)
     ci = d.get("count_in", {})
     pulses = [CountInPulse(on_ms=p[0], off_ms=p[1]) for p in ci.get("pulses", [])]
     lb = d.get("leaderboard", {})
@@ -887,7 +942,7 @@ def load_game() -> GameConfig:
         arm_grace_ms=d.get("arm_grace_ms", 150),
         snapshot_interval_min=max(0, int(d.get("snapshot_interval_min", 60))),
         snapshot_keep=max(1, int(d.get("snapshot_keep", 48))),
-        preset_settle_ms=max(0, int(d.get("preset_settle_ms", 250))),
+        preset_settle_ms=settle_ms,
         leaderboard=LeaderboardConfig(
             scope=lb.get("scope", "daily"),
             show_busted=lb.get("show_busted", False),

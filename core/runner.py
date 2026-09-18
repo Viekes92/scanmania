@@ -171,6 +171,9 @@ class GameRunner:
         self._show_name: str | None = None
         self._self_test_task: asyncio.Task | None = None
         self._deferred_preset_task: asyncio.Task | None = None
+        # When an assisted-mode break froze the clock, so the veto can report
+        # how long the player ran for free.
+        self._assisted_halt_started_ns: int | None = None
         # Latched by power_down(). Nothing may re-light the container after the
         # operator has been told it is safe to cut the breaker.
         self._powered_down: bool = False
@@ -864,7 +867,11 @@ class GameRunner:
             for attr in ("_show_task", "_count_in_task", "_arm_timeout_task",
                          "_result_timeout_task", "_max_run_task",
                          "_deferred_preset_task", "_registered_timeout_task",
-                         "_assisted_task"):
+                         # _self_test_task was the only task this set omitted,
+                         # so a self-test kept probing all three boards while
+                         # the GM did master-mode coil work, contending for the
+                         # same per-board lock as their own writes.
+                         "_assisted_task", "_self_test_task"):
                 self._cancel_task(attr)
             # Clear stale run context so next game session starts fresh
             self.context.run_id = None
@@ -1099,7 +1106,17 @@ class GameRunner:
                     continue
 
                 per_cam = {}
-                for cid, blk in cams.items():
+                # Iterate the UNION, not just the candidate.
+                #
+                # A camera that delivered no frames is absent from the
+                # candidate entirely, so it contributed to neither total_was
+                # nor total_now — losing every one of its dots moved both
+                # totals identically and the 25% believability gate could not
+                # see it. _write_calibration then replaces the camera map
+                # wholesale, so one dead PoE port silently erased that
+                # camera's ROIs and reported success.
+                for cid in sorted(set(prev) | set(cams)):
+                    blk = cams.get(cid) or {"dots": []}
                     was = len((prev.get(cid) or {}).get("dots") or [])
                     now = len(blk["dots"])
                     blind = sum(1 for d in blk["dots"] if not d["baseline"])
@@ -1133,7 +1150,9 @@ class GameRunner:
                 applied = await self._write_calibration(report)
                 report["applied"] = applied
                 if applied:
-                    report["notes"].append("saved; detection reloaded")
+                    report["notes"].append(
+                        "saved; detection reloaded" if report.get("reloaded")
+                        else "saved — detection NOT reloaded, see note above")
 
             for d in report["mazes"].values():
                 d.pop("_candidate", None)
@@ -1176,10 +1195,22 @@ class GameRunner:
             log.error("recalibrate: could not write beams.json: %s", exc)
             report["notes"].append(f"write failed: {exc}")
             return False
+        # reload_config takes the NEW config. Calling it bare raised TypeError
+        # on every single save, which this except swallowed — and the caller
+        # still appended "saved; detection reloaded". So beams.json was
+        # rewritten while the live detector kept the pre-calibration ROIs, and
+        # the operator was told the opposite. This fires exactly when someone
+        # recalibrates BECAUSE something already moved.
         try:
-            await self.reload_config()
+            import config.loader as loader_module
+            new_cfg = await asyncio.to_thread(loader_module.load_all)
+            await self.reload_config(new_cfg)
         except Exception as exc:
-            report["notes"].append(f"saved, but reload failed ({exc}) — restart the service")
+            log.exception("recalibrate: reload failed")
+            report["notes"].append(
+                f"saved, but reload failed ({exc}) — restart the service")
+            return True
+        report["reloaded"] = True
         return True
 
     def _refuse_after_power_down(self, what: str) -> bool:
@@ -1268,7 +1299,6 @@ class GameRunner:
             raise
 
     def _apply_maze(self, preset_name: str) -> None:
-        self._current_preset = preset_name
         """
         Point vision at the dots captured while this preset was lit.
 
@@ -1280,6 +1310,7 @@ class GameRunner:
         capture there is no baseline to compare against, so every reading would
         be a guess, and a guess ends someone's run (invariant 5).
         """
+        self._current_preset = preset_name
         if self.vision is None or not hasattr(self.vision, "set_maze"):
             return
         settle_ms = getattr(self.config.game, "preset_settle_ms", 250) if self.config else 250
@@ -1401,9 +1432,30 @@ class GameRunner:
             # SaveRun upserts over this.
             await self._open_run_row()
         else:
-            # Veto case: resume from halted elapsed
+            # Veto case: resume from halted elapsed.
+            #
+            # resume() re-anchors so the halted interval is EXCLUDED. Nothing
+            # stopped the player while the GM was deciding, so that time is a
+            # gift on a leaderboard where clean runs cluster within a second or
+            # two — and it is bigger than every pipeline latency in the system
+            # combined. It is left as-is deliberately: whether an adjudication
+            # is charged to the player is a game-design call, not a bug fix,
+            # and the in-container display freezes with the clock so a player
+            # may well slow down. Measuring it first, so the decision can be
+            # made on numbers.
+            halted_ms = 0
+            if self._assisted_halt_started_ns is not None:
+                halted_ms = int((time.monotonic_ns()
+                                 - self._assisted_halt_started_ns) / 1_000_000)
+                self._assisted_halt_started_ns = None
             self.stopwatch.resume()
-            log.info("Stopwatch resumed from %d ms", self.stopwatch.elapsed_ms())
+            if halted_ms:
+                log.warning("Stopwatch resumed from %d ms after a %d ms "
+                            "adjudication the player was NOT charged for",
+                            self.stopwatch.elapsed_ms(), halted_ms)
+                metrics.emit(metrics.ASSISTED_HALT_MS, float(halted_ms))
+            else:
+                log.info("Stopwatch resumed from %d ms", self.stopwatch.elapsed_ms())
         log.info("[SideEffect] StartStopwatch")
         # Max-run is an ABSOLUTE deadline anchored at the first start, not a
         # fresh countdown per call. Every assisted veto used to re-arm the full
@@ -1422,6 +1474,8 @@ class GameRunner:
 
     async def _handle_stop_stopwatch(self, effect: StopStopwatch) -> None:
         """Stop the stopwatch and freeze elapsed."""
+        if self.stopwatch.elapsed_ms() and self._assisted_halt_started_ns is None:
+            self._assisted_halt_started_ns = time.monotonic_ns()
         log.info("[SideEffect] StopStopwatch → %d ms", self.stopwatch.elapsed_ms())
         self.stopwatch.stop()
         # An assisted halt stays in a RUN state with the stopwatch frozen and
@@ -1701,6 +1755,25 @@ class GameRunner:
         # stats()["total"] was therefore 0 and preflight failed on every arm:
         # the game could not start a run on real hardware at all. Invisible in
         # tests because vision/fake.py reports a healthy dot count regardless.
+        # Freeze the rolling baseline for the whole ARM phase.
+        #
+        # This handler points the detector at the maze (below) and then lights
+        # arm_box — so from here until GO the detector samples dots whose
+        # lasers are OFF, and DotDetector feeds the EMA precisely when it is
+        # unarmed. With a 4 s time constant and arm_timeout_ms at 180000, a GM
+        # chatting to a player walked every baseline down toward the dark
+        # level; set_maze pushed those values in at GO and arm() froze them for
+        # the run. Measured: 10 s at ARM leaves baselines at 10% of calibrated,
+        # at which point no block is deep enough to register and the maze is
+        # silently blind for the rest of the session.
+        #
+        # Freezing rather than re-pointing the detector is deliberate:
+        # preflight reads detector_stats() right after this effect, and aiming
+        # vision at the uncalibrated arm_box would report 0 dots and refuse
+        # every arm. This also covers the count-in ramp, which writes coils
+        # directly without telling the detector.
+        if self.vision is not None and hasattr(self.vision, "freeze_baselines"):
+            self.vision.freeze_baselines()
         self._apply_maze(preset)
         try:
             await self._resolver.apply_preset(preset, self.io)
@@ -2259,17 +2332,31 @@ class GameRunner:
                         self._auto_dropped_to_manual = True
                     await self.put_event(VisionStalled())
                 elif self._auto_dropped_to_manual:
-                    # The recovery tuple was read and thrown away, so one
-                    # 300 ms frame gap — a single keyframe hiccup on one of
-                    # eight cameras — left the box in manual for the rest of
-                    # the day, vision not policing runs, with a permanent fault
-                    # on the console that teaches operators to ignore faults.
+                    # Restore through the EVENT QUEUE, and never read
+                    # context.detection_mode to decide whether to restore.
+                    #
+                    # This branch used to clear the flag unconditionally and
+                    # restore only `if context.detection_mode == "manual"`. But
+                    # VisionStalled is QUEUED, not applied — and a camera that
+                    # notices a gap on frame arrival calls _on_stall and then
+                    # _on_frame with no await between them, so ("stall", True)
+                    # and ("stall", False) are both consumed before the drain
+                    # has run either one. detection_mode was therefore still
+                    # "assisted", the restore was skipped, the flag was
+                    # consumed, and THEN the FSM set manual — with nothing left
+                    # that could ever put it back. One routine 300 ms hiccup
+                    # killed detection for the rest of the day, surviving FORCE
+                    # RESET, with every console indicator green.
+                    #
+                    # Queueing DetectionModeChanged makes the drain apply the
+                    # drop and the restore in emission order, whatever the
+                    # interleaving upstream.
                     self._auto_dropped_to_manual = False
-                    if self.context.detection_mode == "manual":
-                        self.context.detection_mode = self._mode_before_stall or "assisted"
-                        log.warning("vision recovered — detection back to %s",
-                                    self.context.detection_mode)
-                        metrics.emit(metrics.VISION_RECOVERED, 1.0)
+                    mode = self._mode_before_stall or "assisted"
+                    self._mode_before_stall = None
+                    log.warning("vision recovered — restoring detection to %s", mode)
+                    metrics.emit(metrics.VISION_RECOVERED, 1.0)
+                    await self.put_event(DetectionModeChanged(mode=mode))
             else:
                 log.warning("vision_listener: unknown event kind %r", kind)
 

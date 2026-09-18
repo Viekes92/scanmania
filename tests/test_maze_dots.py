@@ -366,17 +366,45 @@ def test_the_ema_is_fed_only_between_runs(cfg):
 
 
 def test_a_frozen_baseline_never_moves(cfg):
+    # The drifted sample has to sit INSIDE the 0.5x-2x sanity band, or
+    # update_ema refuses it and this passes for the wrong reason. This test is
+    # about freeze semantics; test_the_ema_refuses_a_sample_from_an_unlit_dot
+    # covers the band itself.
+    drifted = _LIT * 0.8
     bm = BaselineManager(cfg.beams)
     bm.set_maze("maze_1")
     bm.freeze()
     for _ in range(500):
-        bm.update_ema("SM-CAM-11:d0", 5.0)
+        bm.update_ema("SM-CAM-11:d0", drifted)
     assert bm.get("SM-CAM-11:d0") == _LIT
 
     bm.unfreeze()
     for _ in range(500):
-        bm.update_ema("SM-CAM-11:d0", 5.0)
+        bm.update_ema("SM-CAM-11:d0", drifted)
     assert bm.get("SM-CAM-11:d0") < _LIT
+
+
+def test_the_ema_refuses_a_sample_from_an_unlit_dot(cfg):
+    """
+    The ARM phase used to feed the EMA dots whose lasers were off.
+
+    DotDetector feeds on_sample whenever it is UNARMED, and ReadyBlink lights
+    arm_box while the detector is still pointed at the maze — so every sample
+    between ARM and GO was of an unlit dot. The EMA's fixed point is whatever
+    it is fed, with a 4 s time constant, so a GM who chatted for ten seconds
+    left the baselines at ~10% of calibrated. Those values were then frozen in
+    at GO and the maze was blind for the rest of the session.
+
+    The freeze in _handle_ready_blink is the real fix. This is the backstop:
+    even unfrozen, a sample nowhere near the calibrated value is refused.
+    """
+    bm = BaselineManager(cfg.beams)
+    bm.set_maze("maze_1")
+    bm.unfreeze()
+    for _ in range(2000):
+        bm.update_ema("SM-CAM-11:d0", 4.0)      # an unlit dot
+    assert bm.get("SM-CAM-11:d0") == _LIT, (
+        "an unlit-dot sample walked the baseline down anyway")
 
 
 def test_apply_baselines_carries_drift_across_a_maze_change(cfg):

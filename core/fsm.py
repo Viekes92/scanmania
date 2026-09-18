@@ -461,7 +461,27 @@ def _post_run_handlers() -> dict:
     def on_result_timeout(state, event, ctx):
         return RESULT, [BroadcastState()]
 
-    return {ResultDisplayTimeout: on_result_timeout}
+    def on_late_break(state, event, ctx):
+        """
+        A break that arrived after the run was already decided.
+
+        Not a transition — the verdict stands. But it must not vanish. With no
+        handler this fell through to the "no handler for event" branch, which
+        logs at DEBUG and emits nothing, so a beam broken microseconds before
+        the stop button produced a CLEAN leaderboard entry and left no trace
+        anywhere that it had happened.
+
+        The race is not hypothetical: the break path (camera, decode, two
+        queues) is slower than the button path (a 20 Hz poll), so a break can
+        genuinely precede the press and still lose. Counting them is the
+        prerequisite for deciding whether to adjudicate on timestamps.
+        """
+        return state, [EmitMetric(name=metrics.BREAK_AFTER_VERDICT,
+                                  tags={"state": state,
+                                        "beam_id": getattr(event, "beam_id", "")})]
+
+    return {ResultDisplayTimeout: on_result_timeout,
+            BreakConfirmed: on_late_break}
 
 
 # --- RESULT ---

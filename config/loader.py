@@ -615,8 +615,14 @@ def load_beams(path: Path | None = None) -> BeamsConfig:
             global_break_rate_limit=det.get("global_break_rate_limit", 6),
             flap_count_threshold=det.get("flap_count_threshold", 5),
             flap_window_s=det.get("flap_window_s", 60),
+            # Fallback and bounds MUST track the dataclass default above. They
+            # did not: the default was raised to 60 because 10 fires on a real
+            # player, but this still fell back to 10 whenever the key was
+            # absent — so any box whose beams.json predates the change quietly
+            # re-armed the bug, and anything in 101-120, inside the documented
+            # range, was clamped to 100.
             max_simultaneous_breaks=_ranged(
-                det.get("max_simultaneous_breaks", 10), 1, 100, 10,
+                det.get("max_simultaneous_breaks", 60), 1, 120, 60,
                 "detection.max_simultaneous_breaks"),
             min_simultaneous_breaks=_ranged(
                 det.get("min_simultaneous_breaks", 1), 1, 5, 1,

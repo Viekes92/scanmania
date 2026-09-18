@@ -9,6 +9,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **`max_simultaneous_breaks` silently fell back to the value it had just been
+  raised from.** The dataclass default went 10 → 60 because 10 fires on a real
+  player, and the comment above it says "Sane range 45-120" — but the parser
+  still read `_ranged(det.get(..., 10), 1, 100, 10)`. Any box whose `beams.json`
+  lacked the key re-armed the mass-dark bug, and anything in 101-120 (inside the
+  documented range) was clamped to 100. Fallback and bounds now track the
+  default. Verified with the key absent: it yields 60.
+
+  This is the "guard calibrated for conditions that no longer exist" pattern,
+  committed in the same change that named it.
+
+
+### Fixed
+
 - **A swipe through a beam was structurally undetectable.** Not a pipeline
   problem: every frame of every camera is analysed synchronously with no queue
   and nothing discarded, measured at 25.0 fps with 17-24 ms frame age on all

@@ -220,10 +220,10 @@ def test_all_dots_lit_is_no_event(cfg):
 
 
 def test_the_darkest_dot_is_the_one_reported(cfg):
+    """Whatever a body is most squarely blocking is the best evidence crop."""
     # About which dot is picked, not about the cluster rule — pin the
     # threshold so the shipped value cannot change what this test means.
     cfg.beams.detection.min_simultaneous_breaks = 1
-    """Whatever a body is most squarely blocking is the best evidence crop."""
     breaks = []
     d = _detector(cfg, breaks)
     d.set_maze("maze_1", settle_ms=0)

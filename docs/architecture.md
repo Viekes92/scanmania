@@ -29,7 +29,10 @@ One NUC runs everything. Six systemd units communicate over localhost sockets an
 │  scanmania-kiosk.service                                        │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │ X session (no window manager — geometry is explicit)       │ │
-│  │ Chromium × 2: HDMI-2 /display/in, HDMI-1 /display/out      │ │
+│  │ Chromium × 2, one per panel. WHICH output carries which    │ │
+│  │ page is config, not code: SCANMANIA_OUT_IN / _OUT in       │ │
+│  │ /etc/default/scanmania (kiosk.sh defaults IN=HDMI-1,       │ │
+│  │ OUT=HDMI-2; the container currently swaps them).           │ │
 │  └───────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 └─────────────────────────────────────────────────────────────────┘

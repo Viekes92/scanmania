@@ -7,6 +7,82 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — a beam break costs time, not the run
+
+- **`ApplyTimePenalty` / `RevokeTimePenalty`.** A confirmed break adds
+  `game.penalty_ms` (default 5000) to the player's time and the run carries on.
+  `BUSTED` still exists but is now reachable **only** by the gamemaster pressing
+  BUST — for cheating, climbing, or leaving and re-entering the maze, which no
+  camera can judge.
+
+- **A cooldown, which is what makes this safe.** `game.penalty_cooldown_ms`
+  (default 5000) is the minimum RUN-time gap between two penalties. Without it a
+  player parked in a beam collects one penalty per detection — roughly six a
+  second at the shipped rate limit — and finishes several minutes down. A break
+  inside the window is recorded as suppressed, not silently dropped, and a
+  suppressed break does **not** push the window along behind it.
+
+  The FSM enforces the cooldown itself, which it can do without breaking
+  invariant 1 because `BreakConfirmed` now carries `run_elapsed_ms`, stamped by
+  the runner. The FSM compares two integers it was handed; it still reads no
+  clock. The stamp is the RAW elapsed, so a penalty cannot push the next
+  cooldown window along by its own size.
+
+- **The penalty lives in the stopwatch.** `elapsed_ms()` includes penalties,
+  `raw_elapsed_ms()` is what the monotonic clock measured. Both displays pick a
+  penalty up the instant it lands with no change of their own, and a result can
+  be broken down as "42.1s + 2 x 5.0s" rather than one number nobody can check.
+  Schema v5 stores `penalty_count`, `penalty_total_ms` and `raw_elapsed_ms` on
+  the run row.
+
+- **Assisted mode no longer halts the clock.** A penalty is raised with the GM,
+  who can UNDO it; the run never stops. Halting was right when the decision was
+  "end this run or not" and wrong now — and it also handed the player however
+  long the GM took to deliberate, because nothing stopped them running. The
+  notice dismisses itself after `assisted_timeout_ms` leaving the penalty in
+  place; it used to **abort the run**, which nobody should lose because a GM was
+  busy. A veto also reopens the cooldown immediately: the GM has just said that
+  break was not real, so holding the window against it would suppress a genuine
+  break right behind it.
+
+### Added — MASTER MODE on the GM console (E-stop)
+
+- `POST /api/gm/master-mode` and a tap-to-confirm button beside FORCE RESET.
+  Blacks out every laser, stops the clock, disarms detection and brings the
+  house lights up. It is on the passwordless GM console deliberately: the moment
+  you need an emergency stop is the moment you do not want to be finding a
+  laptop and typing a password. The button is the way back out too — it reads
+  EXIT MASTER while engaged.
+
+### Changed — soundtrack
+
+- `sector2.mp3` and `sector3.mp3` replace the single `sector.wav`, so the player
+  hears **which** checkpoint they just took.
+- `break.mp3` is the time-penalty sting, fired via the new `audio.penalty_cue`.
+  It is not in `audio.cues` because that map is keyed by FSM state and a penalty
+  is not a state change — but it IS included in `cue_files()`, so it is
+  preloaded and verified at startup like every other one-shot. Leaving it out
+  would have meant discovering a missing file as silence, mid-run, on the one
+  event the player most needs to hear.
+- No victory or defeat one-shot: `end.mp3` closes every game.
+- The "cues must be .wav" test is relaxed to any decodable format. SDL_mixer was
+  verified to load each shipped sting as a fully-decoded in-memory `Sound`,
+  which is the property the rule protects. `.wav` remains the safe choice, and
+  a box whose SDL lacks an mp3 decoder gets a startup log line rather than a
+  failed run.
+
+### Fixed
+
+- `insert_run` defaults the three new columns at the binding site rather than
+  requiring them. Adding named parameters to that SQL broke every caller that
+  builds a run dict — the runner, the orphan-run settler, tools and tests — with
+  a runtime binding error rather than anything visible at import.
+- The assisted overlay hides its evidence thumbnail when it fails to load
+  instead of painting a broken-image icon. Evidence capture is disabled
+  server-side, so that request 404s every time, and the placeholder was the most
+  prominent thing on a prompt meant to be read at a glance.
+
+
 ### Fixed — detection (from a twelve-agent review of vision/ and the detection path)
 
 - **ARM walked every baseline down to the dark level, then froze it in at GO.**

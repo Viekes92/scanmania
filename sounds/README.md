@@ -7,7 +7,7 @@ this directory.
 
 Two ways, both live-reloadable from the admin portal (Config → game.yaml → Save):
 
-1. **Keep the name.** Overwrite `victory.wav` with a different `victory.wav`.
+1. **Keep the name.** Overwrite `end.mp3` with a different `end.mp3`.
    Nothing in config changes.
 2. **Change the name.** Put `fanfare_v2.wav` here and point `audio.cues.FINISHED`
    at it in `config/game.yaml`.
@@ -26,9 +26,10 @@ Set in `config/game.yaml` under `audio:`, keyed by FSM state.
 | `ambient.mp3` | the idle bed, looping | ATTRACT, REGISTERED, ARM, RESULT |
 | `game.wav` | the run track, looping | RUN_SEG_1, and keeps playing through 2 and 3 |
 | `countdown.wav` | one-shot | entering COUNTDOWN |
-| `sector.wav` | one-shot | entering RUN_SEG_2 and RUN_SEG_3 (checkpoint reached) |
-| `victory.wav` | one-shot | FINISHED (clean run) |
-| `defeat.wav` | one-shot | BUSTED and ABORTED |
+| `sector2.mp3` | one-shot | entering RUN_SEG_2 (checkpoint 1 reached) |
+| `sector3.mp3` | one-shot | entering RUN_SEG_3 (checkpoint 2 reached) |
+| `break.mp3` | one-shot | a beam break — the TIME PENALTY sting. Not keyed by state: a penalty does not change state, the run carries on. |
+| `end.mp3` | bed, plays once | FINISHED and BUSTED. There is no victory/defeat pair any more — end.mp3 closes every game. |
 
 The music bed is **held across states that do not name one**. That is what
 keeps a single track running for a whole run instead of restarting at every
@@ -41,7 +42,8 @@ no-op on entry 2 and 3 — the track is already playing, so it is left alone.
 
 **Cues: `.wav`.** They are decoded into RAM at startup and must fire the instant
 someone crosses a checkpoint. They are short, so compression saves nothing worth
-having. Keep them pre-trimmed: leading silence in `sector.wav` reads as lag.
+having. Keep them pre-trimmed: leading silence in `sector2.mp3` or `break.mp3` reads as lag, and the
+penalty sting in particular has to land on the moment it happened.
 
 **The bed: `.mp3` or `.ogg`.** It streams rather than loading, and it runs for
 minutes. Forcing `.wav` here is how you end up with a 5 GB file — an 8-hour

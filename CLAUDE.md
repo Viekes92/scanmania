@@ -29,7 +29,7 @@ run is over before you can hear it:
 
 ```bash
 python tools/fake_run.py --scenario clean --pace 3   # hear the whole arc
-python tools/fake_run.py --scenario busted --pace 3  # ...and the defeat cue
+python tools/fake_run.py --scenario busted --pace 3  # ...and a GM bust
 python tools/fake_run.py --scenario clean --silent   # no audio
 ```
 
@@ -108,6 +108,15 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
 - **Config keys:** add to the YAML/JSON file + a one-line comment with purpose and sane range + validation in `config/loader.py`.
 - **Commit format:** `<scope>: <what changed>` e.g. `fsm: handle false-start during COUNTDOWN`.
 - **DMX:** one universe, one owner — `iobackend/dmx.py`. Every Art-Net frame carries all 512 channels, so a second sender would zero the first one's work twice a second. Patch: ch1 hazer blower, ch2 haze, ch3 left, ch4 right, ch5 entrance. Run `python3 tools/dmxpatch.py` for the live sheet; it is generated from config, never hand-maintained. Haze is **duty-cycled** (`haze_burst_s` / `haze_interval_s`) because continuous output at any usable level is too much. Light levels come from `light_cues` in `mazes.yaml`, keyed by FSM state. The entrance is `always_on`, which now means **only a light cue may dim it** (`allow_always_on=True`, passed by `lightshow._apply()` alone) — see ADR 0010. It is dark from sign-in to the result and lit in attract/master/aborted/fault, the states where somebody is walking in or out. Two absolutes remain: `blackout()`, which is what a dying process calls, RESTORES it, and `DmxController.power_down()` is the only path that leaves it dark — end of day, operator at the breaker. COUNTDOWN and every RUN state are forced dark in code, over any cue and over the GM's work-light switch.
+- **Breaks cost TIME, not the run.** A confirmed beam break emits
+  `ApplyTimePenalty` and the player keeps running; `game.penalty_ms` is the
+  cost and `game.penalty_cooldown_ms` is the minimum RUN-time gap between two
+  penalties. The cooldown is load-bearing: without it a player parked in a beam
+  collects one penalty per detection. `BUSTED` still exists but is reachable
+  ONLY by the gamemaster pressing BUST — for cheating, climbing, or leaving and
+  re-entering the maze, which no camera can judge. `Stopwatch.elapsed_ms()`
+  includes penalties; `raw_elapsed_ms()` is what the clock measured, and the run
+  row keeps both.
 - **Audio:** decoration, and it must never be able to end a run — a missing
   file, a dead sound card or a mixer that will not start are all silence plus a
   log line, never an exception on the game path. `audio.music` in `game.yaml` is

@@ -27,6 +27,7 @@ from core.events import (
     ArmDetection, DisarmDetection, StartCountIn, BeamPreflightCheck,
     ReadyBlink, SaveRun, VoidRun, BroadcastState, EmitMetric,
     SaveBreakEvidence, AutoMaskBeam, DropDetectionMode,
+    ApplyTimePenalty, RevokeTimePenalty,
     # Input events for internal production
     BootComplete, SelfTestPass, ProcessRestart, RampComplete,
     ResultDisplayTimeout, ArmTimeout, MaxRunExceeded,
@@ -156,6 +157,8 @@ class GameRunner:
         self.started_at_mono: float = time.monotonic()
         self.state: str = "BOOT"
         self.context: FSMContext = FSMContext(
+            penalty_ms=getattr(config.game, "penalty_ms", 5000),
+            penalty_cooldown_ms=getattr(config.game, "penalty_cooldown_ms", 5000),
             detection_mode=getattr(config.game, "detection_mode", "auto")
             if config is not None else "auto"
         )
@@ -1423,6 +1426,14 @@ class GameRunner:
         if not self.context.run_id:
             self.context.run_id = str(uuid.uuid4())
             log.info("Run started: run_id=%s", self.context.run_id)
+            # Clean penalty slate. stopwatch.start() clears its own accumulator;
+            # these are the FSM-side counters that drive the console and the
+            # cooldown, and a stale last_penalty_elapsed_ms would suppress the
+            # first genuine break of the next run.
+            self.context.penalty_count = 0
+            self.context.penalty_total_ms = 0
+            self.context.last_penalty_elapsed_ms = None
+            self.context.last_penalty_beam = None
             self.stopwatch.start()
             self._run_started_at_iso = datetime.now(timezone.utc).isoformat()
             # Write the row pessimistically at GO — CLAUDE.md invariant 7.
@@ -1478,30 +1489,12 @@ class GameRunner:
             self._assisted_halt_started_ns = time.monotonic_ns()
         log.info("[SideEffect] StopStopwatch → %d ms", self.stopwatch.elapsed_ms())
         self.stopwatch.stop()
-        # An assisted halt stays in a RUN state with the stopwatch frozen and
-        # every timer cancelled, so if the GM never taps CONFIRM or VETO the
-        # game hangs with nothing to recover it. Give the decision a deadline.
-        if self.context.pending_break and self.state in RUN_STATES:
-            self._cancel_task("_assisted_task")
-            timeout_ms = getattr(getattr(self.config, "game", None),
-                                 "assisted_timeout_ms", 60_000) if self.config else 60_000
-            # ABORT, not bust and not veto.
-            #
-            # Auto-veto can loop: it clears pending_break and re-arms detection,
-            # so a player still standing in the beam re-triggers within ~120 ms
-            # and the game never escapes. Auto-bust terminates cleanly but
-            # convicts a player nobody actually looked at, which is exactly what
-            # invariant 5 exists to prevent — and detection is not calibrated.
-            #
-            # Abort says what really happened: nobody adjudicated, so the run
-            # does not count. No leaderboard entry, no verdict, and the player
-            # runs again.
-            self._assisted_task = asyncio.create_task(
-                self._timeout_after(timeout_ms, GmAbort()),
-                name="assisted_timeout",
-            )
-            log.info("Assisted decision deadline: %d ms → run will ABORT "
-                     "if the GM does not decide", timeout_ms)
+        # NOTE: the assisted decision deadline used to be armed here, because
+        # an assisted break halted the stopwatch and the GM had to adjudicate
+        # before anything could move. Breaks are time penalties now: they never
+        # halt the clock and never end a run, so there is nothing to deadlock
+        # and nothing to abort. The penalty NOTICE gets its own dismissal timer
+        # in _handle_apply_time_penalty, where on expiry the penalty stands.
         # Cancel run timers
         self._cancel_task("_max_run_task")
         self._cancel_task("_arm_timeout_task")
@@ -1791,6 +1784,63 @@ class GameRunner:
         except Exception as exc:
             log.warning("ReadyBlink failed: %s", exc)
 
+    async def _handle_apply_time_penalty(self, effect: ApplyTimePenalty) -> None:
+        """
+        Add a time penalty to the running clock.
+
+        This is what a beam break costs now. The run continues; the clock jumps.
+        Both displays pick it up on the next broadcast without any change of
+        their own, because the penalty lives inside Stopwatch.elapsed_ms().
+        """
+        total = self.stopwatch.add_penalty_ms(effect.ms)
+        log.warning("[SideEffect] ApplyTimePenalty +%d ms on %s "
+                    "(penalty %d this run, %d ms total)",
+                    effect.ms, effect.beam_id, effect.total_penalties, total)
+        metrics.emit(metrics.PENALTY_APPLIED, float(effect.ms),
+                     {"beam_id": effect.beam_id,
+                      "run_id": self.context.run_id or ""})
+        self._cue_audio_penalty()
+
+        # In assisted mode the GM is shown the penalty and can take it back.
+        # Give that notice a deadline so it cannot sit on screen for the rest
+        # of the run: on expiry the penalty simply STANDS. It used to ABORT the
+        # run, which was the right answer when the decision was "bust or not"
+        # and the wrong one now — nobody should lose a run because the GM was
+        # busy, and the penalty has already been applied either way.
+        if self.context.pending_break and self.state in RUN_STATES:
+            self._cancel_task("_assisted_task")
+            timeout_ms = getattr(getattr(self.config, "game", None),
+                                 "assisted_timeout_ms", 60_000) if self.config else 60_000
+            self._assisted_task = asyncio.create_task(
+                self._timeout_after(timeout_ms, GmConfirmBreak()),
+                name="assisted_penalty_notice")
+
+    async def _handle_revoke_time_penalty(self, effect: RevokeTimePenalty) -> None:
+        """Hand a penalty back — the GM vetoed it."""
+        total = self.stopwatch.revoke_penalty_ms(effect.ms)
+        log.warning("[SideEffect] RevokeTimePenalty -%d ms on %s (%d ms total)",
+                    effect.ms, effect.beam_id, total)
+        metrics.emit(metrics.PENALTY_REVOKED, float(effect.ms),
+                     {"beam_id": effect.beam_id,
+                      "run_id": self.context.run_id or ""})
+
+    def _cue_audio_penalty(self) -> None:
+        """
+        One-shot penalty sting, if the soundtrack has one.
+
+        Audio is decoration and must never be able to affect a run (CLAUDE.md),
+        so a missing file or a dead mixer is silence and a debug line.
+        """
+        try:
+            name = getattr(getattr(getattr(self.config, "game", None),
+                                   "audio", None), "penalty_cue", "break.mp3")
+            if name and self.audio is not None and hasattr(self.audio, "play_cue"):
+                # Absent from sounds/, or a codec the box cannot decode, is
+                # silence plus a log line — audio must never affect a run.
+                self.audio.play_cue(name)
+        except Exception as exc:
+            log.debug("penalty cue not played: %s", exc)
+
     async def _handle_save_run(self, effect: SaveRun) -> None:
         """Persist the run to SQLite."""
         log.info("[SideEffect] SaveRun(outcome=%r, run_id=%r)", effect.outcome, effect.run_id)
@@ -1811,6 +1861,12 @@ class GameRunner:
             "segment_reached": self.context.segment,
             "voided_reason": None,
             "created_at": now_iso,
+            # elapsed_ms above INCLUDES the penalties; these let a result be
+            # broken down as "42.1s + 2 x 5.0s" rather than one number nobody
+            # can check.
+            "penalty_count": self.context.penalty_count,
+            "penalty_total_ms": self.stopwatch.penalty_ms,
+            "raw_elapsed_ms": self.stopwatch.raw_elapsed_ms(),
         }
         try:
             await self.db.insert_run(run)
@@ -2313,6 +2369,11 @@ class GameRunner:
                     beam_id=beam_id,
                     ratio=ratio,
                     run_id=self.context.run_id or "",
+                    # The FSM enforces the penalty cooldown and may not read a
+                    # clock (invariant 1), so hand it the run clock as data.
+                    # Raw, not penalised: otherwise each penalty would push the
+                    # next one further away by its own size.
+                    run_elapsed_ms=self.stopwatch.raw_elapsed_ms(),
                 ))
             elif kind == "clear":
                 # Informational — the detector handles hysteresis itself.
@@ -2452,6 +2513,13 @@ class GameRunner:
                        if self.vision is not None
                        and hasattr(self.vision, "detector_stats") else None),
             "pending_break": self.context.pending_break,
+            # Penalties: the console shows the count, the displays show the
+            # damage. elapsed_ms already INCLUDES penalty_ms — raw_elapsed_ms
+            # is what the clock measured, so a result can be broken down.
+            "penalty_count": self.context.penalty_count,
+            "penalty_total_ms": self.stopwatch.penalty_ms,
+            "penalty_each_ms": self.context.penalty_ms,
+            "raw_elapsed_ms": self.stopwatch.raw_elapsed_ms(),
             "countdown_step": self._countdown_step,
             "countdown_total": self._countdown_total,
             # Milliseconds until GO. The pulse ramp accelerates, so the pulse
@@ -2497,6 +2565,8 @@ _EFFECT_HANDLERS: dict = {
     VoidRun:          GameRunner._handle_void_run,
     BroadcastState:   GameRunner._handle_broadcast_state,
     EmitMetric:       GameRunner._handle_emit_metric,
+    ApplyTimePenalty: GameRunner._handle_apply_time_penalty,
+    RevokeTimePenalty: GameRunner._handle_revoke_time_penalty,
     SaveBreakEvidence: GameRunner._handle_save_break_evidence,
     AutoMaskBeam:     GameRunner._handle_auto_mask_beam,
     DropDetectionMode: GameRunner._handle_drop_detection_mode,

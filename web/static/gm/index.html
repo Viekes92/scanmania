@@ -886,6 +886,13 @@
          alt="ScanMania">
     <div id="stateLabel">ATTRACT</div>
     <div id="stopwatch">00:00.000</div>
+    <!-- Penalties. Hidden at zero so a clean run shows an uncluttered clock.
+         The stopwatch above ALREADY includes this time — it is shown
+         separately so the GM can answer "why is their time 52s?" without
+         opening the admin panel. -->
+    <div id="penaltyStrip" style="display:none; font-family:'Courier New',monospace;
+         font-size:13px; font-weight:700; letter-spacing:1px; color:var(--red-text);
+         margin-top:2px; white-space:nowrap;"></div>
     <div id="playerName">—</div>
     <div id="detectionBadge" class="mode-auto">AUTO</div>
   </div>
@@ -980,8 +987,16 @@
     <button class="action-btn" id="btnVoid"       disabled>VOID</button>
   </div>
 
-  <!-- Recovery control, deliberately out of thumb reach of the game buttons. -->
-  <button class="action-btn" id="btnForceReset">FORCE RESET</button>
+  <!-- Recovery controls, deliberately out of thumb reach of the game buttons.
+       MASTER MODE is the emergency stop: it blacks out every laser, stops the
+       clock and disarms detection. It lives here, on the passwordless console
+       the GM is already holding, because the moment you need it is the moment
+       you do not want to be finding a laptop and typing a password. -->
+  <div id="recovery" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+    <button class="action-btn" id="btnMaster"
+            style="border:2px solid var(--red); color:var(--red-text);">MASTER MODE</button>
+    <button class="action-btn" id="btnForceReset">FORCE RESET</button>
+  </div>
 
   <!-- Banners sit BELOW the action row. Above it, every appearing or
        disappearing banner shoved the buttons down or up — the manual-mode
@@ -1157,13 +1172,18 @@
   <!-- -----------------------------------------------------------------------
        ASSISTED MODE OVERLAY — full-screen confirm/veto prompt
   ----------------------------------------------------------------------- -->
+  <!-- A break costs TIME now, not the run. The penalty has already been
+       applied and the player is still running — the clock never stops — so
+       this is a notice you can undo, not a decision blocking the game. It
+       dismisses itself after assisted_timeout_ms, leaving the penalty in
+       place. KEEP and UNDO, not BUST and CLEAR. -->
   <div id="assistedOverlay">
-    <div id="assistedTitle">BEAM BREAK DETECTED</div>
+    <div id="assistedTitle">TIME PENALTY APPLIED</div>
     <div id="assistedBeam">—</div>
     <img id="assistedThumb" src="" alt="Evidence thumbnail" style="display:none;">
     <div class="assisted-btns">
-      <button id="btnVeto"    >CLEAR — RESUME</button>
-      <button id="btnConfirm" >BUST</button>
+      <button id="btnVeto"    >UNDO PENALTY</button>
+      <button id="btnConfirm" >KEEP</button>
     </div>
   </div>
 
@@ -1385,8 +1405,25 @@
       // second tap only ever restarted the cycle. BUST, VOID and FORCE RESET
       // were all unreachable from the console — the request never left the
       // browser. Guarding on prevState is the whole fix.
+      /* --- E-stop label: it is the way OUT of master mode too --- */
+      const btnMasterEl = document.getElementById("btnMaster");
+      if (btnMasterEl) {
+        btnMasterEl.dataset.label = (state === "MASTER") ? "EXIT MASTER" : "MASTER MODE";
+      }
+
+      /* --- Penalties --- */
+      const pc = msg.penalty_count || 0;
+      const pms = msg.penalty_total_ms || 0;
+      if (pc > 0) {
+        penaltyStrip.style.display = "block";
+        penaltyStrip.textContent =
+          `+${(pms / 1000).toFixed(1)}s · ${pc} PENALT${pc === 1 ? "Y" : "IES"}`;
+      } else {
+        penaltyStrip.style.display = "none";
+      }
+
       if (state !== prevState) {
-        [btnBust, btnVoid, btnForceReset].forEach(btn => {
+        [btnBust, btnVoid, btnForceReset, btnMasterEl].filter(Boolean).forEach(btn => {
           if (btn._tapReset) btn._tapReset();
         });
       }
@@ -1488,13 +1525,23 @@
         // Split it so the operator reads the camera first: that is what tells
         // them where in the container to look.
         const parts = String(msg.pending_break).split(":");
-        assistedBeam.textContent = parts.length === 2
+        const where = parts.length === 2
           ? `${parts[0]} · dot ${parts[1]}` : msg.pending_break;
+        // Name the cost, not just the dot. The GM is deciding whether to give
+        // seconds back, so the number is the decision.
+        const each = (msg.penalty_each_ms || 0) / 1000;
+        assistedBeam.textContent = each
+          ? `${where}   —   +${each.toFixed(1)}s` : where;
         /* Only load thumbnail when we have a valid run_id */
         if (msg.run_id) {
+          // Hide it if it fails to load rather than showing a broken-image
+          // icon: evidence capture is currently disabled server-side, so this
+          // request 404s every time and the placeholder was the most prominent
+          // thing on a prompt that is meant to be read at a glance.
+          assistedThumb.onerror = () => { assistedThumb.style.display = "none"; };
+          assistedThumb.onload  = () => { assistedThumb.style.display = "block"; };
           assistedThumb.src = `/api/evidence/${encodeURIComponent(msg.run_id)}`
                             + `/${encodeURIComponent(msg.pending_break)}`;
-          assistedThumb.style.display = "block";
         } else {
           assistedThumb.removeAttribute("src");
           assistedThumb.style.display = "none";
@@ -1752,7 +1799,10 @@
       function reset() {
         pending = false;
         if (timer) { clearTimeout(timer); timer = null; }
-        btn.textContent = originalLabel;
+        // dataset.label lets a button change its own name between states —
+        // MASTER MODE becomes EXIT MASTER once engaged — without losing its
+        // tap-to-confirm behaviour.
+        btn.textContent = btn.dataset.label || originalLabel;
       }
 
       btn.addEventListener("click", () => {
@@ -1775,6 +1825,7 @@
     ----------------------------------------------------------------------- */
     const voidOverlay      = document.getElementById("voidOverlay");
     const btnVoidCancel    = document.getElementById("btnVoidCancel");
+    const penaltyStrip     = document.getElementById("penaltyStrip");
 
     function openVoidOverlay() {
       voidOverlay.style.display = "flex";
@@ -1811,6 +1862,13 @@
 
     // FORCE RESET — tap-to-confirm
     makeTapConfirm(btnForceReset, "FORCE RESET", () => gmPost("force-reset"));
+
+    // MASTER MODE — the E-stop. Tap-to-confirm, because an accidental brush
+    // would black out a running game; two taps is still under a second.
+    const btnMaster = document.getElementById("btnMaster");
+    makeTapConfirm(btnMaster, "MASTER MODE", () => {
+      gmPost("master-mode", { engage: currentState !== "MASTER" });
+    });
 
     /* --- Assisted overlay --- */
     btnConfirm.addEventListener("click", () => gmPost("confirm-break"));

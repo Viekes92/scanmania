@@ -32,6 +32,11 @@ class MasterModeBody(BaseModel):
     engage: bool
 
 
+class MasterModeBody(BaseModel):
+    """engage=True drops into MASTER (E-stop); False returns to ATTRACT."""
+    engage: bool = True
+
+
 def register_routes(
     router: APIRouter,
     on_action: Callable[[str, dict], None],
@@ -85,6 +90,22 @@ def register_routes(
     async def gm_confirm_break():
         """In 'assisted' mode: confirm the pending break — bust the run."""
         return _dispatch("confirm_break")
+
+    @router.post("/api/gm/master-mode")
+    async def gm_master_mode(body: MasterModeBody):
+        """
+        Emergency stop, and the way back out of it.
+
+        engage=true blacks out every laser, stops the clock, disarms detection
+        and brings the house lights up — the same state the admin panel's
+        master mode gives you, reachable from the console the gamemaster is
+        actually holding. It is on the GM page precisely because the moment you
+        need it is the moment you do not want to be finding a laptop and typing
+        a password.
+
+        engage=false hands the box back to ATTRACT.
+        """
+        return _dispatch("master_mode", {"engage": bool(body.engage)})
 
     @router.post("/api/gm/veto-break")
     async def gm_veto_break():

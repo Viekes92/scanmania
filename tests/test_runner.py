@@ -792,8 +792,14 @@ async def test_gm_action_detection_mode_flows_through_queue(runner):
 # ===========================================================================
 
 @pytest.mark.asyncio
-async def test_beam_break_in_auto_mode_busts_player(runner):
-    """BreakConfirmed in auto mode during RUN_SEG_1 → BUSTED."""
+async def test_beam_break_in_auto_mode_costs_time_and_the_run_continues(runner):
+    """
+    BreakConfirmed in auto mode adds a time penalty. It no longer busts.
+
+    End to end, because the interesting part is the wiring: the FSM decides,
+    the runner applies it to the stopwatch, and the clock the displays read
+    has to jump by exactly the configured amount.
+    """
     await runner.dispatch(BootComplete())
     await runner.dispatch(SelfTestPass())
     await runner.dispatch(PlayerRegistered(player_id="p-brk", nickname="Breaker"))
@@ -804,8 +810,25 @@ async def test_beam_break_in_auto_mode_busts_player(runner):
     assert runner.state == RUN_SEG_1
 
     run_id = runner.context.run_id
+    before = runner.stopwatch.penalty_ms
     await runner.dispatch(BreakConfirmed(beam_id="b01", ratio=0.1, run_id=run_id))
-    assert runner.state == BUSTED
+
+    assert runner.state == RUN_SEG_1, "a detected break ended the run"
+    penalty = runner.config.game.penalty_ms
+    assert runner.stopwatch.penalty_ms == before + penalty
+    assert runner.context.penalty_count == 1
+    # elapsed_ms is what the player is judged on and must carry the penalty;
+    # raw_elapsed_ms is what the clock measured and must not.
+    assert (runner.stopwatch.elapsed_ms()
+            - runner.stopwatch.raw_elapsed_ms()) == penalty
+
+    # ...and a second break straight away is swallowed by the cooldown, so a
+    # player standing in the beam cannot stack penalties.
+    await runner.dispatch(BreakConfirmed(beam_id="b01", ratio=0.1, run_id=run_id))
+    assert runner.context.penalty_count == 1
+    assert runner.stopwatch.penalty_ms == before + penalty
+
+    runner._cancel_task("_assisted_task")
     runner._cancel_task("_result_timeout_task")
 
 

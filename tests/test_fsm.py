@@ -31,7 +31,8 @@ from core.events import (
     ArmDetection, DisarmDetection, StartCountIn, BeamPreflightCheck,
     ReadyBlink, SaveRun, VoidRun, BroadcastState, EmitMetric,
     SaveBreakEvidence, DropDetectionMode,
-)
+    ApplyTimePenalty,
+    RevokeTimePenalty,)
 from core.fsm import FSMContext, transition, make_context
 
 
@@ -205,138 +206,199 @@ class TestFullCleanRun:
 # Bust in each segment — auto mode
 # ---------------------------------------------------------------------------
 
-class TestBustAutoMode:
-    def _bust_event(self) -> BreakConfirmed:
-        return BreakConfirmed(beam_id="b01", ratio=0.2, run_id="run-1")
+class TestBreakAppliesATimePenalty:
+    """
+    A confirmed break costs TIME. It does not end the run any more.
+
+    Busting is a gamemaster decision now — see TestGmBustStillEndsARun. These
+    tests pin the replacement: penalty applied, run continues, and a cooldown
+    that stops a player parked in a beam collecting one penalty per frame.
+    """
+
+    def _evt(self, elapsed_ms: int = 0) -> BreakConfirmed:
+        return BreakConfirmed(beam_id="b01", ratio=0.2, run_id="run-1",
+                              run_elapsed_ms=elapsed_ms)
 
     def _auto_ctx(self, segment: int = 1) -> FSMContext:
         return _run_ctx(segment=segment, mode=DetectionMode.auto)
 
-    def test_bust_in_seg1(self):
+    def test_break_does_not_end_the_run(self):
+        for state, seg in ((RUN_SEG_1, 1), (RUN_SEG_2, 2), (RUN_SEG_3, 3)):
+            ctx = self._auto_ctx(seg)
+            s, _ = step(state, self._evt(), ctx)
+            assert s == state, f"a break ended the run in {state}"
+
+    def test_break_emits_a_time_penalty(self):
         ctx = self._auto_ctx(1)
-        s, fx = step(RUN_SEG_1, self._bust_event(), ctx)
-        assert s == BUSTED
+        fx = effects(RUN_SEG_1, self._evt(), ctx)
+        pen = [e for e in fx if isinstance(e, ApplyTimePenalty)]
+        assert len(pen) == 1
+        assert pen[0].ms == ctx.penalty_ms
+        assert pen[0].beam_id == "b01"
 
-    def test_bust_in_seg2(self):
-        ctx = self._auto_ctx(2)
-        s, fx = step(RUN_SEG_2, self._bust_event(), ctx)
-        assert s == BUSTED
-
-    def test_bust_in_seg3(self):
-        ctx = self._auto_ctx(3)
-        s, fx = step(RUN_SEG_3, self._bust_event(), ctx)
-        assert s == BUSTED
-
-    def test_bust_stops_stopwatch(self):
+    def test_break_does_not_stop_the_stopwatch(self):
         ctx = self._auto_ctx(1)
-        assert StopStopwatch in effect_types(RUN_SEG_1, self._bust_event(), ctx)
+        assert StopStopwatch not in effect_types(RUN_SEG_1, self._evt(), ctx)
 
-    def test_bust_applies_bust_preset(self):
+    def test_break_saves_no_run_and_plays_no_bust_show(self):
         ctx = self._auto_ctx(1)
-        fx = effects(RUN_SEG_1, self._bust_event(), ctx)
-        assert PlayShow("bust") in fx
+        fx = effects(RUN_SEG_1, self._evt(), ctx)
+        assert not [e for e in fx if isinstance(e, SaveRun)]
+        assert PlayShow("bust") not in fx
 
-    def test_bust_saves_run_busted(self):
+    def test_break_still_saves_evidence(self):
         ctx = self._auto_ctx(1)
-        fx = effects(RUN_SEG_1, self._bust_event(), ctx)
-        save = [e for e in fx if isinstance(e, SaveRun)]
-        assert len(save) == 1
-        assert save[0].outcome == RunOutcome.busted
-
-    def test_bust_saves_break_evidence(self):
-        ctx = self._auto_ctx(1)
-        fx = effects(RUN_SEG_1, self._bust_event(), ctx)
-        assert any(isinstance(e, SaveBreakEvidence) for e in fx)
-
-
-    def test_busted_to_result_on_timeout(self):
-        assert new_state(BUSTED, ResultDisplayTimeout()) == RESULT
-
-
-# ---------------------------------------------------------------------------
-# Assisted mode — confirm and veto paths
-# ---------------------------------------------------------------------------
-
-class TestBustAssistedMode:
-    def _evt(self) -> BreakConfirmed:
-        return BreakConfirmed(beam_id="b02", ratio=0.25, run_id="run-2")
-
-    def _ctx(self, seg_state: str = RUN_SEG_1) -> FSMContext:
-        return _run_ctx(segment=1, mode=DetectionMode.assisted)
-
-    def test_break_in_seg1_stays_in_seg1(self):
-        ctx = self._ctx()
-        s, fx = step(RUN_SEG_1, self._evt(), ctx)
-        assert s == RUN_SEG_1
-
-    def test_break_in_seg1_stops_stopwatch(self):
-        ctx = self._ctx()
-        assert StopStopwatch in effect_types(RUN_SEG_1, self._evt(), ctx)
-
-    def test_break_sets_pending_break(self):
-        ctx = self._ctx()
-        step(RUN_SEG_1, self._evt(), ctx)
-        assert ctx.pending_break == "b02"
-
-    def test_break_saves_evidence(self):
-        ctx = self._ctx()
         fx = effects(RUN_SEG_1, self._evt(), ctx)
         assert any(isinstance(e, SaveBreakEvidence) for e in fx)
 
-    def test_confirm_break_goes_to_busted(self):
+    def test_context_counts_the_penalty(self):
+        ctx = self._auto_ctx(1)
+        step(RUN_SEG_1, self._evt(), ctx)
+        assert ctx.penalty_count == 1
+        assert ctx.penalty_total_ms == ctx.penalty_ms
+        assert ctx.last_penalty_beam == "b01"
+
+    # --- the cooldown, which is the whole point -----------------------------
+
+    def test_a_second_break_inside_the_cooldown_is_suppressed(self):
+        """
+        Without this a player standing in a beam collects a penalty per
+        detection — ~6 a second at the shipped rate limit — and finishes
+        several minutes down.
+        """
+        ctx = self._auto_ctx(1)
+        step(RUN_SEG_1, self._evt(elapsed_ms=1_000), ctx)
+        fx = effects(RUN_SEG_1, self._evt(elapsed_ms=1_200), ctx)
+        assert not [e for e in fx if isinstance(e, ApplyTimePenalty)]
+        assert ctx.penalty_count == 1, "a stacked penalty got through"
+
+    def test_a_break_after_the_cooldown_applies_again(self):
+        ctx = self._auto_ctx(1)
+        step(RUN_SEG_1, self._evt(elapsed_ms=1_000), ctx)
+        after = 1_000 + ctx.penalty_cooldown_ms
+        fx = effects(RUN_SEG_1, self._evt(elapsed_ms=after), ctx)
+        assert [e for e in fx if isinstance(e, ApplyTimePenalty)]
+        assert ctx.penalty_count == 2
+
+    def test_a_zero_cooldown_lets_every_break_through(self):
+        ctx = self._auto_ctx(1)
+        ctx.penalty_cooldown_ms = 0
+        for i in range(4):
+            step(RUN_SEG_1, self._evt(elapsed_ms=i), ctx)
+        assert ctx.penalty_count == 4
+
+    def test_the_cooldown_is_measured_from_the_last_APPLIED_penalty(self):
+        """A suppressed break must not push the window along behind it."""
+        ctx = self._auto_ctx(1)
+        step(RUN_SEG_1, self._evt(elapsed_ms=0), ctx)          # applies
+        step(RUN_SEG_1, self._evt(elapsed_ms=4_000), ctx)      # suppressed
+        fx = effects(RUN_SEG_1, self._evt(elapsed_ms=5_000), ctx)
+        assert [e for e in fx if isinstance(e, ApplyTimePenalty)], (
+            "a suppressed break extended the cooldown")
+
+
+class TestPenaltyInAssistedMode:
+    """
+    Assisted raises the penalty with the GM, who may take it back.
+
+    It does NOT halt the clock any more. Halting it was right when the decision
+    was "end this run or not"; with a penalty the game keeps flowing, and
+    halting also handed the player however long the GM took to decide, because
+    nothing stopped them running.
+    """
+
+    def _evt(self, elapsed_ms: int = 0) -> BreakConfirmed:
+        return BreakConfirmed(beam_id="b02", ratio=0.25, run_id="run-2",
+                              run_elapsed_ms=elapsed_ms)
+
+    def _ctx(self) -> FSMContext:
+        return _run_ctx(segment=1, mode=DetectionMode.assisted)
+
+    def test_penalty_applies_immediately_and_flags_the_gm(self):
         ctx = self._ctx()
-        step(RUN_SEG_1, self._evt(), ctx)  # sets pending_break
+        s, fx = step(RUN_SEG_1, self._evt(), ctx)
+        assert s == RUN_SEG_1
+        assert [e for e in fx if isinstance(e, ApplyTimePenalty)]
+        assert ctx.pending_break == "b02"
+
+    def test_the_clock_is_not_halted(self):
+        ctx = self._ctx()
+        assert StopStopwatch not in effect_types(RUN_SEG_1, self._evt(), ctx)
+
+    def test_confirm_dismisses_the_notice_and_keeps_the_penalty(self):
+        ctx = self._ctx()
+        step(RUN_SEG_1, self._evt(), ctx)
         s, fx = step(RUN_SEG_1, GmConfirmBreak(), ctx)
-        assert s == BUSTED
-
-    def test_confirm_break_saves_run_busted(self):
-        ctx = self._ctx()
-        step(RUN_SEG_1, self._evt(), ctx)
-        fx = effects(RUN_SEG_1, GmConfirmBreak(), ctx)
-        save = [e for e in fx if isinstance(e, SaveRun)]
-        assert len(save) == 1
-        assert save[0].outcome == RunOutcome.busted
-
-    def test_confirm_break_clears_pending_break(self):
-        ctx = self._ctx()
-        step(RUN_SEG_1, self._evt(), ctx)
-        step(RUN_SEG_1, GmConfirmBreak(), ctx)
+        assert s == RUN_SEG_1, "confirming a penalty must not end the run"
         assert ctx.pending_break is None
+        assert ctx.penalty_count == 1
+        assert not [e for e in fx if isinstance(e, RevokeTimePenalty)]
+        assert not [e for e in fx if isinstance(e, SaveRun)]
 
-    def test_veto_break_stays_in_run_seg1(self):
+    def test_veto_gives_the_time_back(self):
         ctx = self._ctx()
         step(RUN_SEG_1, self._evt(), ctx)
         s, fx = step(RUN_SEG_1, GmVetoBreak(), ctx)
         assert s == RUN_SEG_1
-
-    def test_veto_break_resumes_stopwatch(self):
-        ctx = self._ctx()
-        step(RUN_SEG_1, self._evt(), ctx)
-        assert StartStopwatch in effect_types(RUN_SEG_1, GmVetoBreak(), ctx)
-
-    def test_veto_break_clears_pending_break(self):
-        ctx = self._ctx()
-        step(RUN_SEG_1, self._evt(), ctx)
-        step(RUN_SEG_1, GmVetoBreak(), ctx)
+        rev = [e for e in fx if isinstance(e, RevokeTimePenalty)]
+        assert len(rev) == 1 and rev[0].ms == ctx.penalty_ms
         assert ctx.pending_break is None
+        assert ctx.penalty_count == 0
+        assert ctx.penalty_total_ms == 0
 
-    def test_confirm_without_pending_break_is_ignored(self):
+    def test_veto_does_not_restart_the_stopwatch(self):
+        """It was never stopped; restarting it re-anchored and gave free time."""
+        ctx = self._ctx()
+        step(RUN_SEG_1, self._evt(), ctx)
+        assert StartStopwatch not in effect_types(RUN_SEG_1, GmVetoBreak(), ctx)
+
+    def test_veto_reopens_the_cooldown(self):
+        """
+        The GM has just said that break was not real. Holding the cooldown
+        against it would suppress a genuine break right behind it.
+        """
+        ctx = self._ctx()
+        step(RUN_SEG_1, self._evt(elapsed_ms=1_000), ctx)
+        step(RUN_SEG_1, GmVetoBreak(), ctx)
+        fx = effects(RUN_SEG_1, self._evt(elapsed_ms=1_100), ctx)
+        assert [e for e in fx if isinstance(e, ApplyTimePenalty)]
+
+    def test_confirm_without_a_pending_notice_is_ignored(self):
         ctx = _run_ctx(mode=DetectionMode.assisted)
         ctx.pending_break = None
-        # GmConfirmBreak with no pending_break falls through to global handler,
-        # which has no match → no state change.
-        s, fx = step(RUN_SEG_1, GmConfirmBreak(), ctx)
+        s, _ = step(RUN_SEG_1, GmConfirmBreak(), ctx)
         assert s == RUN_SEG_1
 
-    def test_break_in_seg2_assisted(self):
-        ctx = _run_ctx(segment=2, mode=DetectionMode.assisted)
-        s, _ = step(RUN_SEG_2, BreakConfirmed(beam_id="b03", ratio=0.3, run_id="run-3"), ctx)
-        assert s == RUN_SEG_2
+    def test_penalties_apply_in_every_segment(self):
+        for state, seg in ((RUN_SEG_1, 1), (RUN_SEG_2, 2), (RUN_SEG_3, 3)):
+            ctx = _run_ctx(segment=seg, mode=DetectionMode.assisted)
+            s, fx = step(state, self._evt(), ctx)
+            assert s == state
+            assert [e for e in fx if isinstance(e, ApplyTimePenalty)]
 
-    def test_break_in_seg3_assisted(self):
-        ctx = _run_ctx(segment=3, mode=DetectionMode.assisted)
-        s, _ = step(RUN_SEG_3, BreakConfirmed(beam_id="b04", ratio=0.3, run_id="run-4"), ctx)
-        assert s == RUN_SEG_3
+
+class TestGmBustStillEndsARun:
+    """
+    Detection can no longer bust anyone, but the gamemaster still can.
+
+    That is the point of keeping BUSTED: cheating, climbing, leaving and
+    re-entering the maze are all things the cameras cannot judge and a human
+    can.
+    """
+
+    def test_gm_bust_goes_to_busted(self):
+        ctx = _run_ctx(segment=1, mode=DetectionMode.auto)
+        s, _ = step(RUN_SEG_1, GmBust(), ctx)
+        assert s == BUSTED
+
+    def test_gm_bust_saves_the_run_as_busted(self):
+        ctx = _run_ctx(segment=1, mode=DetectionMode.auto)
+        fx = effects(RUN_SEG_1, GmBust(), ctx)
+        save = [e for e in fx if isinstance(e, SaveRun)]
+        assert len(save) == 1 and save[0].outcome == RunOutcome.busted
+
+    def test_busted_to_result_on_timeout(self):
+        assert new_state(BUSTED, ResultDisplayTimeout()) == RESULT
 
 
 # ---------------------------------------------------------------------------
@@ -823,27 +885,28 @@ class TestEdgeCases:
 # ---------------------------------------------------------------------------
 
 class TestBustScenarios:
-    """Verify bust side effects are consistent across all three segments in all modes."""
+    """Penalty side effects must be identical in all three segments and modes."""
 
     @pytest.mark.parametrize("seg_state,seg_num", [
         (RUN_SEG_1, 1), (RUN_SEG_2, 2), (RUN_SEG_3, 3)
     ])
-    def test_auto_bust_all_segments_emits_save_run(self, seg_state, seg_num):
+    def test_auto_break_all_segments_penalises_without_saving_a_run(self, seg_state, seg_num):
         ctx = _run_ctx(segment=seg_num, mode=DetectionMode.auto)
         fx = effects(seg_state, BreakConfirmed(beam_id="bX", ratio=0.1, run_id="r1"), ctx)
-        save = [e for e in fx if isinstance(e, SaveRun)]
-        assert save and save[0].outcome == RunOutcome.busted
+        assert [e for e in fx if isinstance(e, ApplyTimePenalty)]
+        assert not [e for e in fx if isinstance(e, SaveRun)], (
+            "a detected break ended the run")
 
     @pytest.mark.parametrize("seg_state,seg_num", [
         (RUN_SEG_1, 1), (RUN_SEG_2, 2), (RUN_SEG_3, 3)
     ])
-    def test_assisted_bust_confirm_all_segments(self, seg_state, seg_num):
+    def test_assisted_confirm_all_segments_keeps_the_run_alive(self, seg_state, seg_num):
         ctx = _run_ctx(segment=seg_num, mode=DetectionMode.assisted)
         step(seg_state, BreakConfirmed(beam_id="bY", ratio=0.2, run_id="r2"), ctx)
         s, fx = step(seg_state, GmConfirmBreak(), ctx)
-        assert s == BUSTED
-        save = [e for e in fx if isinstance(e, SaveRun)]
-        assert save and save[0].outcome == RunOutcome.busted
+        assert s == seg_state
+        assert not [e for e in fx if isinstance(e, SaveRun)]
+        assert ctx.penalty_count == 1
 
     @pytest.mark.parametrize("seg_state,seg_num", [
         (RUN_SEG_1, 1), (RUN_SEG_2, 2), (RUN_SEG_3, 3)

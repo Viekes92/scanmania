@@ -49,6 +49,22 @@ arm_timeout_ms: 180000
 # How long to wait in ARM state (player registered but never counted in) before auto-resetting. Range: 30000-600000.
 
 detection_mode: assisted
+
+# --- Time penalties ---------------------------------------------------------
+# A confirmed beam break costs the player TIME, it does not end their run.
+# Busting is now a gamemaster decision only (the BUST button); detection adds
+# seconds instead, so a clipped beam is a setback rather than a walk of shame
+# in front of a queue.
+#
+# penalty_ms: added to the run's elapsed time per penalty. Sane range 0-60000.
+penalty_ms: 5000
+# penalty_cooldown_ms: minimum gap between two penalties, measured in RUN time.
+# Without it a player standing in a beam, or walking out through the maze at
+# the end, collects one penalty per detection and finishes +250 s. The cooldown
+# is what makes a break cost a fixed, predictable amount. Breaks inside the
+# window are recorded as suppressed, not silently dropped.
+# Sane range 0-60000; 0 disables the cooldown entirely.
+penalty_cooldown_ms: 5000
 # Default detection mode: auto | assisted | manual. Start with 'assisted' on site; switch to 'auto' once trusted.
 # Switchable live from the GM console without restarting.
 
@@ -199,7 +215,10 @@ audio:
     COUNTDOWN:  game.mp3
     # Stop pressed. Switching the bed here is what stops game.mp3.
     FINISHED:   end.mp3
-    BUSTED:     end.mp3          # until the time penalty replaces instant bust
+    # BUSTED is a gamemaster decision now, not something detection can cause —
+    # a break costs time instead. It is still the end of a game, so it gets the
+    # same close as a clean finish.
+    BUSTED:     end.mp3
     ABORTED:    silence          # run cut short — no fanfare
     RESULT:     ambient.mp3      # back to the bed while the score is up
     MASTER:     silence          # GM is working in the box
@@ -213,7 +232,19 @@ audio:
 
   cues:
     # No COUNTDOWN cue: the 3-2-1 is inside game.mp3.
-    # No victory/defeat cue either — a run can only be won now, and end.mp3
-    # covers the moment on its own.
-    RUN_SEG_2:  sector.wav       # checkpoint 1 reached
-    RUN_SEG_3:  sector.wav       # checkpoint 2 reached
+    # No victory cue: end.mp3 closes every game, won or not.
+    #
+    # One sting per sector rather than a single shared sector.wav, so the
+    # player hears WHICH checkpoint they just took. Both are ~1.3 s and play
+    # over the game.mp3 bed, which keeps running underneath.
+    #
+    # Format note: the convention is .wav for cues, because they are decoded
+    # into RAM at startup and must fire instantly. These are .mp3 and SDL_mixer
+    # loads them fine, but if a cue is ever silent on the box, converting it to
+    # .wav is the first thing to try — see CLAUDE.md.
+    RUN_SEG_2:  sector2.mp3      # checkpoint 1 reached — into sector 2
+    RUN_SEG_3:  sector3.mp3      # checkpoint 2 reached — into sector 3
+
+  # Fired on a TIME PENALTY, which is not a state change — the run continues,
+  # so this cannot live in `cues` above. "" for no sound.
+  penalty_cue: break.mp3

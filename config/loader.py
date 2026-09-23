@@ -334,6 +334,11 @@ class AudioConfig:
     # Beds that play ONCE instead of looping: {filename: what follows it}.
     music_once: dict[str, str] = field(default_factory=dict)
     cues: dict[str, str] = field(default_factory=dict)
+    # Fired when a beam break costs the player time. NOT in `cues`, because
+    # that map is keyed by FSM state and a penalty is not a state change — the
+    # run carries straight on. "" or a missing file is silence, like everything
+    # else here.
+    penalty_cue: str = "break.mp3"
 
     @staticmethod
     def _real(names) -> list[str]:
@@ -341,8 +346,17 @@ class AudioConfig:
                        if n and n.lower() not in ("silence", "none", "off")})
 
     def cue_files(self) -> list[str]:
-        """One-shots. Decoded into RAM at startup, so keep these short .wav."""
-        return self._real(self.cues.values())
+        """
+        One-shots. Decoded into RAM at startup, so keep these short.
+
+        penalty_cue belongs here even though it is not in `cues`: that map is
+        keyed by FSM state and a penalty is not a state change, but the file is
+        loaded, verified and played by exactly the same machinery. Leaving it
+        out meant it was neither preloaded nor checked at boot — so a missing
+        or undecodable penalty sound would first be discovered as silence,
+        mid-run, on the one event the player most needs to hear.
+        """
+        return self._real(list(self.cues.values()) + [self.penalty_cue])
 
     def music_files(self) -> list[str]:
         """Bed tracks. These stream, so a long one belongs in .mp3."""
@@ -350,7 +364,9 @@ class AudioConfig:
 
     def filenames(self) -> list[str]:
         """Every real file named here."""
-        return self._real(list(self.music.values()) + list(self.cues.values()))
+        return self._real(list(self.music.values())
+                          + list(self.cues.values())
+                          + [self.penalty_cue])
 
 
 @dataclass
@@ -383,6 +399,12 @@ class GameConfig:
     # come up than the NUC, and FAULT needs a human with an iPad to leave.
     self_test_boot_timeout_s: int = 180
     self_test_retry_s: int = 5
+    # Time added to a run per confirmed beam break, in ms. A break costs time
+    # rather than ending the run; see game.yaml. Sane range 0-60000.
+    penalty_ms: int = 5000
+    # Minimum RUN-time gap between two penalties, in ms. Stops a player parked
+    # in a beam collecting one penalty per detection. Sane range 0-60000.
+    penalty_cooldown_ms: int = 5000
     # Pause between a checkpoint firing and the maze taking its next shape.
     # 0 keeps the old snap-immediately behaviour. Sane range 0-1000 ms.
     checkpoint_shape_delay_ms: int = 300
@@ -878,6 +900,7 @@ def _parse_audio(d: dict) -> AudioConfig:
         fade_ms=_ranged(d.get("fade_ms", 400), 0, 5_000, 400, "audio.fade_ms"),
         music=_names("music"),
         cues=_names("cues"),
+        penalty_cue=str(d.get("penalty_cue", "break.mp3") or ""),
         # filename -> what returns when it finishes. Keys are FILENAMES, not
         # state names, so _names() (which upper-cases keys) is wrong here.
         music_once={str(k): str(v) for k, v in (d.get("music_once") or {}).items()
@@ -913,6 +936,11 @@ def load_game() -> GameConfig:
             "game.self_test_boot_timeout_s"),
         self_test_retry_s=_ranged(
             d.get("self_test_retry_s", 5), 1, 30, 5, "game.self_test_retry_s"),
+        penalty_ms=_ranged(
+            d.get("penalty_ms", 5000), 0, 60_000, 5000, "game.penalty_ms"),
+        penalty_cooldown_ms=_ranged(
+            d.get("penalty_cooldown_ms", 5000), 0, 60_000, 5000,
+            "game.penalty_cooldown_ms"),
         checkpoint_shape_delay_ms=_ranged(
             d.get("checkpoint_shape_delay_ms", 300), 0, 1_000, 300,
             "game.checkpoint_shape_delay_ms"),

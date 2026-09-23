@@ -31,6 +31,9 @@ BREAK_MANUAL           = "break.manual"
 # the race and the run is recorded clean. It used to vanish at DEBUG with no
 # metric at all, which made the size of the problem unmeasurable.
 BREAK_AFTER_VERDICT    = "break.after_verdict"
+# Time penalties. A confirmed break costs seconds instead of ending the run.
+PENALTY_APPLIED        = "run.penalty_applied_ms"
+PENALTY_REVOKED        = "run.penalty_revoked_ms"
 # Milliseconds the stopwatch sat frozen while a GM adjudicated an assisted-mode
 # break that they then vetoed. The player keeps running during that window and
 # the clock does not, so the time is a gift. Measured, not yet corrected — see

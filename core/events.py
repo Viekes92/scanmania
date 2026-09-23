@@ -52,7 +52,11 @@ ALL_STATES: frozenset[str] = frozenset({
 
 class RunOutcome:
     clean   = "clean"    # player pressed stop before any beam break
-    busted  = "busted"   # beam break confirmed (auto) or GM confirmed (assisted/manual)
+    # GM-only from 2026-09. A detected beam break no longer ends a run — it adds
+    # a time penalty (see ApplyTimePenalty). This outcome is now reached solely
+    # by the gamemaster pressing BUST, for the things detection cannot see:
+    # cheating, climbing, leaving and re-entering the maze.
+    busted  = "busted"   # GM ended the run deliberately
     aborted = "aborted"  # max_run_ms exceeded, or GM abort, or process restart
     voided  = "voided"   # GM voided — recorded but excluded from leaderboard
 
@@ -238,10 +242,17 @@ class BreakConfirmed:
         beam_id: which beam triggered
         ratio:   brightness ratio at detection time (for evidence/logging)
         run_id:  current run UUID (for SaveBreakEvidence association)
+        run_elapsed_ms:
+                 the run clock at the moment this break was handed to the FSM,
+                 stamped by runner.py from the stopwatch. The FSM needs it to
+                 enforce the penalty cooldown, and invariant 1 forbids the FSM
+                 reading a clock — so the clock reading is passed IN as data.
+                 0 when there is no run in progress.
     """
     beam_id: str
     ratio: float
     run_id: str
+    run_elapsed_ms: int = 0
     type: str = field(default="BreakConfirmed", init=False)
 
 
@@ -690,10 +701,52 @@ Event = (
     DetectionModeChanged | ProcessRestart | ArmTimeout | ResultDisplayTimeout
 )
 
+@dataclass(frozen=True)
+class ApplyTimePenalty:
+    """
+    Add a time penalty to the running clock.
+
+    Emitted by: FSM when a confirmed break lands outside the penalty cooldown.
+    Consumed by: runner.py -> Stopwatch.add_penalty_ms.
+
+    This replaces busting on the detection path. A clipped beam costs the player
+    seconds; only the gamemaster can end a run outright.
+
+    Fields:
+        ms:      penalty in milliseconds (game.penalty_ms)
+        beam_id: which dot caused it, for the record and the console
+        total_penalties: how many penalties this run has now taken, including
+                 this one — so the broadcast and the log line agree without the
+                 runner having to recount.
+    """
+    ms: int
+    beam_id: str = ""
+    total_penalties: int = 0
+    type: str = field(default="ApplyTimePenalty", init=False)
+
+
+@dataclass(frozen=True)
+class RevokeTimePenalty:
+    """
+    Take a penalty back — the gamemaster vetoed it.
+
+    Emitted by: FSM on GmVetoBreak.
+    Consumed by: runner.py -> Stopwatch.revoke_penalty_ms.
+
+    Fields:
+        ms:      how much to give back, in milliseconds
+        beam_id: the dot whose penalty is being withdrawn
+    """
+    ms: int
+    beam_id: str = ""
+    type: str = field(default="RevokeTimePenalty", init=False)
+
+
 # All side effects
 SideEffect = (
     ApplyPreset | PlayShow | StartStopwatch | StopStopwatch | ResetStopwatch |
     ArmDetection | DisarmDetection | StartCountIn | BeamPreflightCheck |
     ReadyBlink | SaveRun | BroadcastState | EmitMetric |
-    SaveBreakEvidence | AutoMaskBeam | DropDetectionMode
+    SaveBreakEvidence | AutoMaskBeam | DropDetectionMode |
+    ApplyTimePenalty | RevokeTimePenalty
 )

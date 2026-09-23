@@ -48,9 +48,10 @@ def test_a_clean_run_sounds_right(player, audio_cfg):
     # Deliberately asserts the SHIPPED soundtrack, so a careless edit to
     # game.yaml is caught. The 3-2-1 is no longer a cue — it is baked into
     # game.mp3 and synced with count_in.audio_lead_ms — and there is no
-    # victory/defeat one-shot any more, because a run can only be won.
+    # victory one-shot any more — end.mp3 closes every game. One sting PER
+    # sector, so the player hears which checkpoint they just took.
     assert player.cues_played == [
-        "sector.wav", "sector.wav"
+        "sector2.mp3", "sector3.mp3"
     ], "wrong one-shots, or wrong order, through a clean run"
 
 
@@ -112,7 +113,7 @@ def test_re_entering_a_state_does_not_re_fire_its_cue(player, audio_cfg):
     cues = AudioCuePlayer(player, audio_cfg)
     cues.set_state("RUN_SEG_2")
     cues.set_state("RUN_SEG_2")
-    assert player.cues_played == ["sector.wav"]
+    assert player.cues_played == ["sector2.mp3"]
 
 
 def test_config_keys_are_case_insensitive(player):
@@ -213,16 +214,25 @@ def test_every_sound_the_config_names_exists(audio_cfg):
     assert not missing, f"config names sounds that are not in {root}: {missing}"
 
 
-def test_cues_are_wav_and_beds_may_be_compressed(audio_cfg):
+def test_cues_and_beds_use_a_format_the_box_can_decode(audio_cfg):
     """Different jobs, different formats.
 
     A cue is decoded into RAM at startup and must fire the instant a checkpoint
-    goes by, so it stays .wav. The bed streams and runs for minutes, so forcing
-    .wav there would mean 5 GB for an 8-hour ambient track.
+    goes by. The bed streams and runs for minutes, so forcing .wav there would
+    mean 5 GB for an 8-hour ambient track.
+
+    .wav is still the SAFE choice for a cue, and this test used to require it.
+    It no longer does: the shipped stings are .mp3, and SDL_mixer was verified
+    to load each of them as a fully-decoded in-memory Sound — which is the
+    property the rule actually protects, since a Sound is resident either way.
+    The residual risk is a box whose SDL build lacks the mp3 decoder, where the
+    cue would be silent; that surfaces as a startup log line, not as a failed
+    run, because audio can never affect the game path.
     """
     playable = (".wav", ".mp3", ".ogg")
-    bad_cues = [n for n in audio_cfg.cue_files() if not n.lower().endswith(".wav")]
-    assert not bad_cues, f"one-shots should be .wav so they fire instantly: {bad_cues}"
+    bad_cues = [n for n in audio_cfg.cue_files()
+                if not n.lower().endswith(playable)]
+    assert not bad_cues, f"cue format needs a decoder that may not exist: {bad_cues}"
 
     bad_music = [n for n in audio_cfg.music_files()
                  if not n.lower().endswith(playable)]

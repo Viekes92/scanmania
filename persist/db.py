@@ -48,7 +48,13 @@ CREATE TABLE IF NOT EXISTS runs (
     -- outcome as it was immediately before void_run() overwrote it, so unvoid
     -- can restore the truth instead of promoting a busted run to 'clean'
     pre_void_outcome TEXT,
-    created_at       TEXT NOT NULL
+    created_at       TEXT NOT NULL,
+    -- Time penalties. A beam break costs seconds instead of ending the run, so
+    -- elapsed_ms is the penalised time and raw_elapsed_ms is what the clock
+    -- actually measured. Both are kept so a result stays checkable.
+    penalty_count    INTEGER DEFAULT 0,
+    penalty_total_ms INTEGER DEFAULT 0,
+    raw_elapsed_ms   INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -99,7 +105,7 @@ CREATE INDEX IF NOT EXISTS idx_health_ts          ON health(ts);
 """
 
 # Current schema version — bump when adding migrations.
-_SCHEMA_VERSION = 4
+_SCHEMA_VERSION = 5
 
 
 def _now_iso() -> str:
@@ -263,6 +269,21 @@ class Database:
                 # shipping container, and a migration that fails there fails at
                 # boot. A few thousand rows is instantaneous either way.
                 await self._purge_dropped_pii()
+            if current < 5:
+                # v5: time penalties. A beam break costs seconds instead of
+                # ending the run, so elapsed_ms is no longer the whole story —
+                # a result is "42.1s plus two penalties". Stored alongside so
+                # the raw time stays checkable and the CSV can show both.
+                for ddl in (
+                    "ALTER TABLE runs ADD COLUMN penalty_count INTEGER DEFAULT 0",
+                    "ALTER TABLE runs ADD COLUMN penalty_total_ms INTEGER DEFAULT 0",
+                    "ALTER TABLE runs ADD COLUMN raw_elapsed_ms INTEGER",
+                ):
+                    try:
+                        await self._db.execute(ddl)
+                    except Exception as exc:
+                        if "duplicate column" not in str(exc).lower():
+                            raise
             await self._db.execute("DELETE FROM _schema_version")
             await self._db.execute(
                 "INSERT INTO _schema_version VALUES (?)", (_SCHEMA_VERSION,)
@@ -326,14 +347,17 @@ class Database:
             INSERT INTO runs
                 (id, player_id, started_at, ended_at, elapsed_ms, outcome,
                  detection_mode, busting_beam_id, segment_reached, voided_reason,
-                 created_at)
+                 created_at, penalty_count, penalty_total_ms, raw_elapsed_ms)
             VALUES
                 (:id, :player_id, :started_at, :ended_at, :elapsed_ms, :outcome,
                  :detection_mode, :busting_beam_id, :segment_reached, :voided_reason,
-                 :created_at)
+                 :created_at, :penalty_count, :penalty_total_ms, :raw_elapsed_ms)
             ON CONFLICT(id) DO UPDATE SET
-                ended_at        = excluded.ended_at,
-                elapsed_ms      = excluded.elapsed_ms,
+                ended_at         = excluded.ended_at,
+                elapsed_ms       = excluded.elapsed_ms,
+                penalty_count    = excluded.penalty_count,
+                penalty_total_ms = excluded.penalty_total_ms,
+                raw_elapsed_ms   = excluded.raw_elapsed_ms,
                 -- A void is a deliberate operator decision. A late save must
                 -- not undo it. voided_reason is left alone for the same reason.
                 outcome         = CASE WHEN runs.outcome = 'voided'
@@ -354,6 +378,17 @@ class Database:
                 "segment_reached": run.get("segment_reached"),
                 "voided_reason": run.get("voided_reason"),
                 "created_at": run.get("created_at", _now_iso()),
+                # Defaulted with .get, not required: insert_run takes a plain
+                # dict from the runner, the orphan-run settler, tools and
+                # tests. A new named parameter with no default here is a
+                # binding error at runtime for every caller that has not been
+                # updated — which is exactly what adding these columns did.
+                "penalty_count": run.get("penalty_count", 0) or 0,
+                "penalty_total_ms": run.get("penalty_total_ms", 0) or 0,
+                # Falls back to elapsed_ms so a row written by an older caller
+                # still reports a sensible raw time rather than NULL.
+                "raw_elapsed_ms": run.get("raw_elapsed_ms",
+                                          run.get("elapsed_ms")),
             },
         )
         await self._db.commit()

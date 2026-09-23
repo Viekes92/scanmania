@@ -336,12 +336,41 @@
   }
 
   let lastSegment = null;
+  let lastPenaltyCount = 0;
+
+  /* A penalty is the one thing that happens TO a player mid-run. The clock
+     jumps by penalty_ms and, without this, the only sign is that the number
+     got bigger — which reads as a glitch from ten metres away. Flash the cost.
+     Purely additive: it never blocks or delays the stopwatch. */
+  function flashPenalty(ms) {
+    let el = document.getElementById("penaltyFlash");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "penaltyFlash";
+      el.style.cssText =
+        "position:fixed; inset:0; display:flex; align-items:center;" +
+        "justify-content:center; font-family:var(--font-display,inherit);" +
+        "font-size:18vw; font-weight:900; letter-spacing:-0.02em;" +
+        "color:#EC1C24; text-shadow:0 0 6vw rgba(236,28,36,0.65);" +
+        "pointer-events:none; opacity:0; z-index:90;" +
+        "transition:opacity 180ms ease-out;";
+      document.body.appendChild(el);
+    }
+    el.textContent = `+${(ms / 1000).toFixed(0)}s`;
+    el.style.opacity = "1";
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.opacity = "0"; }, 1200);
+  }
 
   function applyState(msg) {
     const state = msg.state || "ATTRACT";
 
     swElapsedAtMsg = msg.elapsed_ms || 0;
     swClientAtMsg  = performance.now() / 1000;
+
+    const pc = msg.penalty_count || 0;
+    if (pc > lastPenaltyCount) flashPenalty(msg.penalty_each_ms || 0);
+    lastPenaltyCount = pc;
 
     if (state === "REGISTERED") {
       swRunning = false; stopInterpolation();

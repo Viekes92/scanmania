@@ -1,10 +1,14 @@
 """
 core/stopwatch.py — monotonic elapsed-time stopwatch for the ScanMania server.
 
-Input:  explicit start/stop/reset calls from runner.py.
+Input:  explicit start/stop/reset calls from runner.py, plus time penalties.
 Output: elapsed_ms (int), is_running (bool), and a WebSocket clock message dict.
 Invariant: uses time.monotonic_ns() only — never datetime.now() or wall clock.
            The server is the sole authority over elapsed time; browsers interpolate.
+Invariant: a penalty is a constant added to the measured interval, never a
+           manipulation of the clock. raw_elapsed_ms() is always what the
+           monotonic clock actually measured, so the two numbers can be
+           recorded separately and a penalty can be revoked exactly.
 """
 
 from __future__ import annotations
@@ -26,6 +30,15 @@ class Stopwatch:
     def __init__(self) -> None:
         self._started_at_ns: int | None = None   # monotonic_ns at last start()
         self._stopped_elapsed_ns: int | None = None  # frozen elapsed when stopped
+        # Accumulated time penalties for this run, in nanoseconds.
+        #
+        # Held here rather than added at scoring time so that BOTH displays and
+        # the GM console show a penalty the instant it lands — they render
+        # elapsed_ms from the broadcast and interpolate between frames, so a
+        # penalty applied anywhere else would be invisible until the run ended.
+        # raw_elapsed_ms() still reports what the clock measured, so the run
+        # record can carry the honest time and the penalty separately.
+        self._penalty_ns: int = 0
 
     # ------------------------------------------------------------------
     # Control
@@ -42,6 +55,10 @@ class Stopwatch:
         """
         self._started_at_ns = time.monotonic_ns()
         self._stopped_elapsed_ns = None
+        # A fresh measurement is a fresh run. resume() deliberately does NOT do
+        # this: it is the assisted-veto path, mid-run, and the penalties already
+        # earned still stand.
+        self._penalty_ns = 0
 
     def resume(self) -> None:
         """
@@ -79,6 +96,7 @@ class Stopwatch:
         """
         self._started_at_ns = None
         self._stopped_elapsed_ns = None
+        self._penalty_ns = 0
 
     # ------------------------------------------------------------------
     # Queries
@@ -86,17 +104,59 @@ class Stopwatch:
 
     def elapsed_ms(self) -> int:
         """
-        Return elapsed time in whole milliseconds.
+        Return the player's time in whole milliseconds, penalties INCLUDED.
+
+        This is the number shown on both displays, ranked on the leaderboard
+        and written to the run row, because it is the time the player actually
+        achieved under the rules.
 
         - Idle (never started): 0
-        - Running: current live elapsed since last start()
-        - Stopped: frozen elapsed at stop() time
+        - Running: live elapsed since start(), plus penalties so far
+        - Stopped: frozen elapsed at stop() time, plus penalties
+        """
+        return self.raw_elapsed_ms() + self.penalty_ms
+
+    def raw_elapsed_ms(self) -> int:
+        """
+        What the monotonic clock measured, with no penalties applied.
+
+        Kept separate so a result can say "42.1s + 10.0s penalty = 52.1s"
+        rather than presenting one number nobody can check.
         """
         if self._stopped_elapsed_ns is not None:
             return self._stopped_elapsed_ns // 1_000_000
         if self._started_at_ns is not None:
             return (time.monotonic_ns() - self._started_at_ns) // 1_000_000
         return 0
+
+    # ------------------------------------------------------------------
+    # Time penalties
+    # ------------------------------------------------------------------
+
+    def add_penalty_ms(self, ms: int) -> int:
+        """
+        Add a time penalty. Returns the new penalty total in ms.
+
+        Applies whether the stopwatch is running or stopped: a penalty
+        adjudicated after the player hit the button is still their penalty.
+        """
+        self._penalty_ns += max(0, int(ms)) * 1_000_000
+        return self.penalty_ms
+
+    def revoke_penalty_ms(self, ms: int) -> int:
+        """
+        Take a penalty back — the GM vetoed it. Returns the new total.
+
+        Clamped at zero so a double-veto, or a veto of a penalty that was never
+        applied, can never hand a player a negative time.
+        """
+        self._penalty_ns = max(0, self._penalty_ns - max(0, int(ms)) * 1_000_000)
+        return self.penalty_ms
+
+    @property
+    def penalty_ms(self) -> int:
+        """Total penalty applied to the current run, in whole milliseconds."""
+        return self._penalty_ns // 1_000_000
 
     @property
     def is_running(self) -> bool:

@@ -1,13 +1,13 @@
 """
 tools/fake_run.py — drive a full game run from the CLI using fake backends.
 
-Inputs:  --scenario (clean | busted | aborted | voided), optional --beam
+Inputs:  --scenario (clean | penalty | gm_bust | aborted | voided), optional --beam
 Outputs: final run record from the DB printed as formatted JSON to stdout
 Invariant: all fakes active — no real hardware required.
 
 Usage:
   python tools/fake_run.py --scenario clean
-  python tools/fake_run.py --scenario busted [--beam b01]
+  python tools/fake_run.py --scenario penalty [--beam b01]
   python tools/fake_run.py --scenario aborted
   python tools/fake_run.py --scenario voided
 """
@@ -169,6 +169,7 @@ class StandaloneRunner:
     """
 
     def __init__(self, cfg: AppConfig, db: MemoryDB) -> None:
+        self.penalty_ms: int = 0
         from core.fsm import FSMContext, transition
         self.cfg        = cfg
         self.db         = db
@@ -215,6 +216,7 @@ class StandaloneRunner:
             ResetStopwatch, ApplyPreset, PlayShow, StopShow, ArmDetection, DisarmDetection,
             StartCountIn, BeamPreflightCheck, ReadyBlink, EmitMetric,
             SaveBreakEvidence, AutoMaskBeam, DropDetectionMode,
+            ApplyTimePenalty, RevokeTimePenalty,
         )
 
         if isinstance(fx, SaveRun):
@@ -240,6 +242,17 @@ class StandaloneRunner:
                               SaveBreakEvidence, AutoMaskBeam, DropDetectionMode)):
             # Log but otherwise no-op for the CLI script
             log.debug("Side effect: %s", type(fx).__name__)
+
+        elif isinstance(fx, ApplyTimePenalty):
+            self.penalty_ms += fx.ms
+            log.info("  TIME PENALTY +%.1fs on %s (%d this run, %.1fs total)",
+                     fx.ms / 1000, fx.beam_id, fx.total_penalties,
+                     self.penalty_ms / 1000)
+
+        elif isinstance(fx, RevokeTimePenalty):
+            self.penalty_ms = max(0, self.penalty_ms - fx.ms)
+            log.info("  penalty withdrawn -%.1fs (%.1fs total)",
+                     fx.ms / 1000, self.penalty_ms / 1000)
 
         else:
             # An unhandled effect used to vanish silently. That is how the
@@ -276,21 +289,46 @@ async def scenario_clean(runner: StandaloneRunner, cfg: AppConfig) -> str:
     return runner.run_id
 
 
-async def scenario_busted(runner: StandaloneRunner, cfg: AppConfig, beam: str) -> str:
-    """Inject a beam break and wait for BUSTED."""
+async def scenario_penalty(runner: StandaloneRunner, cfg: AppConfig, beam: str) -> str:
+    """
+    Break a beam twice and finish anyway.
+
+    A break costs TIME now. The first one lands, the second is inside
+    game.penalty_cooldown_ms and must be swallowed — which is the behaviour
+    worth exercising, because without the cooldown a player standing in a beam
+    collects one penalty per detection.
+    """
     runner.run_id = str(uuid.uuid4())
     runner.ctx.run_id = runner.run_id
 
     await asyncio.sleep(0.1)   # small delay — the player is "running"
-    await runner.inject(BreakConfirmed(
-        beam_id=beam,
-        ratio=0.15,
-        run_id=runner.run_id,
-    ))
-    # In assisted mode BreakConfirmed halts and waits for GM confirm.
-    # In auto mode it goes to BUSTED immediately — GmConfirmBreak is a no-op there.
-    if runner.ctx.pending_break:
-        await runner.inject(GmConfirmBreak())
+    for i in range(2):
+        await runner.inject(BreakConfirmed(
+            beam_id=beam,
+            ratio=0.15,
+            run_id=runner.run_id,
+            run_elapsed_ms=i * 200,      # 200 ms apart: inside the cooldown
+        ))
+        # In assisted mode the GM is shown the penalty and may take it back.
+        # Here they accept it, which just dismisses the notice.
+        if runner.ctx.pending_break:
+            await runner.inject(GmConfirmBreak())
+    log.info("expect ONE penalty, not two — the second was inside the cooldown")
+
+    # The run still ends normally: a break does not end it any more.
+    await runner.inject(Cp1Pressed())
+    await runner.inject(Cp2Pressed())
+    await runner.inject(StopPressed())
+    return runner.run_id
+
+
+async def scenario_gm_bust(runner: StandaloneRunner, cfg: AppConfig) -> str:
+    """The gamemaster ends a run by hand — the only route to BUSTED now."""
+    from core.events import GmBust
+    runner.run_id = str(uuid.uuid4())
+    runner.ctx.run_id = runner.run_id
+    await asyncio.sleep(0.1)
+    await runner.inject(GmBust())
     return runner.run_id
 
 
@@ -357,8 +395,10 @@ async def main(args: argparse.Namespace) -> None:
 
     if scenario == "clean":
         run_id = await scenario_clean(runner, cfg)
-    elif scenario == "busted":
-        run_id = await scenario_busted(runner, cfg, beam)
+    elif scenario == "penalty":
+        run_id = await scenario_penalty(runner, cfg, beam)
+    elif scenario == "gm_bust":
+        run_id = await scenario_gm_bust(runner, cfg)
     elif scenario == "aborted":
         run_id = await scenario_aborted(runner, cfg)
     elif scenario == "voided":
@@ -379,7 +419,7 @@ async def main(args: argparse.Namespace) -> None:
 
     print(json.dumps(record, indent=2, default=str))
     if runner.audio is not None:
-        # The victory/defeat cue fires on the last transition. Exiting straight
+        # end.mp3 fires on the last transition. Exiting straight
         # after it truncates the one sound the run was building towards.
         await asyncio.sleep(max(2.5, runner.pace))
         runner.audio.stop()
@@ -394,14 +434,16 @@ def parse_args() -> argparse.Namespace:
 Scenarios
 ---------
   clean    Player walks through all three segments and presses STOP.
-  busted   Player breaks a beam (default: b01, override with --beam).
+  penalty  Player breaks a beam twice — one penalty applies, the second is
+           swallowed by the cooldown — and still finishes the run.
+  gm_bust  The gamemaster ends the run by hand. The only route to BUSTED.
   aborted  max_run_ms timer fires (injected immediately).
   voided   Clean run, then the gamemaster voids it.
 
 Examples
 --------
   python tools/fake_run.py --scenario clean
-  python tools/fake_run.py --scenario busted --beam b03
+  python tools/fake_run.py --scenario penalty --beam b03
   python tools/fake_run.py --scenario aborted
   python tools/fake_run.py --scenario voided
         """,
@@ -409,13 +451,13 @@ Examples
     parser.add_argument(
         "--scenario",
         required=True,
-        choices=["clean", "busted", "aborted", "voided"],
+        choices=["clean", "penalty", "gm_bust", "aborted", "voided"],
         help="Which scenario to run.",
     )
     parser.add_argument(
         "--beam",
         default="b01",
-        help="Beam ID to bust on (busted scenario only). Default: b01.",
+        help="Beam ID to break on (penalty scenario only). Default: b01.",
     )
     parser.add_argument(
         "--pace",

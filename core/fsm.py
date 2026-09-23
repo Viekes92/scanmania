@@ -37,6 +37,7 @@ from core.events import (
     ArmDetection, DisarmDetection, StartCountIn, BeamPreflightCheck,
     ReadyBlink, SaveRun, VoidRun, BroadcastState, EmitMetric,
     SaveBreakEvidence, DropDetectionMode,
+    ApplyTimePenalty, RevokeTimePenalty,
 )
 
 import core.metrics as metrics
@@ -72,6 +73,21 @@ class FSMContext:
         assisted_halt_elapsed_ms:
                                value of elapsed_ms at the moment the stopwatch was
                                halted for a GM adjudication, or None when not halted
+        penalty_ms:            time added per confirmed break, from game.yaml.
+                               Lives on the context because the FSM is pure and
+                               cannot read config — runner.py seeds it, exactly
+                               as it already does for detection_mode.
+        penalty_cooldown_ms:   minimum RUN-time gap between two penalties.
+                               0 disables the cooldown.
+        penalty_count:         penalties applied to the current run so far
+        penalty_total_ms:      their sum, in milliseconds
+        last_penalty_elapsed_ms:
+                               run clock at the last applied penalty, or None if
+                               none has been applied. Compared against
+                               BreakConfirmed.run_elapsed_ms to enforce the
+                               cooldown without reading a clock.
+        last_penalty_beam:     the dot behind the most recent penalty, so a GM
+                               veto knows what it is taking back
         boot_to_master:        True until the first self-test passes, when set.
                                Sends the box to MASTER instead of ATTRACT on
                                boot, so nothing is playable until a human has
@@ -87,6 +103,12 @@ class FSMContext:
     beams_masked: set[str] = field(default_factory=set)
     pending_break: str | None = None
     assisted_halt_elapsed_ms: int | None = None
+    penalty_ms: int = 5000
+    penalty_cooldown_ms: int = 5000
+    penalty_count: int = 0
+    penalty_total_ms: int = 0
+    last_penalty_elapsed_ms: int | None = None
+    last_penalty_beam: str | None = None
     boot_to_master: bool = False
 
 
@@ -295,54 +317,57 @@ def _countdown_handlers() -> dict:
 
 def _break_effects_for_mode(ctx: FSMContext, event: BreakConfirmed, current_run_state: str) -> tuple[str, list]:
     """
-    Determine the new state and side effects for a BreakConfirmed event
-    based on the current detection mode.
+    Turn a confirmed beam break into a TIME PENALTY, not a bust.
 
-    auto:     → BUSTED immediately
-    assisted: → stay in current RUN state, halt stopwatch, set pending_break,
-                save evidence, broadcast (GM gets CONFIRM/VETO prompt)
-    manual:   → stay in current RUN state (advisory only), broadcast
+    A break used to end the run outright. It no longer does: clipping a beam
+    costs the player seconds and they keep running. Only the gamemaster ends a
+    run now, with the BUST button, for the things the cameras cannot judge.
+
+    auto:     penalty applied, player runs on
+    assisted: penalty applied AND flagged to the GM, who may VETO to take it
+              back. The clock is NOT halted — that is the point of a penalty,
+              and halting it also handed the player free time while the GM
+              deliberated, because nothing stopped them running.
+    manual:   advisory only, no penalty
+
+    The cooldown is the whole reason this is safe. Without it a player parked in
+    a beam, or walking out through the maze after the stop button, collects one
+    penalty per detection and finishes several minutes down. With it, a break
+    costs a fixed, predictable amount however long they stand there.
     """
-    # Already adjudicating a break: keep the first one. The GM is looking at
-    # that dot and its evidence thumbnail, and the stopwatch is halted at that
-    # moment. A player walking out of the maze clips more beams, and each one
-    # used to overwrite pending_break — silently re-aiming the decision at a
-    # different dot and re-arming the full assisted deadline — so CONFIRM
-    # recorded a bust on the last beam broken on the way out, timed at the
-    # first. Only reachable in assisted mode; auto goes straight to BUSTED.
-    if ctx.pending_break:
-        return _log_ignored(current_run_state, event,
-                            {"reason": "break_while_adjudicating"})
-
     mode = ctx.detection_mode
 
-    if mode == DetectionMode.auto:
-        effects = [
-            StopStopwatch(),
-            PlayShow("bust"),
-            DisarmDetection(),
-            SaveBreakEvidence(beam_id=event.beam_id, run_id=event.run_id),
-        ]
-        if ctx.run_id:
-            effects += [
-                SaveRun(outcome=RunOutcome.busted, run_id=ctx.run_id, busting_beam_id=event.beam_id),
-            ]
-        effects.append(BroadcastState())
-        return BUSTED, effects
-
-    elif mode == DetectionMode.assisted:
-        # Halt the stopwatch; GM sees CONFIRM/VETO prompt.
-        ctx.pending_break = event.beam_id
-        effects = [
-            StopStopwatch(),
-            SaveBreakEvidence(beam_id=event.beam_id, run_id=event.run_id),
-            BroadcastState(),
-        ]
-        return current_run_state, effects
-
-    else:  # manual
-        # Advisory only — indicator shown on GM console, no state change.
+    if mode == DetectionMode.manual:
+        # Advisory only — indicator on the GM console, nothing else.
         return current_run_state, [BroadcastState()]
+
+    # Cooldown, judged on the run clock the runner stamped onto the event.
+    # invariant 1: the FSM does no clock reading of its own.
+    if (ctx.penalty_cooldown_ms > 0
+            and ctx.last_penalty_elapsed_ms is not None
+            and (event.run_elapsed_ms - ctx.last_penalty_elapsed_ms)
+                < ctx.penalty_cooldown_ms):
+        return _log_ignored(current_run_state, event,
+                            {"reason": "penalty_cooldown"})
+
+    ctx.penalty_count += 1
+    ctx.penalty_total_ms += ctx.penalty_ms
+    ctx.last_penalty_elapsed_ms = event.run_elapsed_ms
+    ctx.last_penalty_beam = event.beam_id
+
+    effects: list = [
+        ApplyTimePenalty(ms=ctx.penalty_ms, beam_id=event.beam_id,
+                         total_penalties=ctx.penalty_count),
+        SaveBreakEvidence(beam_id=event.beam_id, run_id=event.run_id),
+    ]
+    if mode == DetectionMode.assisted:
+        # Raise it with the GM so they can take it back. Overwriting an older
+        # pending flag is fine and intended: a veto withdraws the MOST RECENT
+        # penalty, and the cooldown guarantees the GM had a clear window to act
+        # before another one could land.
+        ctx.pending_break = event.beam_id
+    effects.append(BroadcastState())
+    return current_run_state, effects
 
 
 # --- RUN_SEG_1 ---
@@ -595,24 +620,36 @@ def _handle_global(state: str, event: Any, ctx: FSMContext) -> tuple[str, list] 
         effects = _bust_effects(ctx)
         return BUSTED, effects
 
-    # GmConfirmBreak — only in assisted mode with a pending break, in any RUN state.
+    # GmConfirmBreak — the GM accepts the penalty. It has already been applied,
+    # so this only dismisses the notice; the run continues. It no longer busts
+    # anyone, which is why CONFIRM is a low-stakes tap now.
     if etype is GmConfirmBreak and ctx.pending_break and state in RUN_STATES:
-        busting_beam = ctx.pending_break
         ctx.pending_break = None
         ctx.assisted_halt_elapsed_ms = None
-        effects = [StopStopwatch(), DisarmDetection(), PlayShow("bust")]
-        if ctx.run_id:
-            effects += [
-                SaveRun(outcome=RunOutcome.busted, run_id=ctx.run_id, busting_beam_id=busting_beam),
-            ]
-        effects.append(BroadcastState())
-        return BUSTED, effects
+        return state, [BroadcastState()]
 
-    # GmVetoBreak — only in assisted mode with a pending break, in any RUN state.
+    # GmVetoBreak — the GM disagrees. Give the time back.
+    #
+    # Note what this no longer does: StartStopwatch. The clock was never
+    # stopped, so there is nothing to resume — and resuming used to re-anchor
+    # it so the whole adjudication was deducted, handing the player however
+    # long the GM took to decide.
     if etype is GmVetoBreak and ctx.pending_break and state in RUN_STATES:
+        refund = ctx.penalty_ms
+        beam = ctx.last_penalty_beam or ctx.pending_break
         ctx.pending_break = None
         ctx.assisted_halt_elapsed_ms = None
-        return state, [StartStopwatch(), BroadcastState()]
+        if ctx.penalty_count > 0:
+            ctx.penalty_count -= 1
+            ctx.penalty_total_ms = max(0, ctx.penalty_total_ms - refund)
+            # Let the next break through immediately: the GM has just said the
+            # last one was not real, so holding the cooldown against it would
+            # suppress a genuine break right behind it.
+            ctx.last_penalty_elapsed_ms = None
+            ctx.last_penalty_beam = None
+            return state, [RevokeTimePenalty(ms=refund, beam_id=beam),
+                           BroadcastState()]
+        return state, [BroadcastState()]
 
     # MasterModeEngage — from any state. Stop everything, hand control to the admin.
     if etype is MasterModeEngage:

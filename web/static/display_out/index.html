@@ -377,6 +377,26 @@
     const state = msg.state || "ATTRACT";
 
     swElapsedAtMsg = msg.elapsed_ms || 0;
+
+    /* Penalties, under the clock. This screen faces the street and people
+       photograph it, so a time that includes ten seconds of penalty should say
+       so rather than looking like a slow run. */
+    (function () {
+      let el = document.getElementById("penaltyNote");
+      const pc = msg.penalty_count || 0;
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "penaltyNote";
+        el.style.cssText =
+          "text-align:center; font-family:var(--font-ui,inherit); font-weight:800;" +
+          "letter-spacing:0.08em; color:#EC1C24; margin-top:0.6vh; font-size:2.2vh;";
+        const sw = document.getElementById("stopwatch");
+        if (sw && sw.parentNode) sw.parentNode.insertBefore(el, sw.nextSibling);
+      }
+      el.textContent = pc
+        ? `INCL. +${((msg.penalty_total_ms || 0) / 1000).toFixed(1)}s PENALTY`
+        : "";
+    })();
     swClientAtMsg  = performance.now() / 1000;
 
     if (RUN_STATES.has(state)) {

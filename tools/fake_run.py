@@ -1,7 +1,7 @@
 """
 tools/fake_run.py — drive a full game run from the CLI using fake backends.
 
-Inputs:  --scenario (clean | penalty | gm_bust | aborted | voided), optional --beam
+Inputs:  --scenario (clean | penalty | gm_penalty | aborted | voided), optional --beam
 Outputs: final run record from the DB printed as formatted JSON to stdout
 Invariant: all fakes active — no real hardware required.
 
@@ -322,13 +322,22 @@ async def scenario_penalty(runner: StandaloneRunner, cfg: AppConfig, beam: str) 
     return runner.run_id
 
 
-async def scenario_gm_bust(runner: StandaloneRunner, cfg: AppConfig) -> str:
-    """The gamemaster ends a run by hand — the only route to BUSTED now."""
+async def scenario_gm_penalty(runner: StandaloneRunner, cfg: AppConfig) -> str:
+    """
+    The gamemaster charges penalties by hand.
+
+    Three taps, three penalties: the cooldown guards against a player parked in
+    a beam, not against a human who means it. The run still finishes clean.
+    """
     from core.events import GmBust
     runner.run_id = str(uuid.uuid4())
     runner.ctx.run_id = runner.run_id
     await asyncio.sleep(0.1)
-    await runner.inject(GmBust())
+    for _ in range(3):
+        await runner.inject(GmBust())
+    await runner.inject(Cp1Pressed())
+    await runner.inject(Cp2Pressed())
+    await runner.inject(StopPressed())
     return runner.run_id
 
 
@@ -397,8 +406,8 @@ async def main(args: argparse.Namespace) -> None:
         run_id = await scenario_clean(runner, cfg)
     elif scenario == "penalty":
         run_id = await scenario_penalty(runner, cfg, beam)
-    elif scenario == "gm_bust":
-        run_id = await scenario_gm_bust(runner, cfg)
+    elif scenario == "gm_penalty":
+        run_id = await scenario_gm_penalty(runner, cfg)
     elif scenario == "aborted":
         run_id = await scenario_aborted(runner, cfg)
     elif scenario == "voided":
@@ -436,7 +445,8 @@ Scenarios
   clean    Player walks through all three segments and presses STOP.
   penalty  Player breaks a beam twice — one penalty applies, the second is
            swallowed by the cooldown — and still finishes the run.
-  gm_bust  The gamemaster ends the run by hand. The only route to BUSTED.
+  gm_penalty  The gamemaster charges three penalties by hand. Nothing ends the
+           run — ABORT is the button for that.
   aborted  max_run_ms timer fires (injected immediately).
   voided   Clean run, then the gamemaster voids it.
 
@@ -451,7 +461,7 @@ Examples
     parser.add_argument(
         "--scenario",
         required=True,
-        choices=["clean", "penalty", "gm_bust", "aborted", "voided"],
+        choices=["clean", "penalty", "gm_penalty", "aborted", "voided"],
         help="Which scenario to run.",
     )
     parser.add_argument(

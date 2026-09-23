@@ -624,6 +624,38 @@
       border-top: 1px solid var(--border);
     }
 
+    /* Emergency stop. Last child of the body flex column, so #lowerSection
+       takes the slack above it and this sits on the bottom edge whatever the
+       screen height — no fixed positioning, nothing overlapping the runs list
+       as it scrolls. */
+    #estopBar {
+      flex-shrink: 0;
+      display: flex;
+      justify-content: center;
+      /* No safe-area inset here: body already carries padding-bottom for the
+         iPad home indicator, and adding it again put a visible gap under the
+         bar. */
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    #estopBar .action-btn {
+      /* Narrower than the game buttons on purpose: it should not read as one
+         more thing in the row, and a full-width red bar across the bottom of
+         a dark console looks like an error state rather than a control. */
+      width: min(52%, 280px);
+      background: transparent;
+      color: var(--red-text);
+      border: 2px solid var(--red);
+      letter-spacing: 2px;
+    }
+
+    #estopBar .action-btn:active {
+      background: var(--red);
+      color: #fff;
+    }
+
     .lower-label {
       font-size: 11px;
       font-weight: 700;
@@ -974,7 +1006,11 @@
        They used to be flex:1 with display:none, so the surviving buttons
        resized and relocated on each transition. COUNTDOWN -> RUN happens with
        no tap, so the leftmost third silently changed meaning from ABORT to
-       BUST under the operator's thumb. ABORT and BUST now never move.
+       PENALTY under the operator's thumb. Neither moves now.
+
+       PENALTY was called BUST. It charges game.penalty_ms and the run carries
+       on — nothing ends a run on a beam break any more, by camera or by hand.
+       ABORT is the button for a run that genuinely has to stop.
 
        FORCE RESET is not here — it is a recovery control, not a game control,
        and it was taking a third to half of this bar in every state. -->
@@ -983,20 +1019,12 @@
     <button class="action-btn" id="btnCountIn"    disabled>COUNT IN</button>
     <button class="action-btn" id="btnCancel"     disabled>CANCEL</button>
     <button class="action-btn" id="btnAbort"      disabled>ABORT</button>
-    <button class="action-btn" id="btnBust"       disabled>BUST</button>
+    <button class="action-btn" id="btnBust"       disabled>PENALTY</button>
     <button class="action-btn" id="btnVoid"       disabled>VOID</button>
   </div>
 
-  <!-- Recovery controls, deliberately out of thumb reach of the game buttons.
-       MASTER MODE is the emergency stop: it blacks out every laser, stops the
-       clock and disarms detection. It lives here, on the passwordless console
-       the GM is already holding, because the moment you need it is the moment
-       you do not want to be finding a laptop and typing a password. -->
-  <div id="recovery" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-    <button class="action-btn" id="btnMaster"
-            style="border:2px solid var(--red); color:var(--red-text);">MASTER MODE</button>
-    <button class="action-btn" id="btnForceReset">FORCE RESET</button>
-  </div>
+  <!-- Recovery control, deliberately out of thumb reach of the game buttons. -->
+  <button class="action-btn" id="btnForceReset">FORCE RESET</button>
 
   <!-- Banners sit BELOW the action row. Above it, every appearing or
        disappearing banner shoved the buttons down or up — the manual-mode
@@ -1110,6 +1138,22 @@
     <div id="recentRuns">
       <span style="color: var(--muted); font-size: 13px; font-family: monospace;">No runs yet.</span>
     </div>
+  </div>
+
+  <!-- -----------------------------------------------------------------------
+       EMERGENCY STOP — last thing on the page, centred, on its own
+  -----------------------------------------------------------------------
+       Not in the action row and not beside FORCE RESET. Those are game
+       controls the GM taps every run; this one blacks out the container, and
+       it should never share an edge with a button they reach for by muscle
+       memory. Bottom centre is the far corner of the layout from COUNT IN and
+       the one place nothing else ever moves into.
+
+       It is on the passwordless console deliberately: the moment you need an
+       emergency stop is the moment you do not want to be finding a laptop and
+       typing a password. -->
+  <div id="estopBar">
+    <button class="action-btn" id="btnMaster">MASTER MODE</button>
   </div>
 
   <!-- -----------------------------------------------------------------------
@@ -1405,6 +1449,13 @@
       // second tap only ever restarted the cycle. BUST, VOID and FORCE RESET
       // were all unreachable from the console — the request never left the
       // browser. Guarding on prevState is the whole fix.
+      /* --- The penalty button names its own price --- */
+      const each = (msg.penalty_each_ms || 0) / 1000;
+      btnBust.dataset.label = each ? `PENALTY +${each.toFixed(0)}s` : "PENALTY";
+      if (btnBust.textContent !== "TAP AGAIN") {
+        btnBust.textContent = btnBust.dataset.label;
+      }
+
       /* --- E-stop label: it is the way OUT of master mode too --- */
       const btnMasterEl = document.getElementById("btnMaster");
       if (btnMasterEl) {
@@ -1854,8 +1905,12 @@
     btnAbort.addEventListener("click",   () => gmPost("abort"));
     btnCancel.addEventListener("click",  () => gmPost("cancel"));
 
-    // BUST — tap-to-confirm
-    makeTapConfirm(btnBust, "BUST", () => gmPost("bust"));
+    // PENALTY — tap-to-confirm.
+    //
+    // Still two taps even though it no longer ends a run: an accidental brush
+    // costs a player real seconds on a leaderboard where clean runs cluster
+    // within a second or two.
+    makeTapConfirm(btnBust, "PENALTY", () => gmPost("bust"));
 
     // VOID — tap-to-confirm, then open reason overlay
     makeTapConfirm(btnVoid, "VOID", () => openVoidOverlay());

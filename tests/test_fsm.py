@@ -377,27 +377,54 @@ class TestPenaltyInAssistedMode:
             assert [e for e in fx if isinstance(e, ApplyTimePenalty)]
 
 
-class TestGmBustStillEndsARun:
+class TestGmBustChargesTime:
     """
-    Detection can no longer bust anyone, but the gamemaster still can.
+    The gamemaster's button charges a penalty too. NOTHING ends a run on a
+    beam break any more — by camera or by hand.
 
-    That is the point of keeping BUSTED: cheating, climbing, leaving and
-    re-entering the maze are all things the cameras cannot judge and a human
-    can.
+    A GM-called break is the same event as a detected one; it just has a human
+    behind it. ABORT is the button for a run that genuinely has to stop.
     """
 
-    def test_gm_bust_goes_to_busted(self):
-        ctx = _run_ctx(segment=1, mode=DetectionMode.auto)
-        s, _ = step(RUN_SEG_1, GmBust(), ctx)
-        assert s == BUSTED
+    def test_gm_bust_does_not_end_the_run(self):
+        for state in (RUN_SEG_1, RUN_SEG_2, RUN_SEG_3):
+            ctx = _run_ctx(segment=1, mode=DetectionMode.auto)
+            s, _ = step(state, GmBust(), ctx)
+            assert s == state, f"the GM button ended the run in {state}"
 
-    def test_gm_bust_saves_the_run_as_busted(self):
+    def test_gm_bust_applies_a_penalty(self):
         ctx = _run_ctx(segment=1, mode=DetectionMode.auto)
         fx = effects(RUN_SEG_1, GmBust(), ctx)
-        save = [e for e in fx if isinstance(e, SaveRun)]
-        assert len(save) == 1 and save[0].outcome == RunOutcome.busted
+        pen = [e for e in fx if isinstance(e, ApplyTimePenalty)]
+        assert len(pen) == 1 and pen[0].ms == ctx.penalty_ms
+        assert ctx.penalty_count == 1
+
+    def test_gm_bust_saves_no_run(self):
+        ctx = _run_ctx(segment=1, mode=DetectionMode.auto)
+        fx = effects(RUN_SEG_1, GmBust(), ctx)
+        assert not [e for e in fx if isinstance(e, SaveRun)]
+
+    def test_gm_bust_ignores_the_cooldown(self):
+        """
+        The cooldown stops a player parked in a beam stacking penalties. A
+        gamemaster tapping the button three times means three penalties.
+        """
+        ctx = _run_ctx(segment=1, mode=DetectionMode.auto)
+        for _ in range(3):
+            step(RUN_SEG_1, GmBust(), ctx)
+        assert ctx.penalty_count == 3
+        assert ctx.penalty_total_ms == 3 * ctx.penalty_ms
+
+    def test_a_manual_call_reopens_the_window_for_detection(self):
+        ctx = _run_ctx(segment=1, mode=DetectionMode.auto)
+        step(RUN_SEG_1, GmBust(), ctx)
+        fx = effects(RUN_SEG_1,
+                     BreakConfirmed(beam_id="b01", ratio=0.2, run_id="r",
+                                    run_elapsed_ms=10), ctx)
+        assert [e for e in fx if isinstance(e, ApplyTimePenalty)]
 
     def test_busted_to_result_on_timeout(self):
+        """BUSTED is unreachable in play now, but historical rows still render."""
         assert new_state(BUSTED, ResultDisplayTimeout()) == RESULT
 
 
@@ -428,21 +455,33 @@ class TestManualMode:
         s, _ = step(RUN_SEG_3, self._evt(), ctx)
         assert s == RUN_SEG_3
 
-    def test_gm_bust_in_manual_causes_bust(self):
+    def test_the_gm_button_still_charges_time_in_manual(self):
+        """
+        Manual means VISION is advisory. The gamemaster's own call is not — it
+        is the whole point of the mode, and it charges a penalty like any
+        other break.
+        """
         ctx = self._ctx()
         s, fx = step(RUN_SEG_1, GmBust(), ctx)
-        assert s == BUSTED
+        assert s == RUN_SEG_1
+        assert [e for e in fx if isinstance(e, ApplyTimePenalty)]
+        assert ctx.penalty_count == 1
 
-    def test_gm_bust_stops_stopwatch(self):
+    def test_the_gm_button_does_not_stop_the_clock(self):
         ctx = self._ctx()
-        assert StopStopwatch in effect_types(RUN_SEG_1, GmBust(), ctx)
+        assert StopStopwatch not in effect_types(RUN_SEG_1, GmBust(), ctx)
 
-    def test_gm_bust_saves_run_busted(self):
+    def test_the_gm_button_saves_no_run(self):
         ctx = self._ctx()
         fx = effects(RUN_SEG_1, GmBust(), ctx)
-        save = [e for e in fx if isinstance(e, SaveRun)]
-        assert len(save) == 1
-        assert save[0].outcome == RunOutcome.busted
+        assert not [e for e in fx if isinstance(e, SaveRun)]
+
+    def test_a_break_in_manual_costs_nothing(self):
+        """Advisory really means advisory: no penalty, not just no bust."""
+        ctx = self._ctx()
+        fx = effects(RUN_SEG_1, self._evt(), ctx)
+        assert not [e for e in fx if isinstance(e, ApplyTimePenalty)]
+        assert ctx.penalty_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -790,10 +829,11 @@ class TestGmAbort:
 
 class TestGmBust:
     @pytest.mark.parametrize("run_state", [RUN_SEG_1, RUN_SEG_2, RUN_SEG_3])
-    def test_gm_bust_in_run_state(self, run_state):
+    def test_gm_bust_penalises_without_ending_the_run(self, run_state):
         ctx = _run_ctx()
-        s, _ = step(run_state, GmBust(), ctx)
-        assert s == BUSTED
+        s, fx = step(run_state, GmBust(), ctx)
+        assert s == run_state
+        assert [e for e in fx if isinstance(e, ApplyTimePenalty)]
 
     def test_gm_bust_not_valid_in_attract(self):
         # GmBust in ATTRACT falls through to global handler which only applies

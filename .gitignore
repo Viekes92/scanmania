@@ -53,3 +53,9 @@ sounds/*.wav
 sounds/*.mp3
 sounds/*.ogg
 sounds/*.flac
+
+# The sendable update kit is built from tools/update-kit/ on demand:
+#   cd tools && zip -r scanmania-update.zip update-kit
+# The folder is tracked; the zip is not — a binary that regenerates from
+# tracked files does not belong in the history.
+tools/scanmania-update.zip

@@ -131,7 +131,15 @@ def _log_ignored(state: str, event: Any, extra_metric_tags: dict | None = None) 
 
 
 def _bust_effects(ctx: FSMContext) -> list:
-    """Side effects shared by all 'go to BUSTED' transitions."""
+    """
+    Side effects for a 'go to BUSTED' transition. NO CALLERS as of 2026-09.
+
+    Nothing ends a run on a beam break any more — detection charges time, and
+    so does the gamemaster's own button. BUSTED is retained as a state and as a
+    RunOutcome because historical rows carry it and the admin run list has to
+    render them; this helper is kept alongside so that re-introducing a
+    terminal verdict is a one-line change rather than an archaeology exercise.
+    """
     effects: list = [
         StopStopwatch(),
         PlayShow("bust"),
@@ -615,10 +623,27 @@ def _handle_global(state: str, event: Any, ctx: FSMContext) -> tuple[str, list] 
         effects.append(BroadcastState())
         return state, effects
 
-    # GmBust — manual bust from any RUN state.
+    # GmBust — the gamemaster charges a penalty by hand, from any RUN state.
+    #
+    # It does NOT end the run. Nothing does, on a beam break: the whole point
+    # of the penalty model is that clipping a beam is a setback rather than a
+    # walk of shame in front of a queue, and a GM-called break is the same
+    # event as a detected one — it just has a human behind it instead of a
+    # camera. Use ABORT if a run genuinely has to stop.
+    #
+    # The cooldown is deliberately NOT applied here. It exists to stop a player
+    # parked in a beam collecting a penalty per detection; a gamemaster tapping
+    # the button three times means three penalties.
     if etype is GmBust and state in RUN_STATES:
-        effects = _bust_effects(ctx)
-        return BUSTED, effects
+        ctx.penalty_count += 1
+        ctx.penalty_total_ms += ctx.penalty_ms
+        ctx.last_penalty_elapsed_ms = None   # a manual call re-opens the window
+        ctx.last_penalty_beam = "gm"
+        return state, [
+            ApplyTimePenalty(ms=ctx.penalty_ms, beam_id="gm",
+                             total_penalties=ctx.penalty_count),
+            BroadcastState(),
+        ]
 
     # GmConfirmBreak — the GM accepts the penalty. It has already been applied,
     # so this only dismisses the notice; the run continues. It no longer busts

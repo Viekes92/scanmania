@@ -11,9 +11,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **`ApplyTimePenalty` / `RevokeTimePenalty`.** A confirmed break adds
   `game.penalty_ms` (default 5000) to the player's time and the run carries on.
-  `BUSTED` still exists but is now reachable **only** by the gamemaster pressing
-  BUST — for cheating, climbing, or leaving and re-entering the maze, which no
-  camera can judge.
+  **Nothing ends a run on a beam break any more, by camera or by hand.** The
+  gamemaster's own button charges a penalty too — it is labelled PENALTY now,
+  and shows the cost it will apply — and it deliberately ignores the cooldown,
+  because a human tapping it three times means three penalties. ABORT remains
+  the button for a run that genuinely has to stop. `BUSTED` and
+  `RunOutcome.busted` are retained only so historical rows still render.
 
 - **A cooldown, which is what makes this safe.** `game.penalty_cooldown_ms`
   (default 5000) is the minimum RUN-time gap between two penalties. Without it a
@@ -70,6 +73,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   which is the property the rule protects. `.wav` remains the safe choice, and
   a box whose SDL lacks an mp3 decoder gets a startup log line rather than a
   failed run.
+
+### Added — a one-click update kit to send to a venue
+
+- `tools/update-kit/` — zip it and send it to someone with a MacBook on the
+  container's network. A double-clickable `.command` asks for the NUC password
+  **once** (SSH ControlMaster, since stock macOS has no `sshpass`), refuses to
+  continue if the box has uncommitted work outside `config/`, copies any sound
+  files from its own `sounds/` folder additively, and then runs the box's own
+  `tools/deploy.sh`.
+
+  It deliberately decides nothing itself: the database backup, the pull, the
+  dependency install, the import check, the unit sync, the restart and the
+  rollback all already live on the box and are already careful. Schema
+  migrations run when the service restarts, and the script greps the journal
+  afterwards so the operator can *see* that they did rather than trust it.
+  Written for stock macOS — bash 3.2, no `timeout`, no installs — and the
+  README covers the Gatekeeper and lost-executable-bit cases that a zipped
+  `.command` actually hits.
 
 ### Fixed
 

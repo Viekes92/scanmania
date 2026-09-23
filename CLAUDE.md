@@ -89,6 +89,9 @@ web/        FastAPI + WebSocket broadcast, route handlers, static frontends (no 
 config/     YAML/JSON files — the only place to change hardware topology or game settings.
 tools/      Dev utilities: fake_run.py, capture.py (calibration), camshow.py and
             cam_probe.py (viewers), ramp.py, click_relays.py, deploy.sh.
+            update-kit/ is the zip you send to someone at a venue: a
+            double-clickable .command that authenticates once and drives
+            deploy.sh + push_sounds.sh on the box. It decides nothing itself.
             laser.py is the operator's own reference file — never modify it.
             shutdown.py is the end-of-day close: save, then darken.
             gen_placeholder_sounds.py writes stand-in .wav files into sounds/;
@@ -112,9 +115,12 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
   `ApplyTimePenalty` and the player keeps running; `game.penalty_ms` is the
   cost and `game.penalty_cooldown_ms` is the minimum RUN-time gap between two
   penalties. The cooldown is load-bearing: without it a player parked in a beam
-  collects one penalty per detection. `BUSTED` still exists but is reachable
-  ONLY by the gamemaster pressing BUST — for cheating, climbing, or leaving and
-  re-entering the maze, which no camera can judge. `Stopwatch.elapsed_ms()`
+  collects one penalty per detection. **Nothing ends a run on a beam break, by
+  camera or by hand** — the GM's own button (labelled PENALTY, event `GmBust`)
+  charges time too, and deliberately ignores the cooldown, because a human
+  tapping it three times means three penalties. `ABORT` is the button for a run
+  that genuinely has to stop. `BUSTED` and `RunOutcome.busted` are retained
+  only so historical rows still render. `Stopwatch.elapsed_ms()`
   includes penalties; `raw_elapsed_ms()` is what the clock measured, and the run
   row keeps both.
 - **Audio:** decoration, and it must never be able to end a run — a missing

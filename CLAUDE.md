@@ -110,7 +110,7 @@ docs/       Architecture, protocols, runbooks, ADRs. A PR without doc update is 
 - **Metric names:** `<domain>.<thing>.<verb|state>` snake_case — `relay.mismatch`, `run.completed`, `vision.stall`. Constants live in `core/metrics.py`; add new names there, not inline.
 - **Config keys:** add to the YAML/JSON file + a one-line comment with purpose and sane range + validation in `config/loader.py`.
 - **Commit format:** `<scope>: <what changed>` e.g. `fsm: handle false-start during COUNTDOWN`.
-- **DMX:** one universe, one owner — `iobackend/dmx.py`. Every Art-Net frame carries all 512 channels, so a second sender would zero the first one's work twice a second. Patch: ch1 hazer blower, ch2 haze, ch3 left, ch4 right, ch5 entrance. Run `python3 tools/dmxpatch.py` for the live sheet; it is generated from config, never hand-maintained. Haze is **duty-cycled** (`haze_burst_s` / `haze_interval_s`) because continuous output at any usable level is too much. Light levels come from `light_cues` in `mazes.yaml`, keyed by FSM state. The entrance is `always_on`, which now means **only a light cue may dim it** (`allow_always_on=True`, passed by `lightshow._apply()` alone) — see ADR 0010. It is dark from sign-in to the result and lit in attract/master/aborted/fault, the states where somebody is walking in or out. Two absolutes remain: `blackout()`, which is what a dying process calls, RESTORES it, and `DmxController.power_down()` is the only path that leaves it dark — end of day, operator at the breaker. COUNTDOWN and every RUN state are forced dark in code, over any cue and over the GM's work-light switch.
+- **DMX:** one universe, one owner — `iobackend/dmx.py`. Every Art-Net frame carries all 512 channels, so a second sender would zero the first one's work twice a second. Patch: ch1 hazer blower, ch2 haze, ch3 left, ch4 right, ch5 entrance. Run `python3 tools/dmxpatch.py` for the live sheet; it is generated from config, never hand-maintained. Haze is **duty-cycled** (`haze_burst_s` / `haze_interval_s`) because continuous output at any usable level is too much. Light levels come from `light_cues` in `mazes.yaml`, keyed by FSM state. The entrance is `always_on`, which now means **only a light cue may dim it** (`allow_always_on=True`, passed by `lightshow._apply()`) — with one exception: the RUN states take it dark themselves (`lightshow._always_on_dark`), because a correctness property must not depend on a cue having run in an earlier state. See ADR 0010 and its 2026-09-27 amendment. It is dark from sign-in to the result and lit in attract/master/aborted/fault, the states where somebody is walking in or out. Two absolutes remain: `blackout()`, which is what a dying process calls, RESTORES it, and `DmxController.power_down()` is the only path that leaves it dark — end of day, operator at the breaker. COUNTDOWN and every RUN state are forced dark in code, over any cue and over the GM's work-light switch.
 - **Breaks cost TIME, not the run.** A confirmed beam break emits
   `ApplyTimePenalty` and the player keeps running; `game.penalty_ms` is the
   cost and `game.penalty_cooldown_ms` is the minimum RUN-time gap between two
@@ -204,6 +204,28 @@ the printed collateral: `lasers-h.png` on `/display/in` (16:9), `lasers-v.png` o
 mounted rotated and `kiosk.sh` tells X (`SCANMANIA_ROTATE_OUT`, default `left`),
 swapping width and height for the Chromium window because there is no window
 manager to ask.
+
+**All TYPE on `/display/out` is white.** The red and the blue stay in the
+artwork, the logo and the sponsor lockup — they are chrome, not text. It is a
+street-facing panel read from several metres in daylight, and `#005AA9` on
+black is 2.8:1; the leaderboard was the worst of it. Do not "restore" the brand
+colours to the text there. The verdict reads from the WORD (CLEAN RUN /
+BUSTED), not from a colour, and `.verdict.win` / `.verdict.lose` are still set
+from JS so the markup stays honest. The one exception is the reconnect badge's
+**border**, which stays red so a fault still looks like a fault. `/display/in`
+is unchanged — it is read from inside a dark container by one person.
+
+**The last run stays on the screen.** `/display/out` carries a LAST RUN line
+above the leaderboard, fed by `last_run` in the WebSocket state message: the
+result overlay is gone seconds after the player walks out and the queue outside
+is still looking at the screen. Unlike `outcome`/`rank` it deliberately
+survives the reset to ATTRACT. It is `runner._last_run`, set at SaveRun from
+memory rather than read back — the run happened even if the insert failed —
+and cleared only by the operating-day rollover (same scope as the leaderboard,
+so 09:00 clears both) or by voiding that very run, which falls back to the run
+before it. Aborted, voided and in-progress runs never appear: a time nobody
+completed means nothing to a spectator. `persist.db.get_last_run()` is the
+query, used to seed at boot and to re-read at rollover.
 
 Player nicknames are written with `textContent`, never `innerHTML`. They are
 public input and `/display/out` faces the street.

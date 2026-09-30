@@ -7,6 +7,125 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — findings from a full review
+
+- **The RUN states now take the entrance dark themselves.**
+  `LightCuePlayer._restart()` handled `_DARK_STATES` with `_all_off()`, which
+  goes through `set_maze_lights()` — and that skips `always_on` fixtures by
+  design. So the entrance only went dark for a run because the `registered` /
+  `arm` cue had already dimmed it, which in turn needed
+  `runner._release_work_lights()` to have cleared the GM's work-light override
+  in time for that cue to run at all. Driven directly, `LightCuePlayer` left
+  the entrance at 255 through COUNTDOWN and all three segments. Driving the
+  real `GameRunner` showed **no live exposure** — the sign-in release always
+  won — but this is a correctness property of one module resting on the
+  ordering of two calls in another, and the failure mode is ambient light
+  raising every dot's raw reading, i.e. a MISSED break. `_always_on_dark()`
+  now asserts it in the dark branch. `blackout()` still restores the entrance
+  and `power_down()` is still the only path that leaves it dark. ADR 0010
+  amended; the decision is unchanged, only its enforcement.
+
+- **The test that should have caught it asserted the opposite.**
+  `test_the_entrance_stays_lit_through_a_run` was written 2026-09-15, two days
+  before ADR 0010 decided the entrance *is* dark in countdown and the run
+  states, and was never revisited. It is now
+  `test_the_always_on_guard_still_holds_outside_a_run`, which keeps the half
+  that survived. `test_a_run_is_dark_even_with_the_gm_work_lights_on` checked
+  only `left`; the entrance is now checked per run state, plus a test that it
+  relights on ABORTED.
+
+- **The self-test no longer dispatches into the FSM directly.** On the
+  MASTER-exit path `_run_self_test()` runs as `_self_test_task`, concurrently
+  with `_event_drain`, and called `await self.dispatch(...)`. Because
+  `dispatch()` awaits `_execute_side_effects()`, a GM press drained at the same
+  moment could interleave its side effects with the self-test's transition.
+  Every other producer already uses the queue — that is what serialises the
+  FSM — so this now does too. At boot the drain has not started yet, so the
+  verdict simply waits for it.
+
+- **`get_last_run()` is always scoped to the operating day**, deliberately not
+  to `game.leaderboard.scope`. An all-time board is reasonable for a multi-day
+  activation; an all-time "LAST RUN" would put yesterday's last player under
+  this morning's queue on a street-facing screen. At a multi-day venue the line
+  is empty until the day's first finish, which is the honest answer.
+
+- **The last-run line is captured before the no-DB return** in
+  `_handle_save_run`, so it reflects the run that happened even when there is
+  no database to record it in.
+
+### Changed — documentation corrected to match the code
+
+- **`/api/admin/mazes` was ungated and undocumented.** Both `docs/security.md`
+  and the comment in `routes_admin.py` said exactly three admin reads were
+  open; there are four. It returns maze geometry, not personal data, and
+  `/admin/beams` — which sends no password header at all — needs it, so the
+  route is right and the lists were wrong. Both corrected, with a note that
+  the exports, the snapshot and the log stream are gated by
+  `_require_download_token` rather than `_require_admin`, so grepping for
+  `_require_admin` alone under-reports coverage.
+
+
+### Changed — the run time limit is 4 minutes
+
+- **`game.max_run_ms` 180000 → 240000.** The hard abort for a player who
+  stopped playing. Inside the existing 10 s–1 h validation range, so
+  `config/loader.py` is unchanged and the admin portal does not expose this
+  field.
+
+
+### Changed — the outdoor display is all white type
+
+- **Every piece of TEXT on `/display/out` is now white.** The clock halves, the
+  verdict, the countdown number, the "next up" eyebrow, the leaderboard title,
+  its rows and times, the empty-board line, the penalty note and the reconnect
+  badge. The red and the blue stay where they belong — the artwork, the logo
+  and the sponsor lockup. It is a street-facing panel read from several metres
+  in daylight and `#005AA9` on black is 2.8:1; the leaderboard, which is the
+  part people photograph, was the worst of it. `brand.css` is untouched, so
+  `/display/in`, `/gm` and `/admin` are unchanged. The reconnect badge keeps
+  its red **border** so a fault still looks like a fault.
+
+### Added — the last run stays on the outdoor display
+
+- **A LAST RUN line above the leaderboard**, carrying the player's name and
+  their time. The result overlay is gone seconds after the player walks out and
+  the queue outside is still looking at the screen, so the line deliberately
+  outlives the reset to ATTRACT — unlike `outcome` and `rank`, which are still
+  cleared.
+
+- **`last_run` in the WebSocket state message**, and `runner._last_run` behind
+  it. Set at SaveRun from memory rather than read back, so the queue still sees
+  who just ran even when the DB insert fails — the run happened either way.
+  Seeded from the DB at boot, so a restart mid-session does not blank it.
+
+- **`Database.get_last_run(scope=...)`**, scoped the same way as
+  `get_leaderboard()`. The 09:00 operating-day rollover now clears the line at
+  the same moment it clears the board — yesterday's name under this morning's
+  queue was the exact bug the leaderboard refresher was written for. Voiding
+  the run that is showing falls back to the run before it rather than blanking
+  the line. Aborted, voided and in-progress runs never appear: a time nobody
+  completed means nothing to a spectator.
+
+### Fixed — a penalty collapsed the middle of the outdoor screen
+
+- **`#penaltyNote` was created in JS and inserted as a direct child of
+  `#stage`**, which made it the third item in a four-row
+  `grid-template-rows: auto auto 1fr auto` and handed it the `1fr` row meant
+  for `#centre`. Measured in a 540x960 viewport: on the first penalty of a run
+  `#centre` collapsed from 526 px to **0**, taking the countdown number, the
+  verdict, the next-up banner and the camera stage with it. The element now
+  lives in the markup inside a new `#header` wrapper, styled from the
+  stylesheet, with its height reserved so nothing shifts when it fills.
+
+### Tests
+
+- `tests/test_last_run.py` — 9 tests: the query (most recent finished, busted
+  still counts, aborted/voided/in-progress never do, yesterday does not show
+  this morning) and the wiring driven through a real `GameRunner` (survives the
+  reset to ATTRACT, a second run replaces the first, a void takes it off the
+  display). 493 green.
+
+
 ### Added — a beam break costs time, not the run
 
 - **`ApplyTimePenalty` / `RevokeTimePenalty`.** A confirmed break adds

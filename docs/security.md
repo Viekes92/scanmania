@@ -45,14 +45,25 @@ a substitute for network isolation.
 
 ## What is gated and what is not
 
-Every mutation is gated. Every admin read is gated **except** three, which are consumed by
+Every mutation is gated. Every admin read is gated **except** four, which are consumed by
 frontends that have no password:
 
 | Endpoint | Consumer | Why it stays open |
 |---|---|---|
 | `GET /api/admin/runs` | GM console recent-runs list | GM iPad has no login |
 | `GET /api/admin/beams` | GM console, `/admin/beams` overlay | same |
+| `GET /api/admin/mazes` | `/admin/beams` overlay | same — that page sends no password header |
 | `GET /api/admin/leaderboard` | outdoor display | public by design — it is on a screen outside |
+
+`/api/admin/mazes` was open but undocumented, while both this table and the comment in
+`routes_admin.py` said only three were. It returns maze geometry, not personal data, and gating it
+would break the beams viewer — so the lists were what needed correcting, not the route. Audited
+2026-09-27 by enumerating every decorator and its `Depends(...)`; that is the check to repeat.
+
+Note that "gated" does not mean `_require_admin` everywhere: the exports (`runs.csv`,
+`leaderboard.csv`, `day.csv`), `GET /api/admin/snapshot` and `GET /api/admin/logs/stream` are
+gated by `_require_download_token` instead, because a browser download cannot carry a custom
+header. Grepping for `_require_admin` alone will therefore report them as open. They are not.
 
 These expose player nicknames, which are self-chosen at sign-in and already displayed publicly on
 the outdoor screen. Do not add anything else to this list without a matching row here.

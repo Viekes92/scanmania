@@ -505,10 +505,17 @@ def register_routes(
     # ------------------------------------------------------------------
     # Runs
     #
-    # /runs, /beams and /leaderboard are deliberately NOT admin-gated: the GM
-    # console and the outdoor display consume them and have no password. Every
-    # other admin read is gated, and every mutation is. Keep it that way — see
-    # docs/security.md.
+    # FOUR reads are deliberately NOT admin-gated, because three passwordless
+    # frontends consume them:
+    #   /runs        and /leaderboard  — the GM console and /display/out
+    #   /beams       and /mazes        — the /admin/beams viewer, which sends
+    #                                    no X-Admin-Password header at all
+    # Every other admin read is gated (several by _require_download_token
+    # rather than _require_admin — exports, the snapshot and the log stream),
+    # and every mutation is. /mazes was missing from this list while the list
+    # claimed "every other admin read is gated"; gating it would break
+    # /admin/beams, so the list is what was wrong. Check the frontends before
+    # gating any of the four — see docs/security.md.
     # ------------------------------------------------------------------
 
     @router.get("/api/admin/runs")

@@ -665,7 +665,7 @@
               "cx": 266,
               "cy": 441,
               "r": 14,
-              "baseline": 190.262,
+              "baseline": 183.439,
               "masked": false
             },
             {
@@ -673,15 +673,15 @@
               "cx": 376,
               "cy": 588,
               "r": 10,
-              "baseline": 186.817,
+              "baseline": 182.23,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d2",
               "cx": 428,
               "cy": 642,
-              "r": 10,
-              "baseline": 198.722,
+              "r": 11,
+              "baseline": 197.147,
               "masked": false
             },
             {
@@ -689,15 +689,15 @@
               "cx": 13,
               "cy": 719,
               "r": 5,
-              "baseline": 107.375,
+              "baseline": 89.031,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d4",
               "cx": 536,
               "cy": 743,
-              "r": 8,
-              "baseline": 168.179,
+              "r": 9,
+              "baseline": 156.94,
               "masked": false
             },
             {
@@ -705,15 +705,15 @@
               "cx": 187,
               "cy": 744,
               "r": 7,
-              "baseline": 161.19,
+              "baseline": 159.466,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d6",
               "cx": 1329,
               "cy": 748,
-              "r": 10,
-              "baseline": 187.222,
+              "r": 11,
+              "baseline": 173.993,
               "masked": false
             },
             {
@@ -721,7 +721,7 @@
               "cx": 249,
               "cy": 761,
               "r": 6,
-              "baseline": 149.159,
+              "baseline": 141.75,
               "masked": false
             },
             {
@@ -729,15 +729,15 @@
               "cx": 331,
               "cy": 773,
               "r": 7,
-              "baseline": 170.397,
+              "baseline": 163.793,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d9",
               "cx": 402,
-              "cy": 780,
-              "r": 7,
-              "baseline": 173.81,
+              "cy": 779,
+              "r": 8,
+              "baseline": 165.385,
               "masked": false
             },
             {
@@ -745,15 +745,15 @@
               "cx": 492,
               "cy": 781,
               "r": 9,
-              "baseline": 183.62,
+              "baseline": 180.06,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d11",
               "cx": 608,
               "cy": 787,
-              "r": 7,
-              "baseline": 181.31,
+              "r": 8,
+              "baseline": 168.256,
               "masked": false
             },
             {
@@ -761,7 +761,7 @@
               "cx": 253,
               "cy": 798,
               "r": 6,
-              "baseline": 149.182,
+              "baseline": 154.159,
               "masked": false
             },
             {
@@ -769,111 +769,111 @@
               "cx": 588,
               "cy": 801,
               "r": 8,
-              "baseline": 177.577,
+              "baseline": 165.154,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d14",
-              "cx": 1317,
-              "cy": 835,
-              "r": 9,
-              "baseline": 187.06,
+              "cx": 116,
+              "cy": 815,
+              "r": 5,
+              "baseline": 81.562,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d15",
-              "cx": 374,
-              "cy": 894,
-              "r": 5,
-              "baseline": 146.125,
+              "cx": 1317,
+              "cy": 835,
+              "r": 10,
+              "baseline": 173.437,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d16",
-              "cx": 1306,
-              "cy": 899,
-              "r": 7,
-              "baseline": 167.966,
+              "cx": 374,
+              "cy": 894,
+              "r": 5,
+              "baseline": 136.812,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d17",
-              "cx": 1726,
-              "cy": 923,
-              "r": 6,
-              "baseline": 155.977,
+              "cx": 1306,
+              "cy": 899,
+              "r": 7,
+              "baseline": 153.914,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d18",
-              "cx": 425,
-              "cy": 928,
-              "r": 7,
-              "baseline": 153.879,
+              "cx": 1726,
+              "cy": 922,
+              "r": 6,
+              "baseline": 143.159,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d19",
-              "cx": 1652,
-              "cy": 940,
-              "r": 7,
-              "baseline": 163.948,
+              "cx": 425,
+              "cy": 928,
+              "r": 8,
+              "baseline": 136.141,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d20",
-              "cx": 1573,
-              "cy": 956,
+              "cx": 1652,
+              "cy": 940,
               "r": 7,
-              "baseline": 163.086,
+              "baseline": 165.0,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d21",
-              "cx": 483,
-              "cy": 967,
+              "cx": 1573,
+              "cy": 955,
               "r": 7,
-              "baseline": 167.603,
+              "baseline": 162.276,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d22",
-              "cx": 1478,
-              "cy": 975,
-              "r": 6,
-              "baseline": 167.318,
+              "cx": 483,
+              "cy": 967,
+              "r": 7,
+              "baseline": 165.086,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d23",
-              "cx": 1290,
-              "cy": 976,
+              "cx": 1289,
+              "cy": 975,
               "r": 8,
-              "baseline": 162.987,
+              "baseline": 155.679,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d24",
-              "cx": 1408,
-              "cy": 988,
+              "cx": 1477,
+              "cy": 975,
               "r": 6,
-              "baseline": 137.455,
+              "baseline": 152.295,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d25",
-              "cx": 1287,
-              "cy": 992,
+              "cx": 1408,
+              "cy": 987,
               "r": 6,
-              "baseline": 163.091,
+              "baseline": 139.341,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d26",
-              "cx": 1262,
-              "cy": 1017,
-              "r": 5,
-              "baseline": 147.25,
+              "cx": 1287,
+              "cy": 992,
+              "r": 7,
+              "baseline": 141.81,
               "masked": false
             },
             {
@@ -881,31 +881,39 @@
               "cx": 845,
               "cy": 1029,
               "r": 7,
-              "baseline": 163.569,
+              "baseline": 168.397,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d28",
-              "cx": 1287,
-              "cy": 1030,
+              "cx": 1288,
+              "cy": 1029,
               "r": 6,
-              "baseline": 160.591,
+              "baseline": 140.182,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d29",
-              "cx": 884,
-              "cy": 1063,
+              "cx": 885,
+              "cy": 1059,
               "r": 6,
-              "baseline": 154.295,
+              "baseline": 144.682,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d30",
-              "cx": 1260,
+              "cx": 1259,
               "cy": 1063,
               "r": 5,
-              "baseline": 144.094,
+              "baseline": 150.125,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d31",
+              "cx": 882,
+              "cy": 1068,
+              "r": 5,
+              "baseline": 139.219,
               "masked": false
             }
           ]
@@ -925,15 +933,15 @@
               "cx": 31,
               "cy": 763,
               "r": 8,
-              "baseline": 168.321,
+              "baseline": 168.346,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d1",
               "cx": 93,
               "cy": 810,
-              "r": 7,
-              "baseline": 161.914,
+              "r": 6,
+              "baseline": 163.455,
               "masked": false
             },
             {
@@ -941,7 +949,7 @@
               "cx": 179,
               "cy": 839,
               "r": 11,
-              "baseline": 171.813,
+              "baseline": 169.547,
               "masked": false
             },
             {
@@ -949,7 +957,7 @@
               "cx": 281,
               "cy": 865,
               "r": 9,
-              "baseline": 177.15,
+              "baseline": 166.29,
               "masked": false
             },
             {
@@ -957,15 +965,15 @@
               "cx": 395,
               "cy": 879,
               "r": 8,
-              "baseline": 168.744,
+              "baseline": 164.654,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d5",
-              "cx": 1842,
+              "cx": 1843,
               "cy": 914,
-              "r": 7,
-              "baseline": 183.586,
+              "r": 8,
+              "baseline": 180.782,
               "masked": false
             },
             {
@@ -973,23 +981,23 @@
               "cx": 1870,
               "cy": 920,
               "r": 7,
-              "baseline": 155.586,
+              "baseline": 157.931,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d7",
-              "cx": 583,
+              "cx": 584,
               "cy": 922,
-              "r": 12,
-              "baseline": 182.42,
+              "r": 13,
+              "baseline": 184.752,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d8",
-              "cx": 686,
+              "cx": 687,
               "cy": 926,
-              "r": 14,
-              "baseline": 180.377,
+              "r": 15,
+              "baseline": 177.816,
               "masked": false
             },
             {
@@ -997,7 +1005,7 @@
               "cx": 1764,
               "cy": 936,
               "r": 8,
-              "baseline": 168.885,
+              "baseline": 165.308,
               "masked": false
             },
             {
@@ -1005,15 +1013,15 @@
               "cx": 76,
               "cy": 947,
               "r": 6,
-              "baseline": 150.091,
+              "baseline": 157.591,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d11",
               "cx": 1681,
-              "cy": 951,
+              "cy": 950,
               "r": 9,
-              "baseline": 163.7,
+              "baseline": 166.33,
               "masked": false
             },
             {
@@ -1021,7 +1029,7 @@
               "cx": 1481,
               "cy": 957,
               "r": 12,
-              "baseline": 179.778,
+              "baseline": 177.875,
               "masked": false
             },
             {
@@ -1029,63 +1037,55 @@
               "cx": 1560,
               "cy": 963,
               "r": 8,
-              "baseline": 165.705,
+              "baseline": 166.744,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d14",
-              "cx": 167,
-              "cy": 1002,
-              "r": 6,
-              "baseline": 153.977,
+              "cx": 208,
+              "cy": 1018,
+              "r": 7,
+              "baseline": 162.397,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d15",
-              "cx": 208,
-              "cy": 1019,
-              "r": 6,
-              "baseline": 170.25,
+              "cx": 709,
+              "cy": 1022,
+              "r": 11,
+              "baseline": 172.12,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d16",
-              "cx": 709,
-              "cy": 1022,
+              "cx": 1434,
+              "cy": 1024,
               "r": 10,
-              "baseline": 172.437,
+              "baseline": 159.325,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d17",
-              "cx": 1434,
-              "cy": 1024,
-              "r": 10,
-              "baseline": 167.238,
+              "cx": 262,
+              "cy": 1041,
+              "r": 7,
+              "baseline": 163.138,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d18",
-              "cx": 262,
-              "cy": 1041,
-              "r": 7,
-              "baseline": 166.0,
+              "cx": 732,
+              "cy": 1074,
+              "r": 10,
+              "baseline": 179.856,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d19",
-              "cx": 732,
-              "cy": 1074,
-              "r": 10,
-              "baseline": 177.798,
-              "masked": false
-            },
-            {
-              "id": "SM-CAM-12:d20",
               "cx": 370,
               "cy": 1077,
               "r": 6,
-              "baseline": 176.647,
+              "baseline": 169.882,
               "masked": false
             }
           ]
@@ -1104,8 +1104,8 @@
               "id": "SM-CAM-13:d0",
               "cx": 1903,
               "cy": 795,
-              "r": 6,
-              "baseline": 150.864,
+              "r": 7,
+              "baseline": 150.017,
               "masked": false
             },
             {
@@ -1113,15 +1113,15 @@
               "cx": 1822,
               "cy": 819,
               "r": 6,
-              "baseline": 127.886,
+              "baseline": 125.682,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d2",
               "cx": 150,
               "cy": 855,
-              "r": 8,
-              "baseline": 161.667,
+              "r": 7,
+              "baseline": 163.81,
               "masked": false
             },
             {
@@ -1129,7 +1129,7 @@
               "cx": 1737,
               "cy": 858,
               "r": 7,
-              "baseline": 151.431,
+              "baseline": 151.276,
               "masked": false
             },
             {
@@ -1137,7 +1137,7 @@
               "cx": 1873,
               "cy": 862,
               "r": 7,
-              "baseline": 164.845,
+              "baseline": 152.776,
               "masked": false
             },
             {
@@ -1145,7 +1145,7 @@
               "cx": 17,
               "cy": 886,
               "r": 5,
-              "baseline": 106.125,
+              "baseline": 116.156,
               "masked": false
             },
             {
@@ -1153,15 +1153,15 @@
               "cx": 210,
               "cy": 890,
               "r": 9,
-              "baseline": 178.59,
+              "baseline": 175.3,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d7",
-              "cx": 1633,
+              "cx": 1632,
               "cy": 890,
-              "r": 11,
-              "baseline": 168.487,
+              "r": 10,
+              "baseline": 156.357,
               "masked": false
             },
             {
@@ -1169,15 +1169,15 @@
               "cx": 290,
               "cy": 897,
               "r": 8,
-              "baseline": 171.615,
+              "baseline": 156.231,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d9",
-              "cx": 1416,
-              "cy": 907,
+              "cx": 1415,
+              "cy": 906,
               "r": 11,
-              "baseline": 181.48,
+              "baseline": 173.733,
               "masked": false
             },
             {
@@ -1185,7 +1185,7 @@
               "cx": 1827,
               "cy": 916,
               "r": 7,
-              "baseline": 170.862,
+              "baseline": 166.724,
               "masked": false
             },
             {
@@ -1193,15 +1193,15 @@
               "cx": 50,
               "cy": 921,
               "r": 6,
-              "baseline": 162.227,
+              "baseline": 156.364,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d12",
-              "cx": 565,
+              "cx": 564,
               "cy": 922,
               "r": 9,
-              "baseline": 176.27,
+              "baseline": 164.71,
               "masked": false
             },
             {
@@ -1209,7 +1209,7 @@
               "cx": 1492,
               "cy": 922,
               "r": 7,
-              "baseline": 171.069,
+              "baseline": 157.759,
               "masked": false
             },
             {
@@ -1217,7 +1217,7 @@
               "cx": 687,
               "cy": 930,
               "r": 11,
-              "baseline": 186.447,
+              "baseline": 183.68,
               "masked": false
             },
             {
@@ -1225,7 +1225,7 @@
               "cx": 801,
               "cy": 934,
               "r": 13,
-              "baseline": 180.21,
+              "baseline": 176.033,
               "masked": false
             },
             {
@@ -1233,7 +1233,7 @@
               "cx": 258,
               "cy": 937,
               "r": 8,
-              "baseline": 168.487,
+              "baseline": 160.808,
               "masked": false
             },
             {
@@ -1241,7 +1241,7 @@
               "cx": 1194,
               "cy": 951,
               "r": 11,
-              "baseline": 178.52,
+              "baseline": 169.453,
               "masked": false
             },
             {
@@ -1249,7 +1249,7 @@
               "cx": 1900,
               "cy": 951,
               "r": 6,
-              "baseline": 91.795,
+              "baseline": 93.705,
               "masked": false
             },
             {
@@ -1257,7 +1257,7 @@
               "cx": 1795,
               "cy": 954,
               "r": 6,
-              "baseline": 133.909,
+              "baseline": 128.455,
               "masked": false
             },
             {
@@ -1265,7 +1265,7 @@
               "cx": 83,
               "cy": 955,
               "r": 6,
-              "baseline": 152.591,
+              "baseline": 156.591,
               "masked": false
             },
             {
@@ -1273,7 +1273,7 @@
               "cx": 951,
               "cy": 968,
               "r": 10,
-              "baseline": 181.833,
+              "baseline": 169.952,
               "masked": false
             },
             {
@@ -1281,39 +1281,31 @@
               "cx": 295,
               "cy": 982,
               "r": 7,
-              "baseline": 172.793,
+              "baseline": 159.741,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d23",
-              "cx": 150,
+              "cx": 151,
               "cy": 1021,
               "r": 7,
-              "baseline": 170.328,
+              "baseline": 156.086,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d24",
-              "cx": 1723,
-              "cy": 1021,
-              "r": 5,
-              "baseline": 114.312,
+              "cx": 364,
+              "cy": 1046,
+              "r": 11,
+              "baseline": 137.053,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d25",
-              "cx": 364,
-              "cy": 1046,
-              "r": 11,
-              "baseline": 142.807,
-              "masked": false
-            },
-            {
-              "id": "SM-CAM-13:d26",
               "cx": 210,
               "cy": 1073,
-              "r": 6,
-              "baseline": 144.409,
+              "r": 5,
+              "baseline": 131.375,
               "masked": false
             }
           ]
@@ -1333,7 +1325,7 @@
               "cx": 42,
               "cy": 739,
               "r": 8,
-              "baseline": 174.679,
+              "baseline": 172.859,
               "masked": false
             },
             {
@@ -1341,7 +1333,7 @@
               "cx": 70,
               "cy": 784,
               "r": 10,
-              "baseline": 181.119,
+              "baseline": 183.444,
               "masked": false
             },
             {
@@ -1349,7 +1341,7 @@
               "cx": 1827,
               "cy": 816,
               "r": 8,
-              "baseline": 172.885,
+              "baseline": 162.526,
               "masked": false
             },
             {
@@ -1357,15 +1349,15 @@
               "cx": 1785,
               "cy": 828,
               "r": 7,
-              "baseline": 152.086,
+              "baseline": 144.793,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d4",
-              "cx": 1852,
+              "cx": 1853,
               "cy": 830,
               "r": 6,
-              "baseline": 137.5,
+              "baseline": 136.136,
               "masked": false
             },
             {
@@ -1373,7 +1365,7 @@
               "cx": 1728,
               "cy": 844,
               "r": 6,
-              "baseline": 147.364,
+              "baseline": 146.318,
               "masked": false
             },
             {
@@ -1381,15 +1373,15 @@
               "cx": 1483,
               "cy": 906,
               "r": 8,
-              "baseline": 170.333,
+              "baseline": 187.962,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d7",
               "cx": 1272,
-              "cy": 921,
+              "cy": 922,
               "r": 10,
-              "baseline": 177.238,
+              "baseline": 171.198,
               "masked": false
             },
             {
@@ -1397,7 +1389,7 @@
               "cx": 177,
               "cy": 924,
               "r": 7,
-              "baseline": 162.931,
+              "baseline": 166.207,
               "masked": false
             },
             {
@@ -1405,15 +1397,15 @@
               "cx": 1335,
               "cy": 938,
               "r": 11,
-              "baseline": 176.833,
+              "baseline": 174.28,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d10",
-              "cx": 226,
+              "cx": 227,
               "cy": 964,
-              "r": 7,
-              "baseline": 159.448,
+              "r": 6,
+              "baseline": 163.5,
               "masked": false
             },
             {
@@ -1421,7 +1413,7 @@
               "cx": 624,
               "cy": 976,
               "r": 10,
-              "baseline": 174.421,
+              "baseline": 167.659,
               "masked": false
             },
             {
@@ -1429,15 +1421,15 @@
               "cx": 1321,
               "cy": 979,
               "r": 10,
-              "baseline": 167.817,
+              "baseline": 164.46,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d13",
               "cx": 1742,
-              "cy": 1012,
+              "cy": 1013,
               "r": 6,
-              "baseline": 131.455,
+              "baseline": 118.705,
               "masked": false
             },
             {
@@ -1445,47 +1437,39 @@
               "cx": 1281,
               "cy": 1023,
               "r": 8,
-              "baseline": 165.615,
+              "baseline": 156.59,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d15",
-              "cx": 288,
+              "cx": 287,
               "cy": 1027,
               "r": 6,
-              "baseline": 172.295,
+              "baseline": 170.091,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d16",
-              "cx": 646,
+              "cx": 647,
               "cy": 1028,
               "r": 7,
-              "baseline": 153.017,
+              "baseline": 153.69,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d17",
-              "cx": 670,
+              "cx": 669,
               "cy": 1059,
               "r": 7,
-              "baseline": 180.086,
+              "baseline": 170.914,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d18",
-              "cx": 1578,
-              "cy": 1059,
-              "r": 6,
-              "baseline": 138.432,
-              "masked": false
-            },
-            {
-              "id": "SM-CAM-14:d19",
-              "cx": 1251,
+              "cx": 1250,
               "cy": 1075,
               "r": 11,
-              "baseline": 164.964,
+              "baseline": 155.277,
               "masked": false
             }
           ]
@@ -1503,17 +1487,17 @@
             {
               "id": "SM-CAM-21:d0",
               "cx": 743,
-              "cy": 130,
-              "r": 15,
-              "baseline": 182.762,
+              "cy": 131,
+              "r": 16,
+              "baseline": 187.138,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d1",
               "cx": 752,
-              "cy": 209,
+              "cy": 210,
               "r": 13,
-              "baseline": 175.443,
+              "baseline": 182.276,
               "masked": false
             },
             {
@@ -1521,7 +1505,7 @@
               "cx": 1878,
               "cy": 457,
               "r": 11,
-              "baseline": 171.067,
+              "baseline": 175.287,
               "masked": false
             },
             {
@@ -1529,7 +1513,7 @@
               "cx": 807,
               "cy": 550,
               "r": 16,
-              "baseline": 181.777,
+              "baseline": 185.094,
               "masked": false
             },
             {
@@ -1537,23 +1521,23 @@
               "cx": 1791,
               "cy": 648,
               "r": 11,
-              "baseline": 170.233,
+              "baseline": 174.147,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d5",
-              "cx": 1724,
+              "cx": 1723,
               "cy": 725,
               "r": 11,
-              "baseline": 172.22,
+              "baseline": 173.8,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d6",
-              "cx": 783,
+              "cx": 784,
               "cy": 787,
-              "r": 11,
-              "baseline": 178.587,
+              "r": 12,
+              "baseline": 182.545,
               "masked": false
             },
             {
@@ -1561,7 +1545,7 @@
               "cx": 777,
               "cy": 820,
               "r": 14,
-              "baseline": 184.23,
+              "baseline": 184.262,
               "masked": false
             },
             {
@@ -1569,7 +1553,7 @@
               "cx": 1914,
               "cy": 849,
               "r": 8,
-              "baseline": 184.3,
+              "baseline": 179.043,
               "masked": false
             },
             {
@@ -1577,15 +1561,15 @@
               "cx": 186,
               "cy": 876,
               "r": 8,
-              "baseline": 147.692,
+              "baseline": 157.949,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d10",
-              "cx": 1618,
+              "cx": 1617,
               "cy": 881,
               "r": 13,
-              "baseline": 179.31,
+              "baseline": 180.738,
               "masked": false
             },
             {
@@ -1593,23 +1577,23 @@
               "cx": 848,
               "cy": 885,
               "r": 11,
-              "baseline": 176.84,
+              "baseline": 178.46,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d12",
               "cx": 276,
-              "cy": 899,
+              "cy": 898,
               "r": 9,
-              "baseline": 161.69,
+              "baseline": 167.21,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d13",
               "cx": 382,
               "cy": 925,
-              "r": 11,
-              "baseline": 171.987,
+              "r": 12,
+              "baseline": 168.261,
               "masked": false
             },
             {
@@ -1617,7 +1601,7 @@
               "cx": 1848,
               "cy": 928,
               "r": 8,
-              "baseline": 150.603,
+              "baseline": 154.564,
               "masked": false
             },
             {
@@ -1625,31 +1609,31 @@
               "cx": 509,
               "cy": 938,
               "r": 10,
-              "baseline": 169.024,
+              "baseline": 171.492,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d16",
-              "cx": 609,
+              "cx": 610,
               "cy": 941,
-              "r": 10,
-              "baseline": 172.603,
+              "r": 12,
+              "baseline": 173.767,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d17",
               "cx": 819,
               "cy": 965,
-              "r": 12,
-              "baseline": 183.403,
+              "r": 14,
+              "baseline": 179.721,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d18",
               "cx": 825,
               "cy": 1005,
-              "r": 13,
-              "baseline": 178.557,
+              "r": 14,
+              "baseline": 182.094,
               "masked": false
             }
           ]
@@ -1666,18 +1650,18 @@
           "dots": [
             {
               "id": "SM-CAM-22:d0",
-              "cx": 1349,
+              "cx": 1350,
               "cy": 197,
-              "r": 12,
-              "baseline": 177.455,
+              "r": 11,
+              "baseline": 178.433,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d1",
-              "cx": 1354,
-              "cy": 316,
+              "cx": 1355,
+              "cy": 315,
               "r": 13,
-              "baseline": 182.01,
+              "baseline": 186.995,
               "masked": false
             },
             {
@@ -1685,7 +1669,7 @@
               "cx": 1274,
               "cy": 605,
               "r": 14,
-              "baseline": 193.225,
+              "baseline": 194.955,
               "masked": false
             },
             {
@@ -1693,7 +1677,7 @@
               "cx": 1247,
               "cy": 734,
               "r": 14,
-              "baseline": 181.176,
+              "baseline": 182.172,
               "masked": false
             },
             {
@@ -1701,7 +1685,7 @@
               "cx": 1881,
               "cy": 796,
               "r": 7,
-              "baseline": 153.534,
+              "baseline": 147.138,
               "masked": false
             },
             {
@@ -1709,7 +1693,7 @@
               "cx": 1822,
               "cy": 823,
               "r": 8,
-              "baseline": 165.346,
+              "baseline": 169.038,
               "masked": false
             },
             {
@@ -1717,7 +1701,7 @@
               "cx": 1698,
               "cy": 869,
               "r": 7,
-              "baseline": 157.5,
+              "baseline": 153.983,
               "masked": false
             },
             {
@@ -1725,7 +1709,7 @@
               "cx": 1194,
               "cy": 873,
               "r": 9,
-              "baseline": 166.77,
+              "baseline": 167.98,
               "masked": false
             },
             {
@@ -1733,7 +1717,7 @@
               "cx": 375,
               "cy": 905,
               "r": 11,
-              "baseline": 166.88,
+              "baseline": 170.113,
               "masked": false
             },
             {
@@ -1741,47 +1725,39 @@
               "cx": 1163,
               "cy": 971,
               "r": 7,
-              "baseline": 148.397,
+              "baseline": 148.345,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d10",
-              "cx": 1793,
-              "cy": 974,
-              "r": 6,
-              "baseline": 102.182,
+              "cx": 449,
+              "cy": 992,
+              "r": 9,
+              "baseline": 166.87,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d11",
-              "cx": 449,
-              "cy": 992,
-              "r": 10,
-              "baseline": 156.881,
+              "cx": 502,
+              "cy": 1042,
+              "r": 7,
+              "baseline": 155.655,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d12",
-              "cx": 502,
-              "cy": 1042,
-              "r": 7,
-              "baseline": 151.586,
+              "cx": 1119,
+              "cy": 1057,
+              "r": 8,
+              "baseline": 170.128,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d13",
-              "cx": 1119,
-              "cy": 1057,
-              "r": 8,
-              "baseline": 166.974,
-              "masked": false
-            },
-            {
-              "id": "SM-CAM-22:d14",
               "cx": 1599,
               "cy": 1061,
               "r": 6,
-              "baseline": 149.455,
+              "baseline": 145.977,
               "masked": false
             }
           ]
@@ -1800,16 +1776,16 @@
               "id": "SM-CAM-23:d0",
               "cx": 5,
               "cy": 827,
-              "r": 6,
-              "baseline": 134.068,
+              "r": 5,
+              "baseline": 133.281,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d1",
               "cx": 1692,
-              "cy": 859,
+              "cy": 860,
               "r": 7,
-              "baseline": 163.81,
+              "baseline": 142.259,
               "masked": false
             },
             {
@@ -1817,7 +1793,7 @@
               "cx": 1904,
               "cy": 866,
               "r": 5,
-              "baseline": 107.906,
+              "baseline": 107.125,
               "masked": false
             },
             {
@@ -1825,7 +1801,7 @@
               "cx": 1591,
               "cy": 880,
               "r": 10,
-              "baseline": 161.0,
+              "baseline": 152.365,
               "masked": false
             },
             {
@@ -1833,7 +1809,7 @@
               "cx": 1874,
               "cy": 901,
               "r": 5,
-              "baseline": 116.75,
+              "baseline": 111.156,
               "masked": false
             },
             {
@@ -1841,15 +1817,15 @@
               "cx": 76,
               "cy": 912,
               "r": 6,
-              "baseline": 99.227,
+              "baseline": 100.841,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d6",
               "cx": 315,
               "cy": 912,
-              "r": 7,
-              "baseline": 168.534,
+              "r": 8,
+              "baseline": 149.731,
               "masked": false
             },
             {
@@ -1857,15 +1833,15 @@
               "cx": 1493,
               "cy": 917,
               "r": 8,
-              "baseline": 173.577,
+              "baseline": 155.5,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d8",
               "cx": 1013,
-              "cy": 921,
+              "cy": 920,
               "r": 9,
-              "baseline": 176.82,
+              "baseline": 157.63,
               "masked": false
             },
             {
@@ -1873,7 +1849,7 @@
               "cx": 1650,
               "cy": 923,
               "r": 7,
-              "baseline": 152.414,
+              "baseline": 151.0,
               "masked": false
             },
             {
@@ -1881,15 +1857,15 @@
               "cx": 793,
               "cy": 929,
               "r": 10,
-              "baseline": 182.778,
+              "baseline": 166.405,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d11",
-              "cx": 1355,
+              "cx": 1356,
               "cy": 935,
               "r": 8,
-              "baseline": 165.795,
+              "baseline": 152.731,
               "masked": false
             },
             {
@@ -1897,23 +1873,23 @@
               "cx": 506,
               "cy": 936,
               "r": 11,
-              "baseline": 177.327,
+              "baseline": 171.907,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d13",
               "cx": 1106,
               "cy": 939,
-              "r": 10,
-              "baseline": 185.127,
+              "r": 9,
+              "baseline": 177.19,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d14",
               "cx": 644,
               "cy": 943,
-              "r": 10,
-              "baseline": 183.595,
+              "r": 11,
+              "baseline": 169.693,
               "masked": false
             },
             {
@@ -1921,15 +1897,15 @@
               "cx": 121,
               "cy": 954,
               "r": 6,
-              "baseline": 132.864,
+              "baseline": 129.0,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d16",
               "cx": 1800,
-              "cy": 974,
+              "cy": 975,
               "r": 5,
-              "baseline": 115.156,
+              "baseline": 97.844,
               "masked": false
             },
             {
@@ -1937,7 +1913,7 @@
               "cx": 1591,
               "cy": 980,
               "r": 9,
-              "baseline": 138.13,
+              "baseline": 132.33,
               "masked": false
             },
             {
@@ -1945,15 +1921,15 @@
               "cx": 165,
               "cy": 996,
               "r": 6,
-              "baseline": 139.477,
+              "baseline": 128.773,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d19",
               "cx": 1538,
-              "cy": 1038,
+              "cy": 1037,
               "r": 6,
-              "baseline": 164.75,
+              "baseline": 149.727,
               "masked": false
             },
             {
@@ -1961,15 +1937,15 @@
               "cx": 218,
               "cy": 1045,
               "r": 6,
-              "baseline": 135.0,
+              "baseline": 121.477,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d21",
-              "cx": 249,
+              "cx": 250,
               "cy": 1050,
               "r": 6,
-              "baseline": 131.182,
+              "baseline": 131.386,
               "masked": false
             },
             {
@@ -1977,7 +1953,7 @@
               "cx": 1499,
               "cy": 1070,
               "r": 6,
-              "baseline": 146.523,
+              "baseline": 139.295,
               "masked": false
             },
             {
@@ -1985,7 +1961,7 @@
               "cx": 338,
               "cy": 1075,
               "r": 5,
-              "baseline": 116.281,
+              "baseline": 103.719,
               "masked": false
             }
           ]
@@ -2002,186 +1978,202 @@
           "dots": [
             {
               "id": "SM-CAM-24:d0",
-              "cx": 1541,
+              "cx": 1542,
               "cy": 214,
               "r": 14,
-              "baseline": 197.709,
+              "baseline": 188.537,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d1",
-              "cx": 1474,
-              "cy": 615,
-              "r": 12,
-              "baseline": 194.739,
+              "cx": 1532,
+              "cy": 372,
+              "r": 14,
+              "baseline": 188.955,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d2",
-              "cx": 1902,
-              "cy": 718,
-              "r": 6,
-              "baseline": 159.682,
+              "cx": 1474,
+              "cy": 615,
+              "r": 12,
+              "baseline": 183.256,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d3",
-              "cx": 1396,
-              "cy": 769,
-              "r": 13,
-              "baseline": 192.91,
+              "cx": 1902,
+              "cy": 718,
+              "r": 6,
+              "baseline": 147.409,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d4",
-              "cx": 1856,
-              "cy": 771,
-              "r": 6,
-              "baseline": 163.864,
+              "cx": 1396,
+              "cy": 769,
+              "r": 13,
+              "baseline": 188.39,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d5",
-              "cx": 1859,
-              "cy": 790,
+              "cx": 1856,
+              "cy": 771,
               "r": 6,
-              "baseline": 150.455,
+              "baseline": 165.25,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d6",
-              "cx": 1796,
-              "cy": 860,
-              "r": 7,
-              "baseline": 166.776,
+              "cx": 1859,
+              "cy": 789,
+              "r": 6,
+              "baseline": 148.159,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d7",
-              "cx": 53,
-              "cy": 863,
-              "r": 6,
-              "baseline": 157.182,
+              "cx": 1796,
+              "cy": 860,
+              "r": 7,
+              "baseline": 173.155,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d8",
-              "cx": 104,
-              "cy": 892,
-              "r": 7,
-              "baseline": 154.655,
+              "cx": 53,
+              "cy": 863,
+              "r": 6,
+              "baseline": 161.727,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d9",
-              "cx": 1320,
-              "cy": 932,
-              "r": 13,
-              "baseline": 188.167,
+              "cx": 104,
+              "cy": 892,
+              "r": 7,
+              "baseline": 155.534,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d10",
-              "cx": 228,
-              "cy": 933,
-              "r": 7,
-              "baseline": 140.724,
+              "cx": 1320,
+              "cy": 932,
+              "r": 14,
+              "baseline": 180.697,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d11",
-              "cx": 380,
-              "cy": 941,
-              "r": 12,
-              "baseline": 174.125,
+              "cx": 228,
+              "cy": 933,
+              "r": 7,
+              "baseline": 131.19,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d12",
-              "cx": 323,
-              "cy": 952,
-              "r": 8,
-              "baseline": 165.256,
+              "cx": 380,
+              "cy": 941,
+              "r": 12,
+              "baseline": 157.017,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d13",
-              "cx": 1713,
-              "cy": 953,
-              "r": 7,
-              "baseline": 150.793,
+              "cx": 323,
+              "cy": 952,
+              "r": 8,
+              "baseline": 161.859,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d14",
-              "cx": 516,
-              "cy": 957,
-              "r": 12,
-              "baseline": 183.097,
+              "cx": 1713,
+              "cy": 953,
+              "r": 6,
+              "baseline": 142.841,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d15",
-              "cx": 1701,
-              "cy": 978,
-              "r": 6,
-              "baseline": 150.182,
+              "cx": 517,
+              "cy": 957,
+              "r": 12,
+              "baseline": 180.023,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d16",
-              "cx": 59,
-              "cy": 1019,
+              "cx": 541,
+              "cy": 964,
               "r": 6,
-              "baseline": 90.955,
+              "baseline": 112.682,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d17",
-              "cx": 590,
-              "cy": 1025,
-              "r": 9,
-              "baseline": 186.56,
+              "cx": 1701,
+              "cy": 978,
+              "r": 6,
+              "baseline": 147.568,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d18",
-              "cx": 1263,
-              "cy": 1041,
-              "r": 8,
-              "baseline": 170.538,
+              "cx": 591,
+              "cy": 1025,
+              "r": 9,
+              "baseline": 169.98,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d19",
-              "cx": 148,
-              "cy": 1064,
-              "r": 5,
-              "baseline": 138.688,
+              "cx": 1263,
+              "cy": 1040,
+              "r": 9,
+              "baseline": 158.38,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d20",
-              "cx": 197,
-              "cy": 1074,
+              "cx": 147,
+              "cy": 1064,
               "r": 5,
-              "baseline": 133.375,
+              "baseline": 141.75,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d21",
-              "cx": 1253,
-              "cy": 1074,
-              "r": 7,
-              "baseline": 172.982,
+              "cx": 1609,
+              "cy": 1069,
+              "r": 5,
+              "baseline": 126.625,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d22",
+              "cx": 197,
+              "cy": 1074,
+              "r": 5,
+              "baseline": 124.719,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d23",
+              "cx": 1253,
+              "cy": 1074,
+              "r": 8,
+              "baseline": 151.914,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d24",
               "cx": 620,
               "cy": 1075,
               "r": 9,
-              "baseline": 190.262,
+              "baseline": 177.488,
               "masked": false
             }
           ]
@@ -2204,25 +2196,25 @@
             {
               "id": "SM-CAM-11:d0",
               "cx": 1915,
-              "cy": 679,
-              "r": 7,
-              "baseline": 92.75,
+              "cy": 678,
+              "r": 6,
+              "baseline": 86.238,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d1",
               "cx": 1706,
-              "cy": 712,
+              "cy": 713,
               "r": 11,
-              "baseline": 177.527,
+              "baseline": 181.633,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d2",
-              "cx": 56,
+              "cx": 57,
               "cy": 742,
               "r": 6,
-              "baseline": 126.386,
+              "baseline": 119.523,
               "masked": false
             },
             {
@@ -2230,31 +2222,31 @@
               "cx": 187,
               "cy": 744,
               "r": 6,
-              "baseline": 160.795,
+              "baseline": 159.25,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d4",
               "cx": 1593,
-              "cy": 744,
+              "cy": 745,
               "r": 10,
-              "baseline": 183.532,
+              "baseline": 174.778,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d5",
               "cx": 1329,
               "cy": 748,
-              "r": 9,
-              "baseline": 188.51,
+              "r": 10,
+              "baseline": 179.444,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d6",
               "cx": 148,
               "cy": 750,
-              "r": 6,
-              "baseline": 161.25,
+              "r": 5,
+              "baseline": 164.344,
               "masked": false
             },
             {
@@ -2262,23 +2254,23 @@
               "cx": 1378,
               "cy": 750,
               "r": 10,
-              "baseline": 174.087,
+              "baseline": 174.127,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d8",
-              "cx": 97,
-              "cy": 751,
-              "r": 5,
-              "baseline": 127.344,
+              "cx": 1463,
+              "cy": 750,
+              "r": 9,
+              "baseline": 164.55,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d9",
-              "cx": 1463,
+              "cx": 97,
               "cy": 751,
-              "r": 9,
-              "baseline": 173.22,
+              "r": 5,
+              "baseline": 117.844,
               "masked": false
             },
             {
@@ -2286,15 +2278,15 @@
               "cx": 116,
               "cy": 752,
               "r": 5,
-              "baseline": 157.531,
+              "baseline": 146.312,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d11",
-              "cx": 127,
+              "cx": 128,
               "cy": 752,
               "r": 6,
-              "baseline": 142.727,
+              "baseline": 140.932,
               "masked": false
             },
             {
@@ -2302,7 +2294,7 @@
               "cx": 253,
               "cy": 798,
               "r": 6,
-              "baseline": 146.864,
+              "baseline": 142.409,
               "masked": false
             },
             {
@@ -2310,15 +2302,15 @@
               "cx": 35,
               "cy": 814,
               "r": 5,
-              "baseline": 101.375,
+              "baseline": 98.75,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d14",
-              "cx": 1317,
+              "cx": 1318,
               "cy": 835,
               "r": 9,
-              "baseline": 172.96,
+              "baseline": 168.79,
               "masked": false
             },
             {
@@ -2326,15 +2318,15 @@
               "cx": 69,
               "cy": 842,
               "r": 5,
-              "baseline": 125.844,
+              "baseline": 130.344,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d16",
               "cx": 688,
               "cy": 866,
-              "r": 8,
-              "baseline": 176.679,
+              "r": 9,
+              "baseline": 170.26,
               "masked": false
             },
             {
@@ -2342,7 +2334,7 @@
               "cx": 374,
               "cy": 894,
               "r": 5,
-              "baseline": 146.0,
+              "baseline": 138.938,
               "masked": false
             },
             {
@@ -2350,7 +2342,7 @@
               "cx": 730,
               "cy": 898,
               "r": 8,
-              "baseline": 170.654,
+              "baseline": 173.09,
               "masked": false
             },
             {
@@ -2358,15 +2350,15 @@
               "cx": 1306,
               "cy": 899,
               "r": 7,
-              "baseline": 161.707,
+              "baseline": 158.448,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d20",
-              "cx": 742,
+              "cx": 743,
               "cy": 912,
               "r": 7,
-              "baseline": 157.948,
+              "baseline": 157.638,
               "masked": false
             },
             {
@@ -2374,7 +2366,7 @@
               "cx": 1726,
               "cy": 922,
               "r": 6,
-              "baseline": 149.068,
+              "baseline": 149.977,
               "masked": false
             },
             {
@@ -2382,7 +2374,7 @@
               "cx": 425,
               "cy": 928,
               "r": 6,
-              "baseline": 149.205,
+              "baseline": 142.864,
               "masked": false
             },
             {
@@ -2390,23 +2382,23 @@
               "cx": 1652,
               "cy": 940,
               "r": 6,
-              "baseline": 168.273,
+              "baseline": 174.25,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d24",
-              "cx": 1573,
-              "cy": 956,
+              "cx": 1574,
+              "cy": 955,
               "r": 7,
-              "baseline": 165.707,
+              "baseline": 160.103,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d25",
-              "cx": 490,
+              "cx": 493,
               "cy": 965,
               "r": 9,
-              "baseline": 161.66,
+              "baseline": 150.39,
               "masked": false
             },
             {
@@ -2414,39 +2406,39 @@
               "cx": 565,
               "cy": 971,
               "r": 5,
-              "baseline": 135.0,
+              "baseline": 131.125,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d27",
-              "cx": 1477,
+              "cx": 1289,
               "cy": 975,
-              "r": 6,
-              "baseline": 158.273,
+              "r": 7,
+              "baseline": 162.414,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d28",
-              "cx": 1289,
-              "cy": 976,
-              "r": 7,
-              "baseline": 161.379,
+              "cx": 1477,
+              "cy": 975,
+              "r": 6,
+              "baseline": 150.25,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d29",
-              "cx": 637,
-              "cy": 983,
+              "cx": 808,
+              "cy": 982,
               "r": 7,
-              "baseline": 156.345,
+              "baseline": 178.966,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d30",
-              "cx": 808,
+              "cx": 637,
               "cy": 983,
-              "r": 8,
-              "baseline": 170.526,
+              "r": 7,
+              "baseline": 158.707,
               "masked": false
             },
             {
@@ -2454,15 +2446,15 @@
               "cx": 1408,
               "cy": 987,
               "r": 6,
-              "baseline": 143.614,
+              "baseline": 141.682,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d32",
               "cx": 695,
               "cy": 990,
-              "r": 6,
-              "baseline": 139.818,
+              "r": 5,
+              "baseline": 131.531,
               "masked": false
             },
             {
@@ -2470,23 +2462,15 @@
               "cx": 1287,
               "cy": 992,
               "r": 6,
-              "baseline": 153.455,
+              "baseline": 148.795,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d34",
-              "cx": 761,
-              "cy": 996,
-              "r": 5,
-              "baseline": 134.062,
-              "masked": false
-            },
-            {
-              "id": "SM-CAM-11:d35",
               "cx": 841,
               "cy": 1012,
               "r": 7,
-              "baseline": 170.81,
+              "baseline": 175.483,
               "masked": false
             }
           ]
@@ -2503,10 +2487,10 @@
           "dots": [
             {
               "id": "SM-CAM-12:d0",
-              "cx": 90,
+              "cx": 89,
               "cy": 777,
-              "r": 8,
-              "baseline": 166.397,
+              "r": 7,
+              "baseline": 161.621,
               "masked": false
             },
             {
@@ -2514,7 +2498,7 @@
               "cx": 184,
               "cy": 845,
               "r": 7,
-              "baseline": 171.19,
+              "baseline": 167.086,
               "masked": false
             },
             {
@@ -2522,7 +2506,7 @@
               "cx": 280,
               "cy": 865,
               "r": 8,
-              "baseline": 173.821,
+              "baseline": 163.974,
               "masked": false
             },
             {
@@ -2530,7 +2514,7 @@
               "cx": 156,
               "cy": 868,
               "r": 9,
-              "baseline": 170.77,
+              "baseline": 170.94,
               "masked": false
             },
             {
@@ -2538,7 +2522,7 @@
               "cx": 394,
               "cy": 879,
               "r": 8,
-              "baseline": 162.513,
+              "baseline": 159.538,
               "masked": false
             },
             {
@@ -2546,7 +2530,7 @@
               "cx": 584,
               "cy": 922,
               "r": 11,
-              "baseline": 176.713,
+              "baseline": 177.193,
               "masked": false
             },
             {
@@ -2554,23 +2538,23 @@
               "cx": 673,
               "cy": 929,
               "r": 9,
-              "baseline": 175.75,
+              "baseline": 179.04,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d7",
               "cx": 1481,
               "cy": 957,
-              "r": 10,
-              "baseline": 182.706,
+              "r": 11,
+              "baseline": 173.633,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d8",
               "cx": 863,
               "cy": 979,
-              "r": 14,
-              "baseline": 182.746,
+              "r": 15,
+              "baseline": 182.071,
               "masked": false
             },
             {
@@ -2578,47 +2562,47 @@
               "cx": 1823,
               "cy": 980,
               "r": 7,
-              "baseline": 159.552,
+              "baseline": 159.207,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d10",
               "cx": 1327,
               "cy": 982,
-              "r": 10,
-              "baseline": 179.23,
+              "r": 11,
+              "baseline": 171.253,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d11",
               "cx": 1234,
               "cy": 991,
-              "r": 11,
-              "baseline": 187.087,
+              "r": 12,
+              "baseline": 182.46,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d12",
-              "cx": 1171,
+              "cx": 1170,
               "cy": 995,
               "r": 11,
-              "baseline": 189.667,
+              "baseline": 173.013,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d13",
-              "cx": 1072,
+              "cx": 1073,
               "cy": 996,
               "r": 13,
-              "baseline": 185.386,
+              "baseline": 182.029,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d14",
-              "cx": 267,
+              "cx": 266,
               "cy": 999,
-              "r": 9,
-              "baseline": 157.17,
+              "r": 10,
+              "baseline": 144.317,
               "masked": false
             },
             {
@@ -2626,7 +2610,7 @@
               "cx": 1794,
               "cy": 1011,
               "r": 7,
-              "baseline": 165.086,
+              "baseline": 162.534,
               "masked": false
             },
             {
@@ -2634,7 +2618,7 @@
               "cx": 208,
               "cy": 1018,
               "r": 6,
-              "baseline": 161.068,
+              "baseline": 156.977,
               "masked": false
             },
             {
@@ -2642,7 +2626,7 @@
               "cx": 1434,
               "cy": 1024,
               "r": 9,
-              "baseline": 165.8,
+              "baseline": 159.77,
               "masked": false
             },
             {
@@ -2650,15 +2634,15 @@
               "cx": 1776,
               "cy": 1027,
               "r": 6,
-              "baseline": 158.591,
+              "baseline": 151.682,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d19",
               "cx": 262,
-              "cy": 1040,
+              "cy": 1041,
               "r": 6,
-              "baseline": 170.091,
+              "baseline": 161.5,
               "masked": false
             },
             {
@@ -2666,15 +2650,7 @@
               "cx": 312,
               "cy": 1043,
               "r": 8,
-              "baseline": 168.231,
-              "masked": false
-            },
-            {
-              "id": "SM-CAM-12:d21",
-              "cx": 370,
-              "cy": 1077,
-              "r": 6,
-              "baseline": 172.824,
+              "baseline": 158.538,
               "masked": false
             }
           ]
@@ -2691,10 +2667,10 @@
           "dots": [
             {
               "id": "SM-CAM-13:d0",
-              "cx": 723,
+              "cx": 724,
               "cy": 156,
-              "r": 13,
-              "baseline": 175.881,
+              "r": 12,
+              "baseline": 168.864,
               "masked": false
             },
             {
@@ -2702,7 +2678,7 @@
               "cx": 806,
               "cy": 573,
               "r": 11,
-              "baseline": 181.08,
+              "baseline": 179.46,
               "masked": false
             },
             {
@@ -2710,7 +2686,7 @@
               "cx": 33,
               "cy": 654,
               "r": 9,
-              "baseline": 182.87,
+              "baseline": 177.97,
               "masked": false
             },
             {
@@ -2718,7 +2694,7 @@
               "cx": 100,
               "cy": 729,
               "r": 8,
-              "baseline": 182.667,
+              "baseline": 172.013,
               "masked": false
             },
             {
@@ -2726,7 +2702,7 @@
               "cx": 836,
               "cy": 773,
               "r": 13,
-              "baseline": 198.795,
+              "baseline": 187.143,
               "masked": false
             },
             {
@@ -2734,15 +2710,15 @@
               "cx": 1903,
               "cy": 795,
               "r": 6,
-              "baseline": 157.182,
+              "baseline": 151.795,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d6",
               "cx": 1822,
               "cy": 819,
-              "r": 6,
-              "baseline": 132.773,
+              "r": 5,
+              "baseline": 135.594,
               "masked": false
             },
             {
@@ -2750,7 +2726,7 @@
               "cx": 184,
               "cy": 846,
               "r": 7,
-              "baseline": 170.052,
+              "baseline": 159.379,
               "masked": false
             },
             {
@@ -2758,31 +2734,31 @@
               "cx": 150,
               "cy": 855,
               "r": 7,
-              "baseline": 168.517,
+              "baseline": 163.31,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d9",
-              "cx": 1737,
+              "cx": 1736,
               "cy": 858,
               "r": 6,
-              "baseline": 161.068,
+              "baseline": 150.932,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d10",
               "cx": 1574,
-              "cy": 870,
+              "cy": 869,
               "r": 9,
-              "baseline": 175.18,
+              "baseline": 169.52,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d11",
-              "cx": 876,
+              "cx": 875,
               "cy": 876,
               "r": 11,
-              "baseline": 179.76,
+              "baseline": 180.953,
               "masked": false
             },
             {
@@ -2790,15 +2766,15 @@
               "cx": 17,
               "cy": 886,
               "r": 5,
-              "baseline": 117.844,
+              "baseline": 95.688,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d13",
               "cx": 1629,
-              "cy": 896,
+              "cy": 895,
               "r": 7,
-              "baseline": 166.448,
+              "baseline": 148.5,
               "masked": false
             },
             {
@@ -2806,7 +2782,7 @@
               "cx": 290,
               "cy": 897,
               "r": 8,
-              "baseline": 172.782,
+              "baseline": 165.654,
               "masked": false
             },
             {
@@ -2814,7 +2790,7 @@
               "cx": 50,
               "cy": 921,
               "r": 6,
-              "baseline": 143.364,
+              "baseline": 140.432,
               "masked": false
             },
             {
@@ -2822,7 +2798,7 @@
               "cx": 564,
               "cy": 922,
               "r": 8,
-              "baseline": 180.603,
+              "baseline": 171.679,
               "masked": false
             },
             {
@@ -2830,7 +2806,7 @@
               "cx": 687,
               "cy": 930,
               "r": 10,
-              "baseline": 185.944,
+              "baseline": 182.778,
               "masked": false
             },
             {
@@ -2838,7 +2814,7 @@
               "cx": 801,
               "cy": 934,
               "r": 13,
-              "baseline": 181.314,
+              "baseline": 175.333,
               "masked": false
             },
             {
@@ -2846,7 +2822,7 @@
               "cx": 1916,
               "cy": 939,
               "r": 6,
-              "baseline": 114.105,
+              "baseline": 91.237,
               "masked": false
             },
             {
@@ -2854,15 +2830,15 @@
               "cx": 83,
               "cy": 955,
               "r": 6,
-              "baseline": 156.455,
+              "baseline": 144.273,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d21",
               "cx": 1508,
-              "cy": 958,
+              "cy": 957,
               "r": 10,
-              "baseline": 174.19,
+              "baseline": 174.46,
               "masked": false
             },
             {
@@ -2870,7 +2846,7 @@
               "cx": 873,
               "cy": 970,
               "r": 9,
-              "baseline": 172.88,
+              "baseline": 165.6,
               "masked": false
             },
             {
@@ -2878,31 +2854,31 @@
               "cx": 133,
               "cy": 1010,
               "r": 6,
-              "baseline": 112.955,
+              "baseline": 93.614,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d24",
-              "cx": 155,
+              "cx": 156,
               "cy": 1023,
               "r": 5,
-              "baseline": 116.469,
+              "baseline": 107.531,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d25",
-              "cx": 218,
+              "cx": 219,
               "cy": 1041,
               "r": 6,
-              "baseline": 152.318,
+              "baseline": 137.295,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d26",
-              "cx": 1409,
+              "cx": 1411,
               "cy": 1073,
               "r": 10,
-              "baseline": 178.318,
+              "baseline": 160.2,
               "masked": false
             },
             {
@@ -2910,7 +2886,7 @@
               "cx": 291,
               "cy": 1078,
               "r": 5,
-              "baseline": 157.909,
+              "baseline": 104.636,
               "masked": false
             }
           ]
@@ -2927,18 +2903,18 @@
           "dots": [
             {
               "id": "SM-CAM-14:d0",
-              "cx": 1630,
+              "cx": 1631,
               "cy": 428,
               "r": 13,
-              "baseline": 181.729,
+              "baseline": 184.729,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d1",
               "cx": 1464,
               "cy": 688,
-              "r": 14,
-              "baseline": 185.205,
+              "r": 13,
+              "baseline": 191.933,
               "masked": false
             },
             {
@@ -2946,7 +2922,7 @@
               "cx": 42,
               "cy": 739,
               "r": 8,
-              "baseline": 173.321,
+              "baseline": 178.731,
               "masked": false
             },
             {
@@ -2954,23 +2930,23 @@
               "cx": 1894,
               "cy": 757,
               "r": 6,
-              "baseline": 149.727,
+              "baseline": 137.409,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d4",
               "cx": 1469,
               "cy": 766,
-              "r": 10,
-              "baseline": 172.817,
+              "r": 9,
+              "baseline": 169.73,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d5",
               "cx": 70,
               "cy": 784,
-              "r": 10,
-              "baseline": 185.286,
+              "r": 9,
+              "baseline": 184.2,
               "masked": false
             },
             {
@@ -2978,7 +2954,7 @@
               "cx": 1827,
               "cy": 816,
               "r": 7,
-              "baseline": 173.034,
+              "baseline": 165.828,
               "masked": false
             },
             {
@@ -2986,7 +2962,7 @@
               "cx": 147,
               "cy": 826,
               "r": 8,
-              "baseline": 166.026,
+              "baseline": 156.654,
               "masked": false
             },
             {
@@ -2994,143 +2970,135 @@
               "cx": 1785,
               "cy": 828,
               "r": 7,
-              "baseline": 157.19,
+              "baseline": 153.328,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d9",
-              "cx": 240,
-              "cy": 842,
+              "cx": 241,
+              "cy": 841,
               "r": 8,
-              "baseline": 163.808,
+              "baseline": 163.551,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d10",
-              "cx": 1820,
-              "cy": 842,
+              "cx": 1728,
+              "cy": 844,
               "r": 6,
-              "baseline": 136.023,
+              "baseline": 138.341,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d11",
-              "cx": 1728,
-              "cy": 844,
-              "r": 6,
-              "baseline": 146.455,
+              "cx": 346,
+              "cy": 875,
+              "r": 11,
+              "baseline": 184.62,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d12",
-              "cx": 346,
-              "cy": 875,
-              "r": 11,
-              "baseline": 181.48,
+              "cx": 474,
+              "cy": 888,
+              "r": 10,
+              "baseline": 171.69,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d13",
-              "cx": 474,
-              "cy": 888,
-              "r": 11,
-              "baseline": 175.347,
+              "cx": 1390,
+              "cy": 889,
+              "r": 9,
+              "baseline": 155.01,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d14",
-              "cx": 1391,
-              "cy": 889,
+              "cx": 671,
+              "cy": 906,
               "r": 9,
-              "baseline": 159.15,
+              "baseline": 160.43,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d15",
-              "cx": 671,
+              "cx": 1483,
               "cy": 906,
-              "r": 10,
-              "baseline": 167.548,
+              "r": 8,
+              "baseline": 163.154,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d16",
-              "cx": 1483,
-              "cy": 906,
-              "r": 8,
-              "baseline": 161.321,
+              "cx": 1899,
+              "cy": 910,
+              "r": 6,
+              "baseline": 119.25,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d17",
-              "cx": 1899,
-              "cy": 910,
-              "r": 6,
-              "baseline": 135.591,
+              "cx": 1272,
+              "cy": 921,
+              "r": 9,
+              "baseline": 166.78,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d18",
-              "cx": 1272,
-              "cy": 922,
-              "r": 9,
-              "baseline": 168.51,
+              "cx": 178,
+              "cy": 924,
+              "r": 7,
+              "baseline": 166.638,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d19",
-              "cx": 178,
-              "cy": 924,
-              "r": 7,
-              "baseline": 164.776,
+              "cx": 1863,
+              "cy": 948,
+              "r": 6,
+              "baseline": 140.705,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d20",
-              "cx": 1863,
-              "cy": 948,
+              "cx": 227,
+              "cy": 964,
               "r": 6,
-              "baseline": 142.045,
+              "baseline": 165.659,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d21",
-              "cx": 227,
-              "cy": 963,
-              "r": 6,
-              "baseline": 161.773,
+              "cx": 624,
+              "cy": 976,
+              "r": 9,
+              "baseline": 173.62,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d22",
-              "cx": 624,
-              "cy": 976,
-              "r": 9,
-              "baseline": 182.48,
+              "cx": 287,
+              "cy": 1027,
+              "r": 6,
+              "baseline": 164.636,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d23",
-              "cx": 287,
+              "cx": 647,
               "cy": 1027,
-              "r": 6,
-              "baseline": 170.818,
+              "r": 7,
+              "baseline": 148.862,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d24",
-              "cx": 647,
-              "cy": 1028,
-              "r": 7,
-              "baseline": 158.207,
-              "masked": false
-            },
-            {
-              "id": "SM-CAM-14:d25",
               "cx": 670,
               "cy": 1059,
               "r": 7,
-              "baseline": 162.552,
+              "baseline": 157.207,
               "masked": false
             }
           ]
@@ -3147,10 +3115,10 @@
           "dots": [
             {
               "id": "SM-CAM-21:d0",
-              "cx": 1915,
+              "cx": 1914,
               "cy": 849,
-              "r": 8,
-              "baseline": 175.788,
+              "r": 7,
+              "baseline": 180.482,
               "masked": false
             },
             {
@@ -3158,23 +3126,23 @@
               "cx": 1890,
               "cy": 864,
               "r": 9,
-              "baseline": 168.46,
+              "baseline": 169.09,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d2",
               "cx": 186,
               "cy": 876,
-              "r": 7,
-              "baseline": 157.828,
+              "r": 8,
+              "baseline": 156.744,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d3",
               "cx": 275,
               "cy": 898,
-              "r": 9,
-              "baseline": 159.33,
+              "r": 8,
+              "baseline": 161.359,
               "masked": false
             },
             {
@@ -3182,7 +3150,7 @@
               "cx": 1751,
               "cy": 914,
               "r": 9,
-              "baseline": 162.41,
+              "baseline": 164.87,
               "masked": false
             },
             {
@@ -3190,39 +3158,39 @@
               "cx": 382,
               "cy": 925,
               "r": 10,
-              "baseline": 172.333,
+              "baseline": 176.127,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d6",
-              "cx": 1849,
+              "cx": 1848,
               "cy": 928,
               "r": 7,
-              "baseline": 149.655,
+              "baseline": 152.603,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d7",
-              "cx": 1690,
+              "cx": 1689,
               "cy": 933,
-              "r": 8,
-              "baseline": 151.487,
+              "r": 7,
+              "baseline": 158.103,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d8",
-              "cx": 509,
+              "cx": 510,
               "cy": 938,
-              "r": 9,
-              "baseline": 177.18,
+              "r": 10,
+              "baseline": 171.563,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d9",
-              "cx": 609,
-              "cy": 942,
-              "r": 10,
-              "baseline": 176.508,
+              "cx": 610,
+              "cy": 941,
+              "r": 11,
+              "baseline": 171.727,
               "masked": false
             },
             {
@@ -3230,31 +3198,31 @@
               "cx": 1547,
               "cy": 944,
               "r": 11,
-              "baseline": 170.733,
+              "baseline": 176.913,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d11",
               "cx": 819,
-              "cy": 965,
-              "r": 11,
-              "baseline": 177.08,
+              "cy": 964,
+              "r": 12,
+              "baseline": 175.369,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d12",
-              "cx": 826,
+              "cx": 825,
               "cy": 1005,
               "r": 12,
-              "baseline": 180.199,
+              "baseline": 181.028,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d13",
-              "cx": 1490,
+              "cx": 1489,
               "cy": 1010,
               "r": 10,
-              "baseline": 165.516,
+              "baseline": 168.698,
               "masked": false
             }
           ]
@@ -3271,18 +3239,18 @@
           "dots": [
             {
               "id": "SM-CAM-22:d0",
-              "cx": 1348,
+              "cx": 1350,
               "cy": 197,
-              "r": 12,
-              "baseline": 174.773,
+              "r": 11,
+              "baseline": 182.533,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d1",
-              "cx": 1354,
+              "cx": 1355,
               "cy": 316,
-              "r": 13,
-              "baseline": 186.757,
+              "r": 12,
+              "baseline": 186.869,
               "masked": false
             },
             {
@@ -3290,31 +3258,31 @@
               "cx": 1274,
               "cy": 605,
               "r": 14,
-              "baseline": 193.73,
+              "baseline": 191.426,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d3",
               "cx": 1247,
-              "cy": 734,
+              "cy": 735,
               "r": 14,
-              "baseline": 180.713,
+              "baseline": 181.508,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d4",
               "cx": 1880,
-              "cy": 796,
-              "r": 7,
-              "baseline": 153.138,
+              "cy": 795,
+              "r": 6,
+              "baseline": 153.977,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d5",
-              "cx": 1748,
+              "cx": 1749,
               "cy": 822,
               "r": 7,
-              "baseline": 150.983,
+              "baseline": 152.603,
               "masked": false
             },
             {
@@ -3322,15 +3290,15 @@
               "cx": 1822,
               "cy": 823,
               "r": 7,
-              "baseline": 174.966,
+              "baseline": 169.621,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d7",
               "cx": 1698,
               "cy": 869,
-              "r": 6,
-              "baseline": 158.659,
+              "r": 7,
+              "baseline": 156.552,
               "masked": false
             },
             {
@@ -3338,7 +3306,7 @@
               "cx": 1194,
               "cy": 873,
               "r": 9,
-              "baseline": 163.17,
+              "baseline": 162.96,
               "masked": false
             },
             {
@@ -3346,7 +3314,7 @@
               "cx": 92,
               "cy": 876,
               "r": 6,
-              "baseline": 155.205,
+              "baseline": 143.818,
               "masked": false
             },
             {
@@ -3354,7 +3322,7 @@
               "cx": 147,
               "cy": 886,
               "r": 8,
-              "baseline": 165.513,
+              "baseline": 167.654,
               "masked": false
             },
             {
@@ -3362,7 +3330,7 @@
               "cx": 38,
               "cy": 894,
               "r": 7,
-              "baseline": 144.638,
+              "baseline": 145.034,
               "masked": false
             },
             {
@@ -3370,15 +3338,15 @@
               "cx": 1705,
               "cy": 897,
               "r": 8,
-              "baseline": 161.41,
+              "baseline": 162.141,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d13",
-              "cx": 234,
-              "cy": 903,
+              "cx": 233,
+              "cy": 902,
               "r": 7,
-              "baseline": 157.741,
+              "baseline": 165.603,
               "masked": false
             },
             {
@@ -3386,7 +3354,7 @@
               "cx": 375,
               "cy": 905,
               "r": 10,
-              "baseline": 170.817,
+              "baseline": 174.683,
               "masked": false
             },
             {
@@ -3394,15 +3362,15 @@
               "cx": 346,
               "cy": 911,
               "r": 11,
-              "baseline": 167.92,
+              "baseline": 168.567,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d16",
-              "cx": 1661,
+              "cx": 1660,
               "cy": 951,
               "r": 8,
-              "baseline": 137.013,
+              "baseline": 135.462,
               "masked": false
             },
             {
@@ -3410,7 +3378,7 @@
               "cx": 449,
               "cy": 991,
               "r": 8,
-              "baseline": 172.128,
+              "baseline": 165.256,
               "masked": false
             },
             {
@@ -3418,7 +3386,7 @@
               "cx": 148,
               "cy": 1005,
               "r": 6,
-              "baseline": 128.341,
+              "baseline": 131.364,
               "masked": false
             },
             {
@@ -3426,7 +3394,7 @@
               "cx": 183,
               "cy": 1033,
               "r": 6,
-              "baseline": 131.795,
+              "baseline": 125.841,
               "masked": false
             },
             {
@@ -3434,15 +3402,15 @@
               "cx": 502,
               "cy": 1042,
               "r": 7,
-              "baseline": 154.138,
+              "baseline": 157.069,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d21",
               "cx": 1562,
-              "cy": 1051,
+              "cy": 1050,
               "r": 7,
-              "baseline": 154.241,
+              "baseline": 160.879,
               "masked": false
             }
           ]
@@ -3459,10 +3427,10 @@
           "dots": [
             {
               "id": "SM-CAM-23:d0",
-              "cx": 1902,
+              "cx": 1901,
               "cy": 770,
               "r": 6,
-              "baseline": 135.273,
+              "baseline": 131.295,
               "masked": false
             },
             {
@@ -3470,23 +3438,23 @@
               "cx": 1915,
               "cy": 794,
               "r": 6,
-              "baseline": 168.643,
+              "baseline": 158.024,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d2",
               "cx": 1774,
               "cy": 852,
-              "r": 9,
-              "baseline": 157.7,
+              "r": 8,
+              "baseline": 147.923,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d3",
               "cx": 1691,
-              "cy": 860,
-              "r": 7,
-              "baseline": 159.483,
+              "cy": 859,
+              "r": 6,
+              "baseline": 154.045,
               "masked": false
             },
             {
@@ -3494,7 +3462,7 @@
               "cx": 303,
               "cy": 874,
               "r": 8,
-              "baseline": 170.744,
+              "baseline": 160.718,
               "masked": false
             },
             {
@@ -3502,15 +3470,15 @@
               "cx": 1590,
               "cy": 880,
               "r": 8,
-              "baseline": 165.0,
+              "baseline": 161.077,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d6",
-              "cx": 1651,
+              "cx": 1650,
               "cy": 888,
               "r": 8,
-              "baseline": 161.103,
+              "baseline": 151.538,
               "masked": false
             },
             {
@@ -3518,15 +3486,15 @@
               "cx": 315,
               "cy": 912,
               "r": 7,
-              "baseline": 161.19,
+              "baseline": 147.931,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d8",
-              "cx": 1493,
+              "cx": 1492,
               "cy": 917,
               "r": 8,
-              "baseline": 164.462,
+              "baseline": 160.795,
               "masked": false
             },
             {
@@ -3534,7 +3502,7 @@
               "cx": 1013,
               "cy": 921,
               "r": 9,
-              "baseline": 179.37,
+              "baseline": 170.27,
               "masked": false
             },
             {
@@ -3542,7 +3510,7 @@
               "cx": 793,
               "cy": 929,
               "r": 9,
-              "baseline": 178.75,
+              "baseline": 173.09,
               "masked": false
             },
             {
@@ -3550,7 +3518,7 @@
               "cx": 1355,
               "cy": 935,
               "r": 7,
-              "baseline": 154.138,
+              "baseline": 153.655,
               "masked": false
             },
             {
@@ -3558,7 +3526,7 @@
               "cx": 506,
               "cy": 936,
               "r": 10,
-              "baseline": 177.206,
+              "baseline": 169.087,
               "masked": false
             },
             {
@@ -3566,15 +3534,15 @@
               "cx": 1106,
               "cy": 939,
               "r": 9,
-              "baseline": 185.61,
+              "baseline": 174.72,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d14",
               "cx": 645,
               "cy": 943,
-              "r": 9,
-              "baseline": 181.6,
+              "r": 10,
+              "baseline": 172.373,
               "masked": false
             },
             {
@@ -3582,39 +3550,31 @@
               "cx": 399,
               "cy": 960,
               "r": 10,
-              "baseline": 169.071,
+              "baseline": 161.079,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d16",
-              "cx": 1800,
-              "cy": 974,
-              "r": 5,
-              "baseline": 115.094,
+              "cx": 151,
+              "cy": 1014,
+              "r": 6,
+              "baseline": 95.386,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d17",
-              "cx": 151,
+              "cx": 453,
               "cy": 1014,
-              "r": 6,
-              "baseline": 102.523,
+              "r": 11,
+              "baseline": 153.38,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d18",
-              "cx": 453,
-              "cy": 1014,
-              "r": 11,
-              "baseline": 169.793,
-              "masked": false
-            },
-            {
-              "id": "SM-CAM-23:d19",
               "cx": 250,
               "cy": 1050,
               "r": 5,
-              "baseline": 128.781,
+              "baseline": 122.781,
               "masked": false
             }
           ]
@@ -3634,7 +3594,7 @@
               "cx": 1902,
               "cy": 718,
               "r": 6,
-              "baseline": 143.568,
+              "baseline": 158.136,
               "masked": false
             },
             {
@@ -3642,7 +3602,7 @@
               "cx": 1856,
               "cy": 771,
               "r": 6,
-              "baseline": 163.568,
+              "baseline": 153.523,
               "masked": false
             },
             {
@@ -3650,7 +3610,7 @@
               "cx": 1859,
               "cy": 789,
               "r": 6,
-              "baseline": 152.545,
+              "baseline": 151.295,
               "masked": false
             },
             {
@@ -3658,15 +3618,15 @@
               "cx": 1796,
               "cy": 860,
               "r": 7,
-              "baseline": 165.897,
+              "baseline": 162.397,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d4",
               "cx": 53,
-              "cy": 863,
+              "cy": 862,
               "r": 6,
-              "baseline": 155.523,
+              "baseline": 152.932,
               "masked": false
             },
             {
@@ -3674,7 +3634,7 @@
               "cx": 104,
               "cy": 892,
               "r": 6,
-              "baseline": 163.5,
+              "baseline": 156.5,
               "masked": false
             },
             {
@@ -3682,7 +3642,7 @@
               "cx": 925,
               "cy": 920,
               "r": 11,
-              "baseline": 180.093,
+              "baseline": 175.633,
               "masked": false
             },
             {
@@ -3690,7 +3650,7 @@
               "cx": 228,
               "cy": 933,
               "r": 6,
-              "baseline": 143.864,
+              "baseline": 123.705,
               "masked": false
             },
             {
@@ -3698,7 +3658,7 @@
               "cx": 1305,
               "cy": 933,
               "r": 8,
-              "baseline": 178.462,
+              "baseline": 175.526,
               "masked": false
             },
             {
@@ -3706,7 +3666,7 @@
               "cx": 380,
               "cy": 941,
               "r": 11,
-              "baseline": 164.573,
+              "baseline": 156.14,
               "masked": false
             },
             {
@@ -3714,15 +3674,15 @@
               "cx": 1342,
               "cy": 944,
               "r": 10,
-              "baseline": 176.77,
+              "baseline": 175.786,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d11",
               "cx": 323,
-              "cy": 953,
-              "r": 8,
-              "baseline": 163.987,
+              "cy": 952,
+              "r": 7,
+              "baseline": 170.672,
               "masked": false
             },
             {
@@ -3730,23 +3690,23 @@
               "cx": 1713,
               "cy": 953,
               "r": 6,
-              "baseline": 141.682,
+              "baseline": 144.273,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d13",
               "cx": 514,
               "cy": 957,
-              "r": 9,
-              "baseline": 178.6,
+              "r": 10,
+              "baseline": 172.944,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d14",
-              "cx": 1080,
+              "cx": 1081,
               "cy": 957,
               "r": 11,
-              "baseline": 178.347,
+              "baseline": 176.847,
               "masked": false
             },
             {
@@ -3754,7 +3714,7 @@
               "cx": 500,
               "cy": 977,
               "r": 9,
-              "baseline": 174.6,
+              "baseline": 169.76,
               "masked": false
             },
             {
@@ -3762,15 +3722,15 @@
               "cx": 1701,
               "cy": 978,
               "r": 6,
-              "baseline": 142.773,
+              "baseline": 138.659,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d17",
-              "cx": 711,
+              "cx": 710,
               "cy": 984,
-              "r": 14,
-              "baseline": 188.98,
+              "r": 13,
+              "baseline": 174.6,
               "masked": false
             },
             {
@@ -3778,7 +3738,7 @@
               "cx": 60,
               "cy": 1008,
               "r": 6,
-              "baseline": 127.477,
+              "baseline": 108.091,
               "masked": false
             },
             {
@@ -3786,15 +3746,15 @@
               "cx": 1263,
               "cy": 1040,
               "r": 7,
-              "baseline": 171.31,
+              "baseline": 162.845,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d20",
               "cx": 1253,
-              "cy": 1074,
+              "cy": 1073,
               "r": 7,
-              "baseline": 165.696,
+              "baseline": 156.103,
               "masked": false
             }
           ]
@@ -3817,9 +3777,9 @@
             {
               "id": "SM-CAM-11:d0",
               "cx": 1916,
-              "cy": 678,
-              "r": 6,
-              "baseline": 91.158,
+              "cy": 677,
+              "r": 5,
+              "baseline": 81.679,
               "masked": false
             },
             {
@@ -3827,15 +3787,15 @@
               "cx": 1706,
               "cy": 713,
               "r": 11,
-              "baseline": 183.953,
+              "baseline": 181.107,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d2",
               "cx": 56,
               "cy": 742,
-              "r": 6,
-              "baseline": 107.727,
+              "r": 5,
+              "baseline": 100.594,
               "masked": false
             },
             {
@@ -3843,15 +3803,15 @@
               "cx": 1593,
               "cy": 745,
               "r": 9,
-              "baseline": 185.69,
+              "baseline": 170.31,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d4",
               "cx": 1329,
               "cy": 748,
-              "r": 9,
-              "baseline": 181.34,
+              "r": 10,
+              "baseline": 179.214,
               "masked": false
             },
             {
@@ -3859,7 +3819,7 @@
               "cx": 97,
               "cy": 750,
               "r": 5,
-              "baseline": 115.188,
+              "baseline": 110.125,
               "masked": false
             },
             {
@@ -3867,7 +3827,7 @@
               "cx": 148,
               "cy": 750,
               "r": 5,
-              "baseline": 157.938,
+              "baseline": 154.5,
               "masked": false
             },
             {
@@ -3875,31 +3835,31 @@
               "cx": 1378,
               "cy": 750,
               "r": 9,
-              "baseline": 170.45,
+              "baseline": 170.17,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d8",
-              "cx": 1463,
+              "cx": 127,
               "cy": 751,
-              "r": 8,
-              "baseline": 169.615,
+              "r": 5,
+              "baseline": 144.688,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d9",
-              "cx": 116,
-              "cy": 752,
-              "r": 5,
-              "baseline": 139.75,
+              "cx": 1463,
+              "cy": 751,
+              "r": 9,
+              "baseline": 163.86,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d10",
-              "cx": 127,
+              "cx": 116,
               "cy": 752,
               "r": 5,
-              "baseline": 159.062,
+              "baseline": 129.062,
               "masked": false
             },
             {
@@ -3907,7 +3867,7 @@
               "cx": 249,
               "cy": 761,
               "r": 6,
-              "baseline": 140.955,
+              "baseline": 136.364,
               "masked": false
             },
             {
@@ -3915,7 +3875,7 @@
               "cx": 331,
               "cy": 773,
               "r": 7,
-              "baseline": 163.276,
+              "baseline": 157.81,
               "masked": false
             },
             {
@@ -3923,7 +3883,7 @@
               "cx": 402,
               "cy": 779,
               "r": 8,
-              "baseline": 164.474,
+              "baseline": 167.282,
               "masked": false
             },
             {
@@ -3931,87 +3891,87 @@
               "cx": 492,
               "cy": 781,
               "r": 9,
-              "baseline": 181.76,
+              "baseline": 176.78,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d15",
               "cx": 607,
               "cy": 787,
-              "r": 8,
-              "baseline": 163.692,
+              "r": 9,
+              "baseline": 147.36,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d16",
-              "cx": 1317,
-              "cy": 835,
-              "r": 9,
-              "baseline": 190.85,
+              "cx": 116,
+              "cy": 815,
+              "r": 5,
+              "baseline": 84.312,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d17",
-              "cx": 1306,
-              "cy": 899,
-              "r": 7,
-              "baseline": 157.0,
+              "cx": 1317,
+              "cy": 835,
+              "r": 9,
+              "baseline": 179.65,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d18",
-              "cx": 1726,
-              "cy": 922,
-              "r": 6,
-              "baseline": 144.773,
+              "cx": 1306,
+              "cy": 899,
+              "r": 7,
+              "baseline": 158.397,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d19",
-              "cx": 1652,
-              "cy": 940,
-              "r": 7,
-              "baseline": 169.741,
+              "cx": 1726,
+              "cy": 922,
+              "r": 6,
+              "baseline": 146.727,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d20",
-              "cx": 1573,
-              "cy": 956,
-              "r": 7,
-              "baseline": 158.621,
+              "cx": 1652,
+              "cy": 940,
+              "r": 6,
+              "baseline": 166.636,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d21",
-              "cx": 458,
-              "cy": 958,
-              "r": 5,
-              "baseline": 154.219,
+              "cx": 1574,
+              "cy": 956,
+              "r": 7,
+              "baseline": 161.603,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d22",
-              "cx": 495,
-              "cy": 964,
-              "r": 7,
-              "baseline": 158.707,
+              "cx": 458,
+              "cy": 958,
+              "r": 5,
+              "baseline": 154.188,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d23",
-              "cx": 565,
-              "cy": 971,
-              "r": 5,
-              "baseline": 129.062,
+              "cx": 495,
+              "cy": 964,
+              "r": 6,
+              "baseline": 158.5,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d24",
-              "cx": 1289,
-              "cy": 975,
-              "r": 7,
-              "baseline": 170.569,
+              "cx": 565,
+              "cy": 971,
+              "r": 5,
+              "baseline": 126.781,
               "masked": false
             },
             {
@@ -4019,55 +3979,55 @@
               "cx": 1477,
               "cy": 975,
               "r": 6,
-              "baseline": 155.386,
+              "baseline": 150.909,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d26",
-              "cx": 637,
-              "cy": 983,
-              "r": 6,
-              "baseline": 168.977,
+              "cx": 1290,
+              "cy": 976,
+              "r": 7,
+              "baseline": 166.793,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d27",
-              "cx": 1408,
-              "cy": 987,
+              "cx": 637,
+              "cy": 983,
               "r": 6,
-              "baseline": 140.045,
+              "baseline": 151.727,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d28",
-              "cx": 695,
-              "cy": 990,
-              "r": 5,
-              "baseline": 141.594,
+              "cx": 1408,
+              "cy": 988,
+              "r": 6,
+              "baseline": 141.727,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d29",
-              "cx": 1287,
-              "cy": 992,
-              "r": 6,
-              "baseline": 155.182,
+              "cx": 695,
+              "cy": 990,
+              "r": 5,
+              "baseline": 130.406,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d30",
-              "cx": 527,
-              "cy": 1003,
-              "r": 7,
-              "baseline": 145.293,
+              "cx": 1287,
+              "cy": 992,
+              "r": 6,
+              "baseline": 145.227,
               "masked": false
             },
             {
               "id": "SM-CAM-11:d31",
-              "cx": 572,
-              "cy": 1030,
-              "r": 5,
-              "baseline": 145.219,
+              "cx": 527,
+              "cy": 1003,
+              "r": 7,
+              "baseline": 137.328,
               "masked": false
             }
           ]
@@ -4086,16 +4046,16 @@
               "id": "SM-CAM-12:d0",
               "cx": 7,
               "cy": 630,
-              "r": 9,
-              "baseline": 168.115,
+              "r": 10,
+              "baseline": 167.0,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d1",
               "cx": 93,
               "cy": 778,
-              "r": 9,
-              "baseline": 166.29,
+              "r": 8,
+              "baseline": 165.756,
               "masked": false
             },
             {
@@ -4103,7 +4063,7 @@
               "cx": 1900,
               "cy": 898,
               "r": 6,
-              "baseline": 87.477,
+              "baseline": 82.455,
               "masked": false
             },
             {
@@ -4111,15 +4071,15 @@
               "cx": 1843,
               "cy": 914,
               "r": 8,
-              "baseline": 178.744,
+              "baseline": 171.282,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d4",
               "cx": 696,
-              "cy": 925,
+              "cy": 924,
               "r": 12,
-              "baseline": 186.347,
+              "baseline": 181.074,
               "masked": false
             },
             {
@@ -4127,15 +4087,15 @@
               "cx": 1764,
               "cy": 936,
               "r": 8,
-              "baseline": 161.09,
+              "baseline": 163.987,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d6",
-              "cx": 1682,
+              "cx": 1681,
               "cy": 951,
               "r": 9,
-              "baseline": 166.82,
+              "baseline": 157.96,
               "masked": false
             },
             {
@@ -4143,7 +4103,7 @@
               "cx": 1560,
               "cy": 963,
               "r": 8,
-              "baseline": 172.769,
+              "baseline": 173.59,
               "masked": false
             },
             {
@@ -4151,23 +4111,23 @@
               "cx": 110,
               "cy": 970,
               "r": 6,
-              "baseline": 160.205,
+              "baseline": 153.909,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d9",
-              "cx": 863,
+              "cx": 862,
               "cy": 979,
               "r": 14,
-              "baseline": 184.25,
+              "baseline": 185.27,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d10",
-              "cx": 1327,
+              "cx": 1326,
               "cy": 982,
               "r": 10,
-              "baseline": 174.175,
+              "baseline": 176.135,
               "masked": false
             },
             {
@@ -4175,15 +4135,15 @@
               "cx": 1233,
               "cy": 991,
               "r": 10,
-              "baseline": 176.135,
+              "baseline": 176.278,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d12",
-              "cx": 1171,
+              "cx": 1170,
               "cy": 995,
               "r": 10,
-              "baseline": 175.603,
+              "baseline": 173.381,
               "masked": false
             },
             {
@@ -4191,7 +4151,7 @@
               "cx": 1072,
               "cy": 996,
               "r": 12,
-              "baseline": 188.545,
+              "baseline": 189.284,
               "masked": false
             },
             {
@@ -4199,15 +4159,15 @@
               "cx": 208,
               "cy": 1018,
               "r": 6,
-              "baseline": 157.75,
+              "baseline": 154.705,
               "masked": false
             },
             {
               "id": "SM-CAM-12:d15",
-              "cx": 708,
+              "cx": 709,
               "cy": 1022,
               "r": 11,
-              "baseline": 169.66,
+              "baseline": 169.94,
               "masked": false
             },
             {
@@ -4215,7 +4175,7 @@
               "cx": 262,
               "cy": 1041,
               "r": 6,
-              "baseline": 167.068,
+              "baseline": 170.227,
               "masked": false
             },
             {
@@ -4223,7 +4183,7 @@
               "cx": 314,
               "cy": 1067,
               "r": 6,
-              "baseline": 166.0,
+              "baseline": 149.614,
               "masked": false
             },
             {
@@ -4231,7 +4191,7 @@
               "cx": 732,
               "cy": 1074,
               "r": 10,
-              "baseline": 183.442,
+              "baseline": 180.635,
               "masked": false
             },
             {
@@ -4239,7 +4199,7 @@
               "cx": 370,
               "cy": 1077,
               "r": 6,
-              "baseline": 168.588,
+              "baseline": 178.559,
               "masked": false
             }
           ]
@@ -4258,16 +4218,16 @@
               "id": "SM-CAM-13:d0",
               "cx": 1912,
               "cy": 267,
-              "r": 10,
-              "baseline": 173.603,
+              "r": 9,
+              "baseline": 172.323,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d1",
-              "cx": 1854,
-              "cy": 415,
+              "cx": 1855,
+              "cy": 414,
               "r": 12,
-              "baseline": 178.131,
+              "baseline": 169.523,
               "masked": false
             },
             {
@@ -4275,15 +4235,15 @@
               "cx": 1742,
               "cy": 641,
               "r": 10,
-              "baseline": 186.571,
+              "baseline": 174.754,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d3",
               "cx": 1693,
-              "cy": 706,
-              "r": 11,
-              "baseline": 181.073,
+              "cy": 707,
+              "r": 12,
+              "baseline": 169.284,
               "masked": false
             },
             {
@@ -4291,7 +4251,7 @@
               "cx": 11,
               "cy": 801,
               "r": 7,
-              "baseline": 166.724,
+              "baseline": 160.155,
               "masked": false
             },
             {
@@ -4299,7 +4259,7 @@
               "cx": 91,
               "cy": 829,
               "r": 9,
-              "baseline": 177.73,
+              "baseline": 169.38,
               "masked": false
             },
             {
@@ -4307,7 +4267,7 @@
               "cx": 151,
               "cy": 853,
               "r": 9,
-              "baseline": 166.85,
+              "baseline": 164.38,
               "masked": false
             },
             {
@@ -4315,15 +4275,15 @@
               "cx": 1873,
               "cy": 862,
               "r": 7,
-              "baseline": 171.534,
+              "baseline": 154.828,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d8",
-              "cx": 191,
+              "cx": 192,
               "cy": 865,
               "r": 8,
-              "baseline": 171.0,
+              "baseline": 160.962,
               "masked": false
             },
             {
@@ -4331,7 +4291,7 @@
               "cx": 1582,
               "cy": 867,
               "r": 9,
-              "baseline": 182.84,
+              "baseline": 160.2,
               "masked": false
             },
             {
@@ -4339,7 +4299,7 @@
               "cx": 17,
               "cy": 886,
               "r": 5,
-              "baseline": 110.375,
+              "baseline": 93.125,
               "masked": false
             },
             {
@@ -4347,7 +4307,7 @@
               "cx": 290,
               "cy": 897,
               "r": 8,
-              "baseline": 174.641,
+              "baseline": 163.859,
               "masked": false
             },
             {
@@ -4355,7 +4315,7 @@
               "cx": 1827,
               "cy": 916,
               "r": 7,
-              "baseline": 168.172,
+              "baseline": 159.862,
               "masked": false
             },
             {
@@ -4363,15 +4323,15 @@
               "cx": 50,
               "cy": 921,
               "r": 6,
-              "baseline": 152.068,
+              "baseline": 142.568,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d14",
-              "cx": 565,
+              "cx": 564,
               "cy": 922,
-              "r": 9,
-              "baseline": 174.82,
+              "r": 8,
+              "baseline": 171.064,
               "masked": false
             },
             {
@@ -4379,7 +4339,7 @@
               "cx": 871,
               "cy": 927,
               "r": 12,
-              "baseline": 193.716,
+              "baseline": 185.506,
               "masked": false
             },
             {
@@ -4387,7 +4347,7 @@
               "cx": 687,
               "cy": 930,
               "r": 10,
-              "baseline": 189.746,
+              "baseline": 181.706,
               "masked": false
             },
             {
@@ -4395,7 +4355,7 @@
               "cx": 801,
               "cy": 934,
               "r": 12,
-              "baseline": 184.341,
+              "baseline": 173.415,
               "masked": false
             },
             {
@@ -4403,7 +4363,7 @@
               "cx": 1795,
               "cy": 954,
               "r": 6,
-              "baseline": 143.864,
+              "baseline": 122.841,
               "masked": false
             },
             {
@@ -4411,79 +4371,71 @@
               "cx": 83,
               "cy": 955,
               "r": 6,
-              "baseline": 157.295,
+              "baseline": 139.545,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d20",
-              "cx": 59,
-              "cy": 973,
-              "r": 5,
-              "baseline": 75.938,
+              "cx": 870,
+              "cy": 984,
+              "r": 10,
+              "baseline": 173.595,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d21",
-              "cx": 870,
-              "cy": 984,
-              "r": 10,
-              "baseline": 185.087,
+              "cx": 103,
+              "cy": 996,
+              "r": 6,
+              "baseline": 138.568,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d22",
-              "cx": 103,
-              "cy": 996,
+              "cx": 1844,
+              "cy": 1005,
               "r": 6,
-              "baseline": 138.818,
+              "baseline": 127.068,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d23",
-              "cx": 1844,
-              "cy": 1005,
+              "cx": 149,
+              "cy": 1011,
               "r": 6,
-              "baseline": 118.295,
+              "baseline": 112.795,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d24",
-              "cx": 149,
-              "cy": 1011,
-              "r": 6,
-              "baseline": 117.477,
+              "cx": 156,
+              "cy": 1023,
+              "r": 5,
+              "baseline": 93.219,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d25",
-              "cx": 156,
-              "cy": 1023,
-              "r": 5,
-              "baseline": 112.312,
+              "cx": 919,
+              "cy": 1041,
+              "r": 8,
+              "baseline": 163.91,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d26",
-              "cx": 919,
-              "cy": 1041,
-              "r": 8,
-              "baseline": 173.0,
+              "cx": 1688,
+              "cy": 1043,
+              "r": 6,
+              "baseline": 153.909,
               "masked": false
             },
             {
               "id": "SM-CAM-13:d27",
-              "cx": 1689,
-              "cy": 1043,
-              "r": 6,
-              "baseline": 160.0,
-              "masked": false
-            },
-            {
-              "id": "SM-CAM-13:d28",
               "cx": 1655,
               "cy": 1054,
               "r": 5,
-              "baseline": 119.844,
+              "baseline": 100.531,
               "masked": false
             }
           ]
@@ -4503,183 +4455,191 @@
               "cx": 42,
               "cy": 739,
               "r": 8,
-              "baseline": 178.782,
+              "baseline": 171.641,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d1",
-              "cx": 70,
-              "cy": 784,
-              "r": 10,
-              "baseline": 182.198,
+              "cx": 72,
+              "cy": 782,
+              "r": 8,
+              "baseline": 186.051,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d2",
-              "cx": 1856,
-              "cy": 802,
-              "r": 7,
-              "baseline": 128.897,
+              "cx": 65,
+              "cy": 788,
+              "r": 6,
+              "baseline": 172.136,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d3",
-              "cx": 1827,
-              "cy": 816,
+              "cx": 1856,
+              "cy": 802,
               "r": 7,
-              "baseline": 169.5,
+              "baseline": 135.569,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d4",
-              "cx": 1785,
-              "cy": 828,
-              "r": 6,
-              "baseline": 145.727,
+              "cx": 1827,
+              "cy": 816,
+              "r": 7,
+              "baseline": 171.293,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d5",
-              "cx": 1728,
-              "cy": 844,
+              "cx": 1785,
+              "cy": 828,
               "r": 6,
-              "baseline": 139.864,
+              "baseline": 151.409,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d6",
-              "cx": 1806,
-              "cy": 856,
-              "r": 7,
-              "baseline": 143.862,
+              "cx": 1728,
+              "cy": 844,
+              "r": 6,
+              "baseline": 135.977,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d7",
-              "cx": 1483,
-              "cy": 906,
-              "r": 8,
-              "baseline": 165.013,
+              "cx": 1806,
+              "cy": 856,
+              "r": 7,
+              "baseline": 140.759,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d8",
-              "cx": 1771,
-              "cy": 908,
-              "r": 6,
-              "baseline": 139.545,
+              "cx": 1483,
+              "cy": 906,
+              "r": 8,
+              "baseline": 160.205,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d9",
-              "cx": 1358,
-              "cy": 912,
-              "r": 9,
-              "baseline": 177.95,
+              "cx": 1772,
+              "cy": 908,
+              "r": 6,
+              "baseline": 130.295,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d10",
-              "cx": 1153,
-              "cy": 918,
-              "r": 13,
-              "baseline": 185.862,
+              "cx": 1358,
+              "cy": 912,
+              "r": 9,
+              "baseline": 168.6,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d11",
-              "cx": 1281,
+              "cx": 1153,
               "cy": 918,
               "r": 13,
-              "baseline": 190.195,
+              "baseline": 182.771,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d12",
-              "cx": 893,
-              "cy": 919,
-              "r": 11,
-              "baseline": 181.233,
+              "cx": 1281,
+              "cy": 918,
+              "r": 13,
+              "baseline": 190.333,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d13",
-              "cx": 740,
-              "cy": 923,
+              "cx": 893,
+              "cy": 919,
               "r": 11,
-              "baseline": 185.633,
+              "baseline": 176.527,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d14",
-              "cx": 178,
-              "cy": 924,
-              "r": 7,
-              "baseline": 163.81,
+              "cx": 740,
+              "cy": 923,
+              "r": 11,
+              "baseline": 183.233,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d15",
-              "cx": 227,
-              "cy": 964,
+              "cx": 178,
+              "cy": 924,
               "r": 6,
-              "baseline": 161.568,
+              "baseline": 164.114,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d16",
-              "cx": 624,
-              "cy": 976,
-              "r": 9,
-              "baseline": 180.4,
+              "cx": 227,
+              "cy": 963,
+              "r": 6,
+              "baseline": 161.136,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d17",
-              "cx": 288,
-              "cy": 1027,
-              "r": 6,
-              "baseline": 173.977,
+              "cx": 624,
+              "cy": 976,
+              "r": 9,
+              "baseline": 173.6,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d18",
-              "cx": 647,
-              "cy": 1028,
-              "r": 7,
-              "baseline": 154.293,
+              "cx": 287,
+              "cy": 1027,
+              "r": 6,
+              "baseline": 167.727,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d19",
-              "cx": 315,
-              "cy": 1051,
+              "cx": 647,
+              "cy": 1027,
               "r": 7,
-              "baseline": 113.0,
+              "baseline": 149.828,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d20",
-              "cx": 1606,
-              "cy": 1056,
-              "r": 6,
-              "baseline": 147.227,
+              "cx": 315,
+              "cy": 1051,
+              "r": 7,
+              "baseline": 111.069,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d21",
-              "cx": 670,
-              "cy": 1059,
-              "r": 7,
-              "baseline": 168.172,
+              "cx": 1606,
+              "cy": 1056,
+              "r": 6,
+              "baseline": 132.114,
               "masked": false
             },
             {
               "id": "SM-CAM-14:d22",
+              "cx": 669,
+              "cy": 1059,
+              "r": 7,
+              "baseline": 177.0,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d23",
               "cx": 374,
               "cy": 1067,
               "r": 6,
-              "baseline": 160.818,
+              "baseline": 157.091,
               "masked": false
             }
           ]
@@ -4699,23 +4659,23 @@
               "cx": 1890,
               "cy": 864,
               "r": 8,
-              "baseline": 175.756,
+              "baseline": 177.449,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d1",
               "cx": 186,
               "cy": 876,
-              "r": 8,
-              "baseline": 149.936,
+              "r": 7,
+              "baseline": 158.448,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d2",
               "cx": 275,
               "cy": 898,
-              "r": 9,
-              "baseline": 159.63,
+              "r": 8,
+              "baseline": 164.679,
               "masked": false
             },
             {
@@ -4723,7 +4683,7 @@
               "cx": 1751,
               "cy": 914,
               "r": 9,
-              "baseline": 165.14,
+              "baseline": 165.3,
               "masked": false
             },
             {
@@ -4731,39 +4691,39 @@
               "cx": 382,
               "cy": 925,
               "r": 10,
-              "baseline": 169.635,
+              "baseline": 173.373,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d5",
-              "cx": 1690,
+              "cx": 1689,
               "cy": 933,
               "r": 7,
-              "baseline": 163.0,
+              "baseline": 158.276,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d6",
-              "cx": 509,
+              "cx": 510,
               "cy": 938,
               "r": 9,
-              "baseline": 175.61,
+              "baseline": 175.15,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d7",
-              "cx": 609,
+              "cx": 610,
               "cy": 941,
               "r": 10,
-              "baseline": 171.556,
+              "baseline": 176.175,
               "masked": false
             },
             {
               "id": "SM-CAM-21:d8",
               "cx": 818,
-              "cy": 965,
+              "cy": 964,
               "r": 11,
-              "baseline": 170.293,
+              "baseline": 176.607,
               "masked": false
             },
             {
@@ -4771,7 +4731,7 @@
               "cx": 826,
               "cy": 1005,
               "r": 12,
-              "baseline": 181.102,
+              "baseline": 189.165,
               "masked": false
             }
           ]
@@ -4788,10 +4748,10 @@
           "dots": [
             {
               "id": "SM-CAM-22:d0",
-              "cx": 52,
-              "cy": 272,
+              "cx": 53,
+              "cy": 271,
               "r": 12,
-              "baseline": 174.341,
+              "baseline": 178.96,
               "masked": false
             },
             {
@@ -4799,7 +4759,7 @@
               "cx": 112,
               "cy": 389,
               "r": 12,
-              "baseline": 177.648,
+              "baseline": 179.534,
               "masked": false
             },
             {
@@ -4807,23 +4767,23 @@
               "cx": 201,
               "cy": 617,
               "r": 11,
-              "baseline": 175.993,
+              "baseline": 170.807,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d3",
               "cx": 305,
-              "cy": 773,
+              "cy": 774,
               "r": 13,
-              "baseline": 168.071,
+              "baseline": 173.052,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d4",
               "cx": 1880,
               "cy": 796,
-              "r": 7,
-              "baseline": 156.069,
+              "r": 6,
+              "baseline": 159.364,
               "masked": false
             },
             {
@@ -4831,7 +4791,7 @@
               "cx": 1796,
               "cy": 817,
               "r": 6,
-              "baseline": 138.818,
+              "baseline": 143.932,
               "masked": false
             },
             {
@@ -4839,7 +4799,7 @@
               "cx": 1822,
               "cy": 823,
               "r": 7,
-              "baseline": 167.862,
+              "baseline": 163.517,
               "masked": false
             },
             {
@@ -4847,7 +4807,7 @@
               "cx": 1698,
               "cy": 869,
               "r": 7,
-              "baseline": 149.362,
+              "baseline": 157.603,
               "masked": false
             },
             {
@@ -4855,7 +4815,7 @@
               "cx": 92,
               "cy": 876,
               "r": 6,
-              "baseline": 140.364,
+              "baseline": 144.614,
               "masked": false
             },
             {
@@ -4863,7 +4823,7 @@
               "cx": 1586,
               "cy": 880,
               "r": 7,
-              "baseline": 166.069,
+              "baseline": 144.328,
               "masked": false
             },
             {
@@ -4871,15 +4831,15 @@
               "cx": 146,
               "cy": 886,
               "r": 8,
-              "baseline": 170.487,
+              "baseline": 168.744,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d11",
-              "cx": 1475,
+              "cx": 1476,
               "cy": 888,
               "r": 9,
-              "baseline": 159.94,
+              "baseline": 163.36,
               "masked": false
             },
             {
@@ -4887,15 +4847,15 @@
               "cx": 233,
               "cy": 902,
               "r": 7,
-              "baseline": 162.017,
+              "baseline": 169.741,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d13",
-              "cx": 346,
+              "cx": 347,
               "cy": 911,
               "r": 10,
-              "baseline": 171.492,
+              "baseline": 173.349,
               "masked": false
             },
             {
@@ -4903,15 +4863,15 @@
               "cx": 1302,
               "cy": 921,
               "r": 8,
-              "baseline": 160.0,
+              "baseline": 160.462,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d15",
-              "cx": 419,
-              "cy": 930,
+              "cx": 420,
+              "cy": 931,
               "r": 8,
-              "baseline": 160.513,
+              "baseline": 163.103,
               "masked": false
             },
             {
@@ -4919,7 +4879,7 @@
               "cx": 1215,
               "cy": 933,
               "r": 10,
-              "baseline": 167.587,
+              "baseline": 176.452,
               "masked": false
             },
             {
@@ -4927,15 +4887,15 @@
               "cx": 1163,
               "cy": 971,
               "r": 7,
-              "baseline": 154.431,
+              "baseline": 153.603,
               "masked": false
             },
             {
               "id": "SM-CAM-22:d18",
-              "cx": 1118,
+              "cx": 1119,
               "cy": 1057,
               "r": 8,
-              "baseline": 166.628,
+              "baseline": 168.808,
               "masked": false
             }
           ]
@@ -4955,7 +4915,7 @@
               "cx": 1874,
               "cy": 620,
               "r": 7,
-              "baseline": 172.759,
+              "baseline": 161.81,
               "masked": false
             },
             {
@@ -4963,15 +4923,15 @@
               "cx": 1880,
               "cy": 656,
               "r": 8,
-              "baseline": 158.846,
+              "baseline": 153.077,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d2",
               "cx": 1763,
               "cy": 787,
-              "r": 9,
-              "baseline": 169.65,
+              "r": 8,
+              "baseline": 166.577,
               "masked": false
             },
             {
@@ -4979,7 +4939,7 @@
               "cx": 23,
               "cy": 809,
               "r": 6,
-              "baseline": 145.773,
+              "baseline": 151.545,
               "masked": false
             },
             {
@@ -4987,15 +4947,15 @@
               "cx": 5,
               "cy": 827,
               "r": 5,
-              "baseline": 144.969,
+              "baseline": 134.812,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d5",
-              "cx": 95,
+              "cx": 96,
               "cy": 827,
               "r": 7,
-              "baseline": 161.793,
+              "baseline": 154.724,
               "masked": false
             },
             {
@@ -5003,7 +4963,7 @@
               "cx": 177,
               "cy": 862,
               "r": 7,
-              "baseline": 151.483,
+              "baseline": 149.345,
               "masked": false
             },
             {
@@ -5011,143 +4971,127 @@
               "cx": 1702,
               "cy": 862,
               "r": 8,
-              "baseline": 158.167,
+              "baseline": 152.487,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d8",
-              "cx": 1874,
-              "cy": 900,
-              "r": 5,
-              "baseline": 113.812,
+              "cx": 407,
+              "cy": 904,
+              "r": 7,
+              "baseline": 155.172,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d9",
-              "cx": 407,
-              "cy": 904,
-              "r": 8,
-              "baseline": 170.987,
+              "cx": 76,
+              "cy": 912,
+              "r": 6,
+              "baseline": 89.818,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d10",
-              "cx": 76,
+              "cx": 315,
               "cy": 912,
-              "r": 6,
-              "baseline": 105.182,
+              "r": 7,
+              "baseline": 153.879,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d11",
-              "cx": 315,
-              "cy": 912,
-              "r": 7,
-              "baseline": 162.517,
+              "cx": 1011,
+              "cy": 921,
+              "r": 11,
+              "baseline": 177.087,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d12",
-              "cx": 1010,
-              "cy": 921,
-              "r": 11,
-              "baseline": 188.12,
+              "cx": 793,
+              "cy": 929,
+              "r": 9,
+              "baseline": 167.37,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d13",
-              "cx": 793,
-              "cy": 929,
-              "r": 9,
-              "baseline": 178.14,
+              "cx": 506,
+              "cy": 936,
+              "r": 10,
+              "baseline": 171.659,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d14",
-              "cx": 506,
-              "cy": 936,
+              "cx": 645,
+              "cy": 943,
               "r": 10,
-              "baseline": 180.048,
+              "baseline": 170.405,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d15",
-              "cx": 645,
-              "cy": 943,
-              "r": 10,
-              "baseline": 181.444,
+              "cx": 121,
+              "cy": 954,
+              "r": 6,
+              "baseline": 119.295,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d16",
-              "cx": 121,
-              "cy": 954,
-              "r": 7,
-              "baseline": 128.431,
+              "cx": 1004,
+              "cy": 988,
+              "r": 8,
+              "baseline": 157.615,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d17",
-              "cx": 1799,
-              "cy": 974,
-              "r": 5,
-              "baseline": 113.938,
+              "cx": 165,
+              "cy": 996,
+              "r": 6,
+              "baseline": 118.864,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d18",
-              "cx": 1005,
-              "cy": 988,
-              "r": 8,
-              "baseline": 164.551,
+              "cx": 151,
+              "cy": 1014,
+              "r": 5,
+              "baseline": 87.812,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d19",
-              "cx": 165,
-              "cy": 996,
-              "r": 6,
-              "baseline": 142.705,
+              "cx": 1716,
+              "cy": 1024,
+              "r": 5,
+              "baseline": 109.812,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d20",
-              "cx": 151,
-              "cy": 1014,
+              "cx": 1660,
+              "cy": 1041,
               "r": 5,
-              "baseline": 99.125,
+              "baseline": 129.406,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d21",
-              "cx": 1716,
-              "cy": 1024,
+              "cx": 216,
+              "cy": 1045,
               "r": 5,
-              "baseline": 122.0,
+              "baseline": 106.0,
               "masked": false
             },
             {
               "id": "SM-CAM-23:d22",
-              "cx": 1661,
-              "cy": 1041,
-              "r": 5,
-              "baseline": 130.25,
-              "masked": false
-            },
-            {
-              "id": "SM-CAM-23:d23",
-              "cx": 216,
-              "cy": 1045,
-              "r": 5,
-              "baseline": 111.656,
-              "masked": false
-            },
-            {
-              "id": "SM-CAM-23:d24",
-              "cx": 1561,
+              "cx": 1560,
               "cy": 1076,
               "r": 7,
-              "baseline": 167.438,
+              "baseline": 158.042,
               "masked": false
             }
           ]
@@ -5167,7 +5111,7 @@
               "cx": 275,
               "cy": 395,
               "r": 12,
-              "baseline": 196.881,
+              "baseline": 193.665,
               "masked": false
             },
             {
@@ -5175,7 +5119,7 @@
               "cx": 371,
               "cy": 696,
               "r": 11,
-              "baseline": 184.78,
+              "baseline": 177.607,
               "masked": false
             },
             {
@@ -5183,7 +5127,7 @@
               "cx": 469,
               "cy": 747,
               "r": 12,
-              "baseline": 184.324,
+              "baseline": 181.562,
               "masked": false
             },
             {
@@ -5191,7 +5135,7 @@
               "cx": 1856,
               "cy": 771,
               "r": 6,
-              "baseline": 155.773,
+              "baseline": 158.955,
               "masked": false
             },
             {
@@ -5199,7 +5143,7 @@
               "cx": 1828,
               "cy": 815,
               "r": 9,
-              "baseline": 136.03,
+              "baseline": 123.26,
               "masked": false
             },
             {
@@ -5207,7 +5151,7 @@
               "cx": 1759,
               "cy": 849,
               "r": 7,
-              "baseline": 159.397,
+              "baseline": 160.5,
               "masked": false
             },
             {
@@ -5215,7 +5159,7 @@
               "cx": 1796,
               "cy": 860,
               "r": 7,
-              "baseline": 167.276,
+              "baseline": 166.517,
               "masked": false
             },
             {
@@ -5223,15 +5167,15 @@
               "cx": 53,
               "cy": 863,
               "r": 7,
-              "baseline": 161.224,
+              "baseline": 157.138,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d8",
               "cx": 490,
-              "cy": 888,
+              "cy": 887,
               "r": 12,
-              "baseline": 182.318,
+              "baseline": 177.403,
               "masked": false
             },
             {
@@ -5239,7 +5183,7 @@
               "cx": 1567,
               "cy": 909,
               "r": 7,
-              "baseline": 159.466,
+              "baseline": 149.931,
               "masked": false
             },
             {
@@ -5247,15 +5191,15 @@
               "cx": 110,
               "cy": 926,
               "r": 6,
-              "baseline": 133.318,
+              "baseline": 135.455,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d11",
-              "cx": 1439,
+              "cx": 1438,
               "cy": 931,
               "r": 9,
-              "baseline": 184.64,
+              "baseline": 171.21,
               "masked": false
             },
             {
@@ -5263,7 +5207,7 @@
               "cx": 1305,
               "cy": 933,
               "r": 8,
-              "baseline": 182.231,
+              "baseline": 175.462,
               "masked": false
             },
             {
@@ -5271,23 +5215,23 @@
               "cx": 1713,
               "cy": 953,
               "r": 6,
-              "baseline": 150.091,
+              "baseline": 140.977,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d14",
               "cx": 542,
-              "cy": 965,
-              "r": 10,
-              "baseline": 173.302,
+              "cy": 964,
+              "r": 11,
+              "baseline": 172.427,
               "masked": false
             },
             {
               "id": "SM-CAM-24:d15",
-              "cx": 1257,
-              "cy": 969,
+              "cx": 1256,
+              "cy": 968,
               "r": 10,
-              "baseline": 172.119,
+              "baseline": 173.198,
               "masked": false
             },
             {
@@ -5295,7 +5239,7 @@
               "cx": 1701,
               "cy": 978,
               "r": 6,
-              "baseline": 151.114,
+              "baseline": 144.568,
               "masked": false
             },
             {
@@ -5303,7 +5247,7 @@
               "cx": 1263,
               "cy": 1040,
               "r": 7,
-              "baseline": 162.69,
+              "baseline": 161.69,
               "masked": false
             },
             {
@@ -5311,7 +5255,7 @@
               "cx": 226,
               "cy": 1044,
               "r": 6,
-              "baseline": 139.614,
+              "baseline": 150.432,
               "masked": false
             },
             {
@@ -5319,7 +5263,7 @@
               "cx": 1253,
               "cy": 1074,
               "r": 7,
-              "baseline": 163.429,
+              "baseline": 151.839,
               "masked": false
             }
           ]

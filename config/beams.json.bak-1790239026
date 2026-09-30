@@ -1,0 +1,6394 @@
+{
+  "_comment": "Source of truth for beam ROIs and detection thresholds.",
+  "_addressing": "ID=row(1-9)+strip(1-5). 1=H-top-left,2=V-left,3=H-center,4=V-right,5=H-top-right.",
+  "beams": [
+    {
+      "id": "11",
+      "row": 1,
+      "strip": 1,
+      "type": "H-top-left",
+      "segment": 1,
+      "relay_channel": 1,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "12",
+      "row": 1,
+      "strip": 2,
+      "type": "V-left",
+      "segment": 1,
+      "relay_channel": 2,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "13",
+      "row": 1,
+      "strip": 3,
+      "type": "H-center",
+      "segment": 1,
+      "relay_channel": 3,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "14",
+      "row": 1,
+      "strip": 4,
+      "type": "V-right",
+      "segment": 1,
+      "relay_channel": 4,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "15",
+      "row": 1,
+      "strip": 5,
+      "type": "H-top-right",
+      "segment": 1,
+      "relay_channel": 5,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "21",
+      "row": 2,
+      "strip": 1,
+      "type": "H-top-left",
+      "segment": 1,
+      "relay_channel": 6,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "22",
+      "row": 2,
+      "strip": 2,
+      "type": "V-left",
+      "segment": 1,
+      "relay_channel": 7,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "23",
+      "row": 2,
+      "strip": 3,
+      "type": "H-center",
+      "segment": 1,
+      "relay_channel": 8,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "24",
+      "row": 2,
+      "strip": 4,
+      "type": "V-right",
+      "segment": 1,
+      "relay_channel": 9,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "25",
+      "row": 2,
+      "strip": 5,
+      "type": "H-top-right",
+      "segment": 1,
+      "relay_channel": 10,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "31",
+      "row": 3,
+      "strip": 1,
+      "type": "H-top-left",
+      "segment": 1,
+      "relay_channel": 11,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "32",
+      "row": 3,
+      "strip": 2,
+      "type": "V-left",
+      "segment": 1,
+      "relay_channel": 12,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "33",
+      "row": 3,
+      "strip": 3,
+      "type": "H-center",
+      "segment": 1,
+      "relay_channel": 13,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "34",
+      "row": 3,
+      "strip": 4,
+      "type": "V-right",
+      "segment": 1,
+      "relay_channel": 14,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "35",
+      "row": 3,
+      "strip": 5,
+      "type": "H-top-right",
+      "segment": 1,
+      "relay_channel": 15,
+      "board_id": "SM-NODE-1",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "41",
+      "row": 4,
+      "strip": 1,
+      "type": "H-top-left",
+      "segment": 2,
+      "relay_channel": 1,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "42",
+      "row": 4,
+      "strip": 2,
+      "type": "V-left",
+      "segment": 2,
+      "relay_channel": 2,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "43",
+      "row": 4,
+      "strip": 3,
+      "type": "H-center",
+      "segment": 2,
+      "relay_channel": 3,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "44",
+      "row": 4,
+      "strip": 4,
+      "type": "V-right",
+      "segment": 2,
+      "relay_channel": 4,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "45",
+      "row": 4,
+      "strip": 5,
+      "type": "H-top-right",
+      "segment": 2,
+      "relay_channel": 5,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "51",
+      "row": 5,
+      "strip": 1,
+      "type": "H-top-left",
+      "segment": 2,
+      "relay_channel": 6,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "52",
+      "row": 5,
+      "strip": 2,
+      "type": "V-left",
+      "segment": 2,
+      "relay_channel": 7,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "53",
+      "row": 5,
+      "strip": 3,
+      "type": "H-center",
+      "segment": 2,
+      "relay_channel": 8,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "54",
+      "row": 5,
+      "strip": 4,
+      "type": "V-right",
+      "segment": 2,
+      "relay_channel": 9,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "55",
+      "row": 5,
+      "strip": 5,
+      "type": "H-top-right",
+      "segment": 2,
+      "relay_channel": 10,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "61",
+      "row": 6,
+      "strip": 1,
+      "type": "H-top-left",
+      "segment": 2,
+      "relay_channel": 11,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "62",
+      "row": 6,
+      "strip": 2,
+      "type": "V-left",
+      "segment": 2,
+      "relay_channel": 12,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "63",
+      "row": 6,
+      "strip": 3,
+      "type": "H-center",
+      "segment": 2,
+      "relay_channel": 13,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "64",
+      "row": 6,
+      "strip": 4,
+      "type": "V-right",
+      "segment": 2,
+      "relay_channel": 14,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "65",
+      "row": 6,
+      "strip": 5,
+      "type": "H-top-right",
+      "segment": 2,
+      "relay_channel": 15,
+      "board_id": "SM-NODE-2",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "71",
+      "row": 7,
+      "strip": 1,
+      "type": "H-top-left",
+      "segment": 3,
+      "relay_channel": 1,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "72",
+      "row": 7,
+      "strip": 2,
+      "type": "V-left",
+      "segment": 3,
+      "relay_channel": 2,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "73",
+      "row": 7,
+      "strip": 3,
+      "type": "H-center",
+      "segment": 3,
+      "relay_channel": 3,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "74",
+      "row": 7,
+      "strip": 4,
+      "type": "V-right",
+      "segment": 3,
+      "relay_channel": 4,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "75",
+      "row": 7,
+      "strip": 5,
+      "type": "H-top-right",
+      "segment": 3,
+      "relay_channel": 5,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "81",
+      "row": 8,
+      "strip": 1,
+      "type": "H-top-left",
+      "segment": 3,
+      "relay_channel": 6,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "82",
+      "row": 8,
+      "strip": 2,
+      "type": "V-left",
+      "segment": 3,
+      "relay_channel": 7,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "83",
+      "row": 8,
+      "strip": 3,
+      "type": "H-center",
+      "segment": 3,
+      "relay_channel": 8,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "84",
+      "row": 8,
+      "strip": 4,
+      "type": "V-right",
+      "segment": 3,
+      "relay_channel": 9,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "85",
+      "row": 8,
+      "strip": 5,
+      "type": "H-top-right",
+      "segment": 3,
+      "relay_channel": 10,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "91",
+      "row": 9,
+      "strip": 1,
+      "type": "H-top-left",
+      "segment": 3,
+      "relay_channel": 11,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "92",
+      "row": 9,
+      "strip": 2,
+      "type": "V-left",
+      "segment": 3,
+      "relay_channel": 12,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "93",
+      "row": 9,
+      "strip": 3,
+      "type": "H-center",
+      "segment": 3,
+      "relay_channel": 13,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "94",
+      "row": 9,
+      "strip": 4,
+      "type": "V-right",
+      "segment": 3,
+      "relay_channel": 14,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    },
+    {
+      "id": "95",
+      "row": 9,
+      "strip": 5,
+      "type": "H-top-right",
+      "segment": 3,
+      "relay_channel": 15,
+      "board_id": "SM-NODE-3",
+      "break_ratio": 0.4,
+      "clear_ratio": 0.65,
+      "masked": false,
+      "masked_at": null,
+      "masked_reason": null
+    }
+  ],
+  "detection": {
+    "consecutive_frames": 1,
+    "arm_grace_ms": 150,
+    "stall_threshold_ms": 300,
+    "global_break_rate_limit": 6,
+    "flap_count_threshold": 5,
+    "flap_window_s": 60,
+    "min_simultaneous_breaks": 1,
+    "break_ratio": 0.5,
+    "clear_ratio": 0.65,
+    "max_simultaneous_breaks": 60
+  },
+  "_calibration": "The 45 entries under `beams` are the RELAY WIRING RECORD: which board and channel drives which strip. Detection does not read them (ADR 0009). ROIs live under `mazes.<name>.cameras.<cam>.dots`, written by tools/capture.py, one capture per maze. Absent `mazes` means uncalibrated, and an uncalibrated preset watches nothing.",
+  "mazes": {
+    "maze_1": {
+      "captured_at": "2026-09-17T15:51:30+00:00",
+      "cameras": {
+        "SM-CAM-11": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 23,
+            "min_area": 27,
+            "max_area": 471
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-11:d0",
+              "cx": 376,
+              "cy": 591,
+              "r": 12,
+              "baseline": 201.176,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d1",
+              "cx": 429,
+              "cy": 646,
+              "r": 9,
+              "baseline": 180.15,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d2",
+              "cx": 9,
+              "cy": 722,
+              "r": 8,
+              "baseline": 172.987,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d3",
+              "cx": 536,
+              "cy": 746,
+              "r": 10,
+              "baseline": 177.675,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d4",
+              "cx": 187,
+              "cy": 747,
+              "r": 8,
+              "baseline": 164.038,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d5",
+              "cx": 1328,
+              "cy": 753,
+              "r": 12,
+              "baseline": 197.165,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d6",
+              "cx": 249,
+              "cy": 764,
+              "r": 7,
+              "baseline": 163.655,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d7",
+              "cx": 332,
+              "cy": 776,
+              "r": 8,
+              "baseline": 171.205,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d8",
+              "cx": 72,
+              "cy": 779,
+              "r": 6,
+              "baseline": 149.75,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d9",
+              "cx": 402,
+              "cy": 782,
+              "r": 9,
+              "baseline": 170.07,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d10",
+              "cx": 492,
+              "cy": 784,
+              "r": 10,
+              "baseline": 173.556,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d11",
+              "cx": 609,
+              "cy": 790,
+              "r": 11,
+              "baseline": 188.667,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d12",
+              "cx": 253,
+              "cy": 800,
+              "r": 9,
+              "baseline": 161.05,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d13",
+              "cx": 587,
+              "cy": 804,
+              "r": 11,
+              "baseline": 180.04,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d14",
+              "cx": 116,
+              "cy": 817,
+              "r": 6,
+              "baseline": 163.136,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d15",
+              "cx": 1316,
+              "cy": 839,
+              "r": 12,
+              "baseline": 188.017,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d16",
+              "cx": 155,
+              "cy": 847,
+              "r": 5,
+              "baseline": 109.781,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d17",
+              "cx": 52,
+              "cy": 848,
+              "r": 6,
+              "baseline": 103.068,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d18",
+              "cx": 373,
+              "cy": 896,
+              "r": 7,
+              "baseline": 147.655,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d19",
+              "cx": 1305,
+              "cy": 903,
+              "r": 9,
+              "baseline": 175.72,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d20",
+              "cx": 1725,
+              "cy": 926,
+              "r": 7,
+              "baseline": 156.5,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d21",
+              "cx": 424,
+              "cy": 930,
+              "r": 10,
+              "baseline": 170.119,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d22",
+              "cx": 267,
+              "cy": 932,
+              "r": 5,
+              "baseline": 118.969,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d23",
+              "cx": 2,
+              "cy": 940,
+              "r": 8,
+              "baseline": 27.333,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d24",
+              "cx": 1650,
+              "cy": 944,
+              "r": 8,
+              "baseline": 143.372,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d25",
+              "cx": 1572,
+              "cy": 959,
+              "r": 9,
+              "baseline": 164.03,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d26",
+              "cx": 17,
+              "cy": 960,
+              "r": 7,
+              "baseline": 31.276,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d27",
+              "cx": 312,
+              "cy": 963,
+              "r": 6,
+              "baseline": 146.068,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d28",
+              "cx": 483,
+              "cy": 970,
+              "r": 8,
+              "baseline": 168.769,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d29",
+              "cx": 4,
+              "cy": 974,
+              "r": 7,
+              "baseline": 79.385,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d30",
+              "cx": 39,
+              "cy": 975,
+              "r": 6,
+              "baseline": 29.409,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d31",
+              "cx": 1288,
+              "cy": 979,
+              "r": 10,
+              "baseline": 184.548,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d32",
+              "cx": 1476,
+              "cy": 979,
+              "r": 7,
+              "baseline": 169.345,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d33",
+              "cx": 345,
+              "cy": 982,
+              "r": 5,
+              "baseline": 130.844,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d34",
+              "cx": 1407,
+              "cy": 991,
+              "r": 8,
+              "baseline": 156.115,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d35",
+              "cx": 1286,
+              "cy": 996,
+              "r": 8,
+              "baseline": 185.795,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d36",
+              "cx": 90,
+              "cy": 1008,
+              "r": 7,
+              "baseline": 44.828,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d37",
+              "cx": 1261,
+              "cy": 1020,
+              "r": 6,
+              "baseline": 151.091,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d38",
+              "cx": 120,
+              "cy": 1029,
+              "r": 7,
+              "baseline": 42.672,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d39",
+              "cx": 844,
+              "cy": 1031,
+              "r": 8,
+              "baseline": 164.667,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d40",
+              "cx": 1285,
+              "cy": 1034,
+              "r": 9,
+              "baseline": 157.08,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d41",
+              "cx": 155,
+              "cy": 1051,
+              "r": 6,
+              "baseline": 29.068,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d42",
+              "cx": 882,
+              "cy": 1064,
+              "r": 6,
+              "baseline": 160.182,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d43",
+              "cx": 1258,
+              "cy": 1066,
+              "r": 6,
+              "baseline": 142.045,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-12": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 27,
+            "min_area": 39,
+            "max_area": 678
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-12:d0",
+              "cx": 31,
+              "cy": 766,
+              "r": 10,
+              "baseline": 165.897,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d1",
+              "cx": 94,
+              "cy": 814,
+              "r": 7,
+              "baseline": 164.466,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d2",
+              "cx": 180,
+              "cy": 842,
+              "r": 14,
+              "baseline": 182.623,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d3",
+              "cx": 281,
+              "cy": 869,
+              "r": 12,
+              "baseline": 171.688,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d4",
+              "cx": 396,
+              "cy": 882,
+              "r": 10,
+              "baseline": 173.31,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d5",
+              "cx": 1900,
+              "cy": 902,
+              "r": 8,
+              "baseline": 163.885,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d6",
+              "cx": 15,
+              "cy": 918,
+              "r": 6,
+              "baseline": 164.568,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d7",
+              "cx": 1842,
+              "cy": 918,
+              "r": 9,
+              "baseline": 164.23,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d8",
+              "cx": 1868,
+              "cy": 923,
+              "r": 9,
+              "baseline": 158.34,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d9",
+              "cx": 584,
+              "cy": 926,
+              "r": 15,
+              "baseline": 189.787,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d10",
+              "cx": 1763,
+              "cy": 940,
+              "r": 9,
+              "baseline": 159.53,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d11",
+              "cx": 76,
+              "cy": 949,
+              "r": 7,
+              "baseline": 161.017,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d12",
+              "cx": 1680,
+              "cy": 954,
+              "r": 10,
+              "baseline": 170.762,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d13",
+              "cx": 1480,
+              "cy": 961,
+              "r": 16,
+              "baseline": 183.208,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d14",
+              "cx": 1559,
+              "cy": 967,
+              "r": 10,
+              "baseline": 162.667,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d15",
+              "cx": 110,
+              "cy": 972,
+              "r": 6,
+              "baseline": 153.25,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d16",
+              "cx": 167,
+              "cy": 1004,
+              "r": 7,
+              "baseline": 154.362,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d17",
+              "cx": 208,
+              "cy": 1021,
+              "r": 8,
+              "baseline": 160.872,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d18",
+              "cx": 709,
+              "cy": 1025,
+              "r": 13,
+              "baseline": 178.619,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d19",
+              "cx": 1433,
+              "cy": 1027,
+              "r": 14,
+              "baseline": 175.463,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d20",
+              "cx": 1881,
+              "cy": 1037,
+              "r": 7,
+              "baseline": 141.345,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d21",
+              "cx": 262,
+              "cy": 1044,
+              "r": 8,
+              "baseline": 163.282,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d22",
+              "cx": 1859,
+              "cy": 1058,
+              "r": 6,
+              "baseline": 154.886,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d23",
+              "cx": 731,
+              "cy": 1075,
+              "r": 11,
+              "baseline": 178.938,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-13": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 23,
+            "min_area": 27,
+            "max_area": 471
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-13:d0",
+              "cx": 1902,
+              "cy": 798,
+              "r": 9,
+              "baseline": 149.96,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d1",
+              "cx": 1821,
+              "cy": 822,
+              "r": 7,
+              "baseline": 144.103,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d2",
+              "cx": 151,
+              "cy": 858,
+              "r": 9,
+              "baseline": 163.58,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d3",
+              "cx": 1736,
+              "cy": 861,
+              "r": 9,
+              "baseline": 159.06,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d4",
+              "cx": 1873,
+              "cy": 864,
+              "r": 8,
+              "baseline": 166.538,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d5",
+              "cx": 17,
+              "cy": 888,
+              "r": 7,
+              "baseline": 152.241,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d6",
+              "cx": 210,
+              "cy": 892,
+              "r": 11,
+              "baseline": 171.887,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d7",
+              "cx": 1632,
+              "cy": 893,
+              "r": 13,
+              "baseline": 186.462,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d8",
+              "cx": 290,
+              "cy": 899,
+              "r": 10,
+              "baseline": 174.746,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d9",
+              "cx": 1415,
+              "cy": 910,
+              "r": 14,
+              "baseline": 197.365,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d10",
+              "cx": 1827,
+              "cy": 918,
+              "r": 8,
+              "baseline": 161.0,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d11",
+              "cx": 49,
+              "cy": 924,
+              "r": 8,
+              "baseline": 164.051,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d12",
+              "cx": 565,
+              "cy": 925,
+              "r": 11,
+              "baseline": 181.62,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d13",
+              "cx": 1492,
+              "cy": 925,
+              "r": 9,
+              "baseline": 164.17,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d14",
+              "cx": 687,
+              "cy": 933,
+              "r": 13,
+              "baseline": 197.962,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d15",
+              "cx": 258,
+              "cy": 940,
+              "r": 10,
+              "baseline": 165.635,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d16",
+              "cx": 1900,
+              "cy": 954,
+              "r": 7,
+              "baseline": 160.017,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d17",
+              "cx": 1194,
+              "cy": 955,
+              "r": 14,
+              "baseline": 193.156,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d18",
+              "cx": 82,
+              "cy": 957,
+              "r": 7,
+              "baseline": 168.552,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d19",
+              "cx": 1795,
+              "cy": 957,
+              "r": 7,
+              "baseline": 164.552,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d20",
+              "cx": 7,
+              "cy": 962,
+              "r": 5,
+              "baseline": 91.031,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d21",
+              "cx": 951,
+              "cy": 971,
+              "r": 13,
+              "baseline": 188.557,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d22",
+              "cx": 295,
+              "cy": 984,
+              "r": 8,
+              "baseline": 179.051,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d23",
+              "cx": 150,
+              "cy": 1023,
+              "r": 9,
+              "baseline": 173.18,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d24",
+              "cx": 1722,
+              "cy": 1024,
+              "r": 6,
+              "baseline": 140.25,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d25",
+              "cx": 364,
+              "cy": 1048,
+              "r": 10,
+              "baseline": 159.889,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d26",
+              "cx": 1673,
+              "cy": 1068,
+              "r": 6,
+              "baseline": 142.386,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d27",
+              "cx": 209,
+              "cy": 1075,
+              "r": 7,
+              "baseline": 160.654,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-14": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 27,
+            "min_area": 39,
+            "max_area": 678
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-14:d0",
+              "cx": 42,
+              "cy": 742,
+              "r": 10,
+              "baseline": 166.865,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d1",
+              "cx": 70,
+              "cy": 787,
+              "r": 12,
+              "baseline": 175.307,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d2",
+              "cx": 1826,
+              "cy": 819,
+              "r": 9,
+              "baseline": 154.35,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d3",
+              "cx": 1785,
+              "cy": 831,
+              "r": 9,
+              "baseline": 149.06,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d4",
+              "cx": 1852,
+              "cy": 833,
+              "r": 8,
+              "baseline": 152.538,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d5",
+              "cx": 1727,
+              "cy": 847,
+              "r": 8,
+              "baseline": 158.974,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d6",
+              "cx": 1482,
+              "cy": 909,
+              "r": 12,
+              "baseline": 175.409,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d7",
+              "cx": 1271,
+              "cy": 924,
+              "r": 13,
+              "baseline": 169.252,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d8",
+              "cx": 178,
+              "cy": 926,
+              "r": 8,
+              "baseline": 159.423,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d9",
+              "cx": 1335,
+              "cy": 941,
+              "r": 13,
+              "baseline": 178.233,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d10",
+              "cx": 227,
+              "cy": 966,
+              "r": 8,
+              "baseline": 161.769,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d11",
+              "cx": 624,
+              "cy": 979,
+              "r": 13,
+              "baseline": 178.576,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d12",
+              "cx": 1320,
+              "cy": 982,
+              "r": 13,
+              "baseline": 176.819,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d13",
+              "cx": 1790,
+              "cy": 996,
+              "r": 7,
+              "baseline": 154.19,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d14",
+              "cx": 1742,
+              "cy": 1015,
+              "r": 8,
+              "baseline": 145.705,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d15",
+              "cx": 1281,
+              "cy": 1025,
+              "r": 10,
+              "baseline": 180.587,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d16",
+              "cx": 288,
+              "cy": 1029,
+              "r": 8,
+              "baseline": 153.282,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d17",
+              "cx": 647,
+              "cy": 1030,
+              "r": 9,
+              "baseline": 165.77,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d18",
+              "cx": 1682,
+              "cy": 1039,
+              "r": 6,
+              "baseline": 139.932,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d19",
+              "cx": 4,
+              "cy": 1048,
+              "r": 9,
+              "baseline": 22.138,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d20",
+              "cx": 305,
+              "cy": 1054,
+              "r": 6,
+              "baseline": 143.25,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d21",
+              "cx": 1605,
+              "cy": 1059,
+              "r": 7,
+              "baseline": 142.31,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d22",
+              "cx": 670,
+              "cy": 1061,
+              "r": 10,
+              "baseline": 166.016,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d23",
+              "cx": 1578,
+              "cy": 1061,
+              "r": 7,
+              "baseline": 155.276,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d24",
+              "cx": 3,
+              "cy": 1072,
+              "r": 8,
+              "baseline": 22.15,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d25",
+              "cx": 343,
+              "cy": 1074,
+              "r": 6,
+              "baseline": 162.091,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d26",
+              "cx": 1250,
+              "cy": 1076,
+              "r": 12,
+              "baseline": 152.817,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-21": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 33,
+            "min_area": 70,
+            "max_area": 1206
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-21:d0",
+              "cx": 743,
+              "cy": 130,
+              "r": 13,
+              "baseline": 129.414,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d1",
+              "cx": 750,
+              "cy": 211,
+              "r": 7,
+              "baseline": 102.052,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d2",
+              "cx": 755,
+              "cy": 254,
+              "r": 12,
+              "baseline": 179.42,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d3",
+              "cx": 1877,
+              "cy": 456,
+              "r": 13,
+              "baseline": 183.795,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d4",
+              "cx": 807,
+              "cy": 542,
+              "r": 17,
+              "baseline": 199.564,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d5",
+              "cx": 1790,
+              "cy": 647,
+              "r": 13,
+              "baseline": 180.186,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d6",
+              "cx": 1722,
+              "cy": 723,
+              "r": 14,
+              "baseline": 178.328,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d7",
+              "cx": 783,
+              "cy": 781,
+              "r": 14,
+              "baseline": 188.385,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d8",
+              "cx": 776,
+              "cy": 814,
+              "r": 16,
+              "baseline": 191.792,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d9",
+              "cx": 1915,
+              "cy": 847,
+              "r": 9,
+              "baseline": 165.4,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d10",
+              "cx": 184,
+              "cy": 872,
+              "r": 11,
+              "baseline": 157.973,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d11",
+              "cx": 1616,
+              "cy": 879,
+              "r": 15,
+              "baseline": 172.433,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d12",
+              "cx": 848,
+              "cy": 880,
+              "r": 13,
+              "baseline": 184.705,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d13",
+              "cx": 274,
+              "cy": 895,
+              "r": 12,
+              "baseline": 170.608,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d14",
+              "cx": 381,
+              "cy": 921,
+              "r": 14,
+              "baseline": 178.889,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d15",
+              "cx": 1851,
+              "cy": 925,
+              "r": 12,
+              "baseline": 155.767,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d16",
+              "cx": 508,
+              "cy": 934,
+              "r": 13,
+              "baseline": 181.681,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d17",
+              "cx": 610,
+              "cy": 937,
+              "r": 16,
+              "baseline": 186.522,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d18",
+              "cx": 818,
+              "cy": 960,
+              "r": 16,
+              "baseline": 191.425,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d19",
+              "cx": 1807,
+              "cy": 974,
+              "r": 8,
+              "baseline": 150.359,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d20",
+              "cx": 826,
+              "cy": 1001,
+              "r": 17,
+              "baseline": 187.139,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d21",
+              "cx": 1700,
+              "cy": 1072,
+              "r": 7,
+              "baseline": 158.293,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-22": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 27,
+            "min_area": 39,
+            "max_area": 678
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-22:d0",
+              "cx": 1358,
+              "cy": 308,
+              "r": 14,
+              "baseline": 202.766,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d1",
+              "cx": 1278,
+              "cy": 599,
+              "r": 15,
+              "baseline": 201.894,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d2",
+              "cx": 1250,
+              "cy": 730,
+              "r": 15,
+              "baseline": 194.947,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d3",
+              "cx": 1882,
+              "cy": 794,
+              "r": 9,
+              "baseline": 155.69,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d4",
+              "cx": 1824,
+              "cy": 821,
+              "r": 9,
+              "baseline": 167.49,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d5",
+              "cx": 1700,
+              "cy": 867,
+              "r": 9,
+              "baseline": 158.79,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d6",
+              "cx": 1195,
+              "cy": 869,
+              "r": 12,
+              "baseline": 180.597,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d7",
+              "cx": 372,
+              "cy": 901,
+              "r": 13,
+              "baseline": 175.419,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d8",
+              "cx": 1821,
+              "cy": 963,
+              "r": 6,
+              "baseline": 139.795,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d9",
+              "cx": 1163,
+              "cy": 968,
+              "r": 9,
+              "baseline": 164.79,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d10",
+              "cx": 1795,
+              "cy": 973,
+              "r": 7,
+              "baseline": 160.31,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d11",
+              "cx": 1774,
+              "cy": 974,
+              "r": 6,
+              "baseline": 137.091,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d12",
+              "cx": 447,
+              "cy": 988,
+              "r": 12,
+              "baseline": 170.08,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d13",
+              "cx": 1692,
+              "cy": 1017,
+              "r": 6,
+              "baseline": 140.523,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d14",
+              "cx": 501,
+              "cy": 1039,
+              "r": 8,
+              "baseline": 166.256,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d15",
+              "cx": 1119,
+              "cy": 1055,
+              "r": 9,
+              "baseline": 167.23,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d16",
+              "cx": 1601,
+              "cy": 1060,
+              "r": 8,
+              "baseline": 148.026,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d17",
+              "cx": 1568,
+              "cy": 1063,
+              "r": 6,
+              "baseline": 123.705,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d18",
+              "cx": 244,
+              "cy": 1077,
+              "r": 7,
+              "baseline": 150.69,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-23": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 23,
+            "min_area": 27,
+            "max_area": 471
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-23:d0",
+              "cx": 3,
+              "cy": 824,
+              "r": 7,
+              "baseline": 146.188,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d1",
+              "cx": 1697,
+              "cy": 856,
+              "r": 12,
+              "baseline": 173.193,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d2",
+              "cx": 1906,
+              "cy": 864,
+              "r": 6,
+              "baseline": 149.068,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d3",
+              "cx": 1595,
+              "cy": 875,
+              "r": 14,
+              "baseline": 182.734,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d4",
+              "cx": 1876,
+              "cy": 899,
+              "r": 6,
+              "baseline": 146.773,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d5",
+              "cx": 74,
+              "cy": 910,
+              "r": 7,
+              "baseline": 165.759,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d6",
+              "cx": 314,
+              "cy": 910,
+              "r": 9,
+              "baseline": 164.18,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d7",
+              "cx": 1494,
+              "cy": 915,
+              "r": 10,
+              "baseline": 176.032,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d8",
+              "cx": 1014,
+              "cy": 917,
+              "r": 12,
+              "baseline": 179.392,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d9",
+              "cx": 1651,
+              "cy": 921,
+              "r": 9,
+              "baseline": 153.44,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d10",
+              "cx": 793,
+              "cy": 926,
+              "r": 12,
+              "baseline": 187.71,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d11",
+              "cx": 1846,
+              "cy": 931,
+              "r": 5,
+              "baseline": 146.031,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d12",
+              "cx": 505,
+              "cy": 933,
+              "r": 12,
+              "baseline": 181.284,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d13",
+              "cx": 1357,
+              "cy": 933,
+              "r": 11,
+              "baseline": 168.687,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d14",
+              "cx": 1107,
+              "cy": 936,
+              "r": 12,
+              "baseline": 178.176,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d15",
+              "cx": 644,
+              "cy": 940,
+              "r": 12,
+              "baseline": 191.523,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d16",
+              "cx": 119,
+              "cy": 952,
+              "r": 8,
+              "baseline": 163.385,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d17",
+              "cx": 13,
+              "cy": 954,
+              "r": 6,
+              "baseline": 122.818,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d18",
+              "cx": 1802,
+              "cy": 973,
+              "r": 6,
+              "baseline": 133.705,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d19",
+              "cx": 1593,
+              "cy": 978,
+              "r": 9,
+              "baseline": 157.74,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d20",
+              "cx": 164,
+              "cy": 994,
+              "r": 7,
+              "baseline": 166.552,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d21",
+              "cx": 1821,
+              "cy": 1031,
+              "r": 5,
+              "baseline": 123.188,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d22",
+              "cx": 1539,
+              "cy": 1036,
+              "r": 7,
+              "baseline": 153.517,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d23",
+              "cx": 216,
+              "cy": 1043,
+              "r": 8,
+              "baseline": 170.769,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d24",
+              "cx": 248,
+              "cy": 1048,
+              "r": 7,
+              "baseline": 139.569,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d25",
+              "cx": 1500,
+              "cy": 1068,
+              "r": 8,
+              "baseline": 147.359,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d26",
+              "cx": 337,
+              "cy": 1073,
+              "r": 6,
+              "baseline": 134.023,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-24": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 23,
+            "min_area": 27,
+            "max_area": 471
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-24:d0",
+              "cx": 1542,
+              "cy": 207,
+              "r": 11,
+              "baseline": 170.727,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d1",
+              "cx": 1510,
+              "cy": 240,
+              "r": 6,
+              "baseline": 112.818,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d2",
+              "cx": 1569,
+              "cy": 331,
+              "r": 6,
+              "baseline": 121.841,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d3",
+              "cx": 1502,
+              "cy": 390,
+              "r": 6,
+              "baseline": 126.636,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d4",
+              "cx": 1475,
+              "cy": 611,
+              "r": 13,
+              "baseline": 200.952,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d5",
+              "cx": 1445,
+              "cy": 619,
+              "r": 5,
+              "baseline": 103.531,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d6",
+              "cx": 1904,
+              "cy": 716,
+              "r": 8,
+              "baseline": 162.949,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d7",
+              "cx": 1396,
+              "cy": 766,
+              "r": 14,
+              "baseline": 198.844,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d8",
+              "cx": 1857,
+              "cy": 769,
+              "r": 8,
+              "baseline": 166.846,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d9",
+              "cx": 1861,
+              "cy": 788,
+              "r": 7,
+              "baseline": 154.397,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d10",
+              "cx": 1797,
+              "cy": 858,
+              "r": 9,
+              "baseline": 168.33,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d11",
+              "cx": 51,
+              "cy": 860,
+              "r": 8,
+              "baseline": 162.526,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d12",
+              "cx": 102,
+              "cy": 889,
+              "r": 8,
+              "baseline": 175.128,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d13",
+              "cx": 226,
+              "cy": 931,
+              "r": 9,
+              "baseline": 171.4,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d14",
+              "cx": 321,
+              "cy": 950,
+              "r": 10,
+              "baseline": 170.349,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d15",
+              "cx": 480,
+              "cy": 950,
+              "r": 6,
+              "baseline": 131.727,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d16",
+              "cx": 1714,
+              "cy": 952,
+              "r": 8,
+              "baseline": 165.872,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d17",
+              "cx": 1702,
+              "cy": 977,
+              "r": 7,
+              "baseline": 160.707,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d18",
+              "cx": 22,
+              "cy": 999,
+              "r": 5,
+              "baseline": 118.25,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d19",
+              "cx": 56,
+              "cy": 1017,
+              "r": 7,
+              "baseline": 142.052,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d20",
+              "cx": 589,
+              "cy": 1022,
+              "r": 13,
+              "baseline": 180.124,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d21",
+              "cx": 1263,
+              "cy": 1039,
+              "r": 11,
+              "baseline": 172.207,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d22",
+              "cx": 671,
+              "cy": 1055,
+              "r": 7,
+              "baseline": 57.431,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d23",
+              "cx": 145,
+              "cy": 1062,
+              "r": 7,
+              "baseline": 141.379,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d24",
+              "cx": 1610,
+              "cy": 1069,
+              "r": 6,
+              "baseline": 140.727,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d25",
+              "cx": 195,
+              "cy": 1072,
+              "r": 7,
+              "baseline": 138.845,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d26",
+              "cx": 618,
+              "cy": 1072,
+              "r": 11,
+              "baseline": 180.836,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d27",
+              "cx": 1254,
+              "cy": 1072,
+              "r": 10,
+              "baseline": 182.681,
+              "masked": false
+            }
+          ]
+        }
+      }
+    },
+    "maze_2": {
+      "captured_at": "2026-09-17T15:51:30+00:00",
+      "cameras": {
+        "SM-CAM-11": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 23,
+            "min_area": 27,
+            "max_area": 471
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-11:d0",
+              "cx": 1911,
+              "cy": 687,
+              "r": 10,
+              "baseline": 158.533,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d1",
+              "cx": 1704,
+              "cy": 718,
+              "r": 12,
+              "baseline": 177.045,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d2",
+              "cx": 8,
+              "cy": 724,
+              "r": 7,
+              "baseline": 135.138,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d3",
+              "cx": 56,
+              "cy": 744,
+              "r": 7,
+              "baseline": 154.931,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d4",
+              "cx": 187,
+              "cy": 747,
+              "r": 8,
+              "baseline": 161.795,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d5",
+              "cx": 1590,
+              "cy": 749,
+              "r": 12,
+              "baseline": 187.892,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d6",
+              "cx": 147,
+              "cy": 752,
+              "r": 6,
+              "baseline": 155.341,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d7",
+              "cx": 97,
+              "cy": 753,
+              "r": 6,
+              "baseline": 165.182,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d8",
+              "cx": 1328,
+              "cy": 753,
+              "r": 13,
+              "baseline": 191.971,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d9",
+              "cx": 123,
+              "cy": 754,
+              "r": 9,
+              "baseline": 159.4,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d10",
+              "cx": 1376,
+              "cy": 755,
+              "r": 13,
+              "baseline": 178.567,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d11",
+              "cx": 1461,
+              "cy": 756,
+              "r": 12,
+              "baseline": 177.733,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d12",
+              "cx": 253,
+              "cy": 800,
+              "r": 8,
+              "baseline": 148.692,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d13",
+              "cx": 34,
+              "cy": 815,
+              "r": 7,
+              "baseline": 131.293,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d14",
+              "cx": 1316,
+              "cy": 839,
+              "r": 12,
+              "baseline": 177.989,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d15",
+              "cx": 68,
+              "cy": 844,
+              "r": 6,
+              "baseline": 145.341,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d16",
+              "cx": 689,
+              "cy": 870,
+              "r": 11,
+              "baseline": 182.08,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d17",
+              "cx": 373,
+              "cy": 896,
+              "r": 7,
+              "baseline": 157.759,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d18",
+              "cx": 730,
+              "cy": 901,
+              "r": 10,
+              "baseline": 174.921,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d19",
+              "cx": 1305,
+              "cy": 903,
+              "r": 8,
+              "baseline": 173.718,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d20",
+              "cx": 744,
+              "cy": 915,
+              "r": 7,
+              "baseline": 158.293,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d21",
+              "cx": 1725,
+              "cy": 927,
+              "r": 7,
+              "baseline": 153.397,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d22",
+              "cx": 424,
+              "cy": 930,
+              "r": 8,
+              "baseline": 164.218,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d23",
+              "cx": 2,
+              "cy": 940,
+              "r": 8,
+              "baseline": 29.093,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d24",
+              "cx": 1650,
+              "cy": 944,
+              "r": 8,
+              "baseline": 152.308,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d25",
+              "cx": 18,
+              "cy": 959,
+              "r": 7,
+              "baseline": 34.724,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d26",
+              "cx": 1572,
+              "cy": 960,
+              "r": 8,
+              "baseline": 161.526,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d27",
+              "cx": 312,
+              "cy": 963,
+              "r": 6,
+              "baseline": 135.614,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d28",
+              "cx": 490,
+              "cy": 968,
+              "r": 11,
+              "baseline": 173.947,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d29",
+              "cx": 564,
+              "cy": 973,
+              "r": 7,
+              "baseline": 149.224,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d30",
+              "cx": 4,
+              "cy": 974,
+              "r": 8,
+              "baseline": 89.939,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d31",
+              "cx": 39,
+              "cy": 976,
+              "r": 6,
+              "baseline": 37.75,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d32",
+              "cx": 1288,
+              "cy": 979,
+              "r": 9,
+              "baseline": 176.98,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d33",
+              "cx": 1476,
+              "cy": 979,
+              "r": 8,
+              "baseline": 157.115,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d34",
+              "cx": 637,
+              "cy": 985,
+              "r": 9,
+              "baseline": 163.06,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d35",
+              "cx": 808,
+              "cy": 985,
+              "r": 11,
+              "baseline": 170.72,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d36",
+              "cx": 1407,
+              "cy": 991,
+              "r": 8,
+              "baseline": 153.551,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d37",
+              "cx": 694,
+              "cy": 993,
+              "r": 8,
+              "baseline": 159.256,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d38",
+              "cx": 1285,
+              "cy": 996,
+              "r": 8,
+              "baseline": 177.115,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d39",
+              "cx": 760,
+              "cy": 999,
+              "r": 6,
+              "baseline": 141.227,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d40",
+              "cx": 91,
+              "cy": 1008,
+              "r": 7,
+              "baseline": 40.586,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d41",
+              "cx": 840,
+              "cy": 1014,
+              "r": 8,
+              "baseline": 171.179,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d42",
+              "cx": 120,
+              "cy": 1029,
+              "r": 7,
+              "baseline": 36.931,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d43",
+              "cx": 155,
+              "cy": 1051,
+              "r": 6,
+              "baseline": 21.568,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-12": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 27,
+            "min_area": 39,
+            "max_area": 678
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-12:d0",
+              "cx": 90,
+              "cy": 780,
+              "r": 10,
+              "baseline": 170.5,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d1",
+              "cx": 185,
+              "cy": 848,
+              "r": 9,
+              "baseline": 170.03,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d2",
+              "cx": 281,
+              "cy": 869,
+              "r": 10,
+              "baseline": 168.857,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d3",
+              "cx": 156,
+              "cy": 871,
+              "r": 11,
+              "baseline": 172.567,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d4",
+              "cx": 395,
+              "cy": 883,
+              "r": 10,
+              "baseline": 168.27,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d5",
+              "cx": 15,
+              "cy": 918,
+              "r": 6,
+              "baseline": 154.227,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d6",
+              "cx": 584,
+              "cy": 926,
+              "r": 14,
+              "baseline": 187.537,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d7",
+              "cx": 674,
+              "cy": 933,
+              "r": 11,
+              "baseline": 174.693,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d8",
+              "cx": 77,
+              "cy": 949,
+              "r": 7,
+              "baseline": 160.362,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d9",
+              "cx": 1480,
+              "cy": 961,
+              "r": 14,
+              "baseline": 181.926,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d10",
+              "cx": 109,
+              "cy": 972,
+              "r": 6,
+              "baseline": 158.818,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d11",
+              "cx": 862,
+              "cy": 983,
+              "r": 16,
+              "baseline": 183.836,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d12",
+              "cx": 1823,
+              "cy": 983,
+              "r": 9,
+              "baseline": 157.45,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d13",
+              "cx": 1325,
+              "cy": 986,
+              "r": 13,
+              "baseline": 176.138,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d14",
+              "cx": 1232,
+              "cy": 995,
+              "r": 14,
+              "baseline": 190.533,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d15",
+              "cx": 1072,
+              "cy": 1000,
+              "r": 15,
+              "baseline": 181.748,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d16",
+              "cx": 1169,
+              "cy": 1000,
+              "r": 14,
+              "baseline": 187.844,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d17",
+              "cx": 266,
+              "cy": 1001,
+              "r": 12,
+              "baseline": 164.602,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d18",
+              "cx": 167,
+              "cy": 1004,
+              "r": 7,
+              "baseline": 151.672,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d19",
+              "cx": 1794,
+              "cy": 1014,
+              "r": 8,
+              "baseline": 155.949,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d20",
+              "cx": 208,
+              "cy": 1021,
+              "r": 7,
+              "baseline": 167.259,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d21",
+              "cx": 1433,
+              "cy": 1027,
+              "r": 12,
+              "baseline": 175.852,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d22",
+              "cx": 1777,
+              "cy": 1030,
+              "r": 7,
+              "baseline": 154.121,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d23",
+              "cx": 1881,
+              "cy": 1037,
+              "r": 7,
+              "baseline": 146.345,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d24",
+              "cx": 262,
+              "cy": 1043,
+              "r": 7,
+              "baseline": 175.086,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d25",
+              "cx": 311,
+              "cy": 1045,
+              "r": 11,
+              "baseline": 164.573,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d26",
+              "cx": 1859,
+              "cy": 1058,
+              "r": 6,
+              "baseline": 136.227,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-13": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 23,
+            "min_area": 27,
+            "max_area": 471
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-13:d0",
+              "cx": 724,
+              "cy": 163,
+              "r": 14,
+              "baseline": 173.311,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d1",
+              "cx": 806,
+              "cy": 579,
+              "r": 12,
+              "baseline": 172.608,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d2",
+              "cx": 34,
+              "cy": 658,
+              "r": 11,
+              "baseline": 181.727,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d3",
+              "cx": 100,
+              "cy": 732,
+              "r": 9,
+              "baseline": 172.88,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d4",
+              "cx": 835,
+              "cy": 777,
+              "r": 14,
+              "baseline": 196.557,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d5",
+              "cx": 1902,
+              "cy": 798,
+              "r": 8,
+              "baseline": 152.564,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d6",
+              "cx": 1821,
+              "cy": 823,
+              "r": 7,
+              "baseline": 141.466,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d7",
+              "cx": 184,
+              "cy": 849,
+              "r": 9,
+              "baseline": 160.52,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d8",
+              "cx": 150,
+              "cy": 858,
+              "r": 8,
+              "baseline": 170.462,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d9",
+              "cx": 1736,
+              "cy": 861,
+              "r": 8,
+              "baseline": 163.641,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d10",
+              "cx": 1574,
+              "cy": 873,
+              "r": 12,
+              "baseline": 184.676,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d11",
+              "cx": 875,
+              "cy": 880,
+              "r": 13,
+              "baseline": 192.348,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d12",
+              "cx": 17,
+              "cy": 888,
+              "r": 7,
+              "baseline": 152.948,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d13",
+              "cx": 289,
+              "cy": 899,
+              "r": 10,
+              "baseline": 170.762,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d14",
+              "cx": 1627,
+              "cy": 899,
+              "r": 9,
+              "baseline": 172.96,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d15",
+              "cx": 49,
+              "cy": 923,
+              "r": 7,
+              "baseline": 162.293,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d16",
+              "cx": 565,
+              "cy": 925,
+              "r": 11,
+              "baseline": 178.953,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d17",
+              "cx": 687,
+              "cy": 933,
+              "r": 13,
+              "baseline": 188.819,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d18",
+              "cx": 801,
+              "cy": 938,
+              "r": 14,
+              "baseline": 186.033,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d19",
+              "cx": 1915,
+              "cy": 941,
+              "r": 7,
+              "baseline": 154.154,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d20",
+              "cx": 1900,
+              "cy": 954,
+              "r": 6,
+              "baseline": 161.477,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d21",
+              "cx": 82,
+              "cy": 957,
+              "r": 7,
+              "baseline": 161.81,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d22",
+              "cx": 1507,
+              "cy": 960,
+              "r": 12,
+              "baseline": 179.972,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d23",
+              "cx": 873,
+              "cy": 974,
+              "r": 13,
+              "baseline": 179.281,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d24",
+              "cx": 133,
+              "cy": 1012,
+              "r": 7,
+              "baseline": 168.397,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d25",
+              "cx": 155,
+              "cy": 1025,
+              "r": 6,
+              "baseline": 158.136,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d26",
+              "cx": 218,
+              "cy": 1043,
+              "r": 8,
+              "baseline": 167.064,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d27",
+              "cx": 1673,
+              "cy": 1068,
+              "r": 6,
+              "baseline": 147.091,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d28",
+              "cx": 1413,
+              "cy": 1073,
+              "r": 12,
+              "baseline": 183.425,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d29",
+              "cx": 291,
+              "cy": 1078,
+              "r": 6,
+              "baseline": 156.25,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-14": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 27,
+            "min_area": 39,
+            "max_area": 678
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-14:d0",
+              "cx": 1629,
+              "cy": 433,
+              "r": 16,
+              "baseline": 190.462,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d1",
+              "cx": 1461,
+              "cy": 693,
+              "r": 15,
+              "baseline": 186.138,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d2",
+              "cx": 42,
+              "cy": 742,
+              "r": 9,
+              "baseline": 165.71,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d3",
+              "cx": 1893,
+              "cy": 760,
+              "r": 8,
+              "baseline": 139.628,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d4",
+              "cx": 1468,
+              "cy": 769,
+              "r": 12,
+              "baseline": 185.835,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d5",
+              "cx": 70,
+              "cy": 787,
+              "r": 12,
+              "baseline": 171.875,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d6",
+              "cx": 1826,
+              "cy": 819,
+              "r": 8,
+              "baseline": 160.282,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d7",
+              "cx": 147,
+              "cy": 829,
+              "r": 10,
+              "baseline": 164.897,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d8",
+              "cx": 1785,
+              "cy": 831,
+              "r": 8,
+              "baseline": 155.564,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d9",
+              "cx": 241,
+              "cy": 845,
+              "r": 10,
+              "baseline": 170.421,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d10",
+              "cx": 1819,
+              "cy": 845,
+              "r": 7,
+              "baseline": 158.276,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d11",
+              "cx": 1728,
+              "cy": 847,
+              "r": 8,
+              "baseline": 155.333,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d12",
+              "cx": 347,
+              "cy": 878,
+              "r": 13,
+              "baseline": 174.148,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d13",
+              "cx": 474,
+              "cy": 891,
+              "r": 14,
+              "baseline": 185.406,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d14",
+              "cx": 1390,
+              "cy": 892,
+              "r": 12,
+              "baseline": 176.932,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d15",
+              "cx": 671,
+              "cy": 909,
+              "r": 13,
+              "baseline": 185.11,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d16",
+              "cx": 1482,
+              "cy": 909,
+              "r": 11,
+              "baseline": 174.847,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d17",
+              "cx": 1899,
+              "cy": 913,
+              "r": 10,
+              "baseline": 130.5,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d18",
+              "cx": 1271,
+              "cy": 924,
+              "r": 12,
+              "baseline": 180.222,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d19",
+              "cx": 178,
+              "cy": 926,
+              "r": 8,
+              "baseline": 159.654,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d20",
+              "cx": 1863,
+              "cy": 950,
+              "r": 8,
+              "baseline": 151.128,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d21",
+              "cx": 227,
+              "cy": 966,
+              "r": 7,
+              "baseline": 165.621,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d22",
+              "cx": 624,
+              "cy": 979,
+              "r": 12,
+              "baseline": 178.716,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d23",
+              "cx": 1790,
+              "cy": 996,
+              "r": 7,
+              "baseline": 149.224,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d24",
+              "cx": 1742,
+              "cy": 1015,
+              "r": 7,
+              "baseline": 148.276,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d25",
+              "cx": 288,
+              "cy": 1029,
+              "r": 8,
+              "baseline": 151.282,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d26",
+              "cx": 646,
+              "cy": 1031,
+              "r": 8,
+              "baseline": 169.179,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d27",
+              "cx": 1683,
+              "cy": 1039,
+              "r": 6,
+              "baseline": 138.591,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d28",
+              "cx": 305,
+              "cy": 1054,
+              "r": 6,
+              "baseline": 142.386,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d29",
+              "cx": 3,
+              "cy": 1056,
+              "r": 11,
+              "baseline": 25.5,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d30",
+              "cx": 1605,
+              "cy": 1058,
+              "r": 6,
+              "baseline": 141.295,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d31",
+              "cx": 670,
+              "cy": 1061,
+              "r": 9,
+              "baseline": 168.53,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d32",
+              "cx": 1578,
+              "cy": 1061,
+              "r": 6,
+              "baseline": 145.5,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d33",
+              "cx": 343,
+              "cy": 1074,
+              "r": 6,
+              "baseline": 163.591,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-21": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 33,
+            "min_area": 70,
+            "max_area": 1206
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-21:d0",
+              "cx": 1915,
+              "cy": 846,
+              "r": 8,
+              "baseline": 172.303,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d1",
+              "cx": 1893,
+              "cy": 861,
+              "r": 11,
+              "baseline": 163.927,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d2",
+              "cx": 185,
+              "cy": 873,
+              "r": 11,
+              "baseline": 161.48,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d3",
+              "cx": 1819,
+              "cy": 891,
+              "r": 9,
+              "baseline": 155.63,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d4",
+              "cx": 275,
+              "cy": 895,
+              "r": 11,
+              "baseline": 171.713,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d5",
+              "cx": 1753,
+              "cy": 910,
+              "r": 12,
+              "baseline": 168.75,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d6",
+              "cx": 381,
+              "cy": 922,
+              "r": 13,
+              "baseline": 182.267,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d7",
+              "cx": 1851,
+              "cy": 925,
+              "r": 9,
+              "baseline": 160.79,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d8",
+              "cx": 1693,
+              "cy": 929,
+              "r": 10,
+              "baseline": 160.714,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d9",
+              "cx": 509,
+              "cy": 934,
+              "r": 13,
+              "baseline": 180.019,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d10",
+              "cx": 609,
+              "cy": 937,
+              "r": 15,
+              "baseline": 186.83,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d11",
+              "cx": 1551,
+              "cy": 938,
+              "r": 14,
+              "baseline": 169.824,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d12",
+              "cx": 1610,
+              "cy": 952,
+              "r": 9,
+              "baseline": 158.58,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d13",
+              "cx": 818,
+              "cy": 960,
+              "r": 15,
+              "baseline": 191.674,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d14",
+              "cx": 1807,
+              "cy": 974,
+              "r": 7,
+              "baseline": 156.69,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d15",
+              "cx": 825,
+              "cy": 1002,
+              "r": 16,
+              "baseline": 189.994,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d16",
+              "cx": 1491,
+              "cy": 1006,
+              "r": 14,
+              "baseline": 174.184,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d17",
+              "cx": 1845,
+              "cy": 1030,
+              "r": 7,
+              "baseline": 158.241,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d18",
+              "cx": 1754,
+              "cy": 1071,
+              "r": 7,
+              "baseline": 150.741,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d19",
+              "cx": 1700,
+              "cy": 1072,
+              "r": 7,
+              "baseline": 145.707,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-22": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 27,
+            "min_area": 39,
+            "max_area": 678
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-22:d0",
+              "cx": 1359,
+              "cy": 309,
+              "r": 13,
+              "baseline": 201.357,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d1",
+              "cx": 1278,
+              "cy": 599,
+              "r": 15,
+              "baseline": 201.844,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d2",
+              "cx": 1250,
+              "cy": 730,
+              "r": 15,
+              "baseline": 193.489,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d3",
+              "cx": 1882,
+              "cy": 794,
+              "r": 8,
+              "baseline": 155.359,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d4",
+              "cx": 1751,
+              "cy": 820,
+              "r": 9,
+              "baseline": 159.57,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d5",
+              "cx": 1824,
+              "cy": 821,
+              "r": 9,
+              "baseline": 160.21,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d6",
+              "cx": 42,
+              "cy": 865,
+              "r": 6,
+              "baseline": 158.727,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d7",
+              "cx": 1700,
+              "cy": 867,
+              "r": 8,
+              "baseline": 168.295,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d8",
+              "cx": 1195,
+              "cy": 869,
+              "r": 11,
+              "baseline": 177.673,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d9",
+              "cx": 90,
+              "cy": 873,
+              "r": 8,
+              "baseline": 159.846,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d10",
+              "cx": 144,
+              "cy": 883,
+              "r": 10,
+              "baseline": 166.794,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d11",
+              "cx": 35,
+              "cy": 891,
+              "r": 9,
+              "baseline": 157.16,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d12",
+              "cx": 1707,
+              "cy": 894,
+              "r": 11,
+              "baseline": 162.027,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d13",
+              "cx": 231,
+              "cy": 899,
+              "r": 9,
+              "baseline": 164.59,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d14",
+              "cx": 373,
+              "cy": 902,
+              "r": 12,
+              "baseline": 177.159,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d15",
+              "cx": 344,
+              "cy": 907,
+              "r": 12,
+              "baseline": 176.75,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d16",
+              "cx": 1662,
+              "cy": 949,
+              "r": 11,
+              "baseline": 154.98,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d17",
+              "cx": 1821,
+              "cy": 963,
+              "r": 6,
+              "baseline": 144.591,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d18",
+              "cx": 1795,
+              "cy": 972,
+              "r": 6,
+              "baseline": 163.682,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d19",
+              "cx": 447,
+              "cy": 988,
+              "r": 10,
+              "baseline": 171.0,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d20",
+              "cx": 145,
+              "cy": 1003,
+              "r": 7,
+              "baseline": 161.034,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d21",
+              "cx": 180,
+              "cy": 1031,
+              "r": 7,
+              "baseline": 154.086,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d22",
+              "cx": 1722,
+              "cy": 1034,
+              "r": 6,
+              "baseline": 144.227,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d23",
+              "cx": 501,
+              "cy": 1039,
+              "r": 8,
+              "baseline": 157.628,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d24",
+              "cx": 1563,
+              "cy": 1050,
+              "r": 8,
+              "baseline": 154.205,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d25",
+              "cx": 1680,
+              "cy": 1071,
+              "r": 6,
+              "baseline": 146.5,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-23": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 23,
+            "min_area": 27,
+            "max_area": 471
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-23:d0",
+              "cx": 1903,
+              "cy": 766,
+              "r": 7,
+              "baseline": 151.862,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d1",
+              "cx": 1916,
+              "cy": 793,
+              "r": 7,
+              "baseline": 165.812,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d2",
+              "cx": 1775,
+              "cy": 849,
+              "r": 12,
+              "baseline": 148.773,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d3",
+              "cx": 1697,
+              "cy": 856,
+              "r": 11,
+              "baseline": 167.98,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d4",
+              "cx": 1906,
+              "cy": 865,
+              "r": 6,
+              "baseline": 130.227,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d5",
+              "cx": 301,
+              "cy": 871,
+              "r": 10,
+              "baseline": 166.389,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d6",
+              "cx": 1595,
+              "cy": 876,
+              "r": 12,
+              "baseline": 181.006,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d7",
+              "cx": 1652,
+              "cy": 885,
+              "r": 10,
+              "baseline": 165.032,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d8",
+              "cx": 1876,
+              "cy": 900,
+              "r": 6,
+              "baseline": 139.5,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d9",
+              "cx": 314,
+              "cy": 910,
+              "r": 8,
+              "baseline": 166.436,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d10",
+              "cx": 1494,
+              "cy": 915,
+              "r": 9,
+              "baseline": 178.69,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d11",
+              "cx": 1014,
+              "cy": 918,
+              "r": 11,
+              "baseline": 174.113,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d12",
+              "cx": 793,
+              "cy": 927,
+              "r": 12,
+              "baseline": 183.653,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d13",
+              "cx": 1847,
+              "cy": 931,
+              "r": 5,
+              "baseline": 132.781,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d14",
+              "cx": 1357,
+              "cy": 932,
+              "r": 10,
+              "baseline": 161.302,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d15",
+              "cx": 505,
+              "cy": 934,
+              "r": 12,
+              "baseline": 172.636,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d16",
+              "cx": 1107,
+              "cy": 936,
+              "r": 11,
+              "baseline": 174.173,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d17",
+              "cx": 644,
+              "cy": 940,
+              "r": 12,
+              "baseline": 180.193,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d18",
+              "cx": 1909,
+              "cy": 941,
+              "r": 6,
+              "baseline": 126.25,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d19",
+              "cx": 14,
+              "cy": 954,
+              "r": 5,
+              "baseline": 107.781,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d20",
+              "cx": 398,
+              "cy": 957,
+              "r": 13,
+              "baseline": 177.586,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d21",
+              "cx": 41,
+              "cy": 967,
+              "r": 5,
+              "baseline": 126.625,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d22",
+              "cx": 1802,
+              "cy": 973,
+              "r": 6,
+              "baseline": 150.159,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d23",
+              "cx": 58,
+              "cy": 974,
+              "r": 6,
+              "baseline": 138.909,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d24",
+              "cx": 1837,
+              "cy": 978,
+              "r": 6,
+              "baseline": 150.25,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d25",
+              "cx": 70,
+              "cy": 979,
+              "r": 6,
+              "baseline": 159.023,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d26",
+              "cx": 92,
+              "cy": 988,
+              "r": 6,
+              "baseline": 133.523,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d27",
+              "cx": 1790,
+              "cy": 1002,
+              "r": 6,
+              "baseline": 141.591,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d28",
+              "cx": 149,
+              "cy": 1012,
+              "r": 7,
+              "baseline": 165.776,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d29",
+              "cx": 1729,
+              "cy": 1024,
+              "r": 6,
+              "baseline": 127.364,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d30",
+              "cx": 219,
+              "cy": 1043,
+              "r": 6,
+              "baseline": 157.568,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d31",
+              "cx": 248,
+              "cy": 1049,
+              "r": 7,
+              "baseline": 140.483,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d32",
+              "cx": 337,
+              "cy": 1073,
+              "r": 6,
+              "baseline": 139.409,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-24": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 23,
+            "min_area": 27,
+            "max_area": 471
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-24:d0",
+              "cx": 1904,
+              "cy": 716,
+              "r": 7,
+              "baseline": 171.31,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d1",
+              "cx": 1857,
+              "cy": 769,
+              "r": 8,
+              "baseline": 169.872,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d2",
+              "cx": 1861,
+              "cy": 788,
+              "r": 6,
+              "baseline": 165.568,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d3",
+              "cx": 1798,
+              "cy": 858,
+              "r": 9,
+              "baseline": 162.16,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d4",
+              "cx": 51,
+              "cy": 860,
+              "r": 7,
+              "baseline": 159.103,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d5",
+              "cx": 102,
+              "cy": 890,
+              "r": 8,
+              "baseline": 172.962,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d6",
+              "cx": 924,
+              "cy": 914,
+              "r": 13,
+              "baseline": 186.338,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d7",
+              "cx": 1307,
+              "cy": 930,
+              "r": 11,
+              "baseline": 183.647,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d8",
+              "cx": 226,
+              "cy": 931,
+              "r": 8,
+              "baseline": 159.256,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d9",
+              "cx": 1343,
+              "cy": 942,
+              "r": 13,
+              "baseline": 179.129,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d10",
+              "cx": 321,
+              "cy": 949,
+              "r": 9,
+              "baseline": 169.81,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d11",
+              "cx": 482,
+              "cy": 950,
+              "r": 6,
+              "baseline": 128.159,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d12",
+              "cx": 1714,
+              "cy": 952,
+              "r": 7,
+              "baseline": 171.5,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d13",
+              "cx": 1080,
+              "cy": 954,
+              "r": 14,
+              "baseline": 181.5,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d14",
+              "cx": 498,
+              "cy": 974,
+              "r": 11,
+              "baseline": 182.407,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d15",
+              "cx": 1702,
+              "cy": 977,
+              "r": 7,
+              "baseline": 160.81,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d16",
+              "cx": 709,
+              "cy": 981,
+              "r": 14,
+              "baseline": 193.254,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d17",
+              "cx": 58,
+              "cy": 1009,
+              "r": 7,
+              "baseline": 157.655,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d18",
+              "cx": 1263,
+              "cy": 1039,
+              "r": 10,
+              "baseline": 175.484,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d19",
+              "cx": 106,
+              "cy": 1049,
+              "r": 6,
+              "baseline": 116.977,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d20",
+              "cx": 1610,
+              "cy": 1069,
+              "r": 6,
+              "baseline": 139.136,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d21",
+              "cx": 1254,
+              "cy": 1072,
+              "r": 9,
+              "baseline": 174.583,
+              "masked": false
+            }
+          ]
+        }
+      }
+    },
+    "maze_3": {
+      "captured_at": "2026-09-17T15:51:30+00:00",
+      "cameras": {
+        "SM-CAM-11": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 23,
+            "min_area": 27,
+            "max_area": 471
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-11:d0",
+              "cx": 1913,
+              "cy": 685,
+              "r": 9,
+              "baseline": 164.87,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d1",
+              "cx": 1704,
+              "cy": 718,
+              "r": 12,
+              "baseline": 178.08,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d2",
+              "cx": 11,
+              "cy": 719,
+              "r": 5,
+              "baseline": 145.406,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d3",
+              "cx": 56,
+              "cy": 744,
+              "r": 7,
+              "baseline": 158.069,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d4",
+              "cx": 1591,
+              "cy": 749,
+              "r": 12,
+              "baseline": 181.284,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d5",
+              "cx": 147,
+              "cy": 752,
+              "r": 6,
+              "baseline": 156.818,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d6",
+              "cx": 97,
+              "cy": 753,
+              "r": 6,
+              "baseline": 163.068,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d7",
+              "cx": 1328,
+              "cy": 753,
+              "r": 12,
+              "baseline": 191.472,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d8",
+              "cx": 122,
+              "cy": 754,
+              "r": 8,
+              "baseline": 159.526,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d9",
+              "cx": 1376,
+              "cy": 755,
+              "r": 12,
+              "baseline": 181.153,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d10",
+              "cx": 1461,
+              "cy": 755,
+              "r": 11,
+              "baseline": 180.873,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d11",
+              "cx": 250,
+              "cy": 764,
+              "r": 7,
+              "baseline": 165.741,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d12",
+              "cx": 332,
+              "cy": 776,
+              "r": 9,
+              "baseline": 165.73,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d13",
+              "cx": 72,
+              "cy": 779,
+              "r": 6,
+              "baseline": 155.886,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d14",
+              "cx": 402,
+              "cy": 782,
+              "r": 9,
+              "baseline": 170.39,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d15",
+              "cx": 492,
+              "cy": 784,
+              "r": 10,
+              "baseline": 174.087,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d16",
+              "cx": 609,
+              "cy": 790,
+              "r": 12,
+              "baseline": 188.943,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d17",
+              "cx": 116,
+              "cy": 817,
+              "r": 6,
+              "baseline": 153.068,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d18",
+              "cx": 1316,
+              "cy": 839,
+              "r": 12,
+              "baseline": 175.551,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d19",
+              "cx": 155,
+              "cy": 847,
+              "r": 5,
+              "baseline": 131.562,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d20",
+              "cx": 139,
+              "cy": 879,
+              "r": 5,
+              "baseline": 104.531,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d21",
+              "cx": 172,
+              "cy": 890,
+              "r": 6,
+              "baseline": 139.091,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d22",
+              "cx": 208,
+              "cy": 901,
+              "r": 5,
+              "baseline": 109.938,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d23",
+              "cx": 1305,
+              "cy": 903,
+              "r": 8,
+              "baseline": 175.692,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d24",
+              "cx": 227,
+              "cy": 907,
+              "r": 5,
+              "baseline": 147.438,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d25",
+              "cx": 1725,
+              "cy": 927,
+              "r": 7,
+              "baseline": 164.069,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d26",
+              "cx": 1,
+              "cy": 941,
+              "r": 7,
+              "baseline": 25.763,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d27",
+              "cx": 1650,
+              "cy": 944,
+              "r": 7,
+              "baseline": 158.034,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d28",
+              "cx": 1572,
+              "cy": 959,
+              "r": 8,
+              "baseline": 167.462,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d29",
+              "cx": 457,
+              "cy": 960,
+              "r": 7,
+              "baseline": 141.397,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d30",
+              "cx": 18,
+              "cy": 961,
+              "r": 7,
+              "baseline": 33.345,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d31",
+              "cx": 495,
+              "cy": 967,
+              "r": 8,
+              "baseline": 166.859,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d32",
+              "cx": 4,
+              "cy": 974,
+              "r": 8,
+              "baseline": 83.53,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d33",
+              "cx": 565,
+              "cy": 974,
+              "r": 6,
+              "baseline": 149.955,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d34",
+              "cx": 39,
+              "cy": 975,
+              "r": 6,
+              "baseline": 29.841,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d35",
+              "cx": 1289,
+              "cy": 979,
+              "r": 9,
+              "baseline": 179.86,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d36",
+              "cx": 1476,
+              "cy": 979,
+              "r": 7,
+              "baseline": 167.103,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d37",
+              "cx": 637,
+              "cy": 986,
+              "r": 8,
+              "baseline": 171.218,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d38",
+              "cx": 1407,
+              "cy": 991,
+              "r": 8,
+              "baseline": 155.333,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d39",
+              "cx": 694,
+              "cy": 993,
+              "r": 7,
+              "baseline": 159.0,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d40",
+              "cx": 1286,
+              "cy": 996,
+              "r": 7,
+              "baseline": 172.328,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d41",
+              "cx": 760,
+              "cy": 999,
+              "r": 6,
+              "baseline": 138.636,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d42",
+              "cx": 526,
+              "cy": 1005,
+              "r": 10,
+              "baseline": 158.508,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d43",
+              "cx": 91,
+              "cy": 1008,
+              "r": 7,
+              "baseline": 34.224,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d44",
+              "cx": 120,
+              "cy": 1029,
+              "r": 7,
+              "baseline": 40.897,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d45",
+              "cx": 572,
+              "cy": 1032,
+              "r": 6,
+              "baseline": 145.386,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d46",
+              "cx": 154,
+              "cy": 1052,
+              "r": 6,
+              "baseline": 37.795,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d47",
+              "cx": 606,
+              "cy": 1056,
+              "r": 6,
+              "baseline": 136.068,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-11:d48",
+              "cx": 630,
+              "cy": 1067,
+              "r": 6,
+              "baseline": 135.159,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-12": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 27,
+            "min_area": 39,
+            "max_area": 678
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-12:d0",
+              "cx": 9,
+              "cy": 634,
+              "r": 12,
+              "baseline": 167.494,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d1",
+              "cx": 93,
+              "cy": 781,
+              "r": 11,
+              "baseline": 168.393,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d2",
+              "cx": 1901,
+              "cy": 902,
+              "r": 9,
+              "baseline": 159.48,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d3",
+              "cx": 1842,
+              "cy": 918,
+              "r": 9,
+              "baseline": 164.11,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d4",
+              "cx": 697,
+              "cy": 928,
+              "r": 16,
+              "baseline": 184.104,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d5",
+              "cx": 73,
+              "cy": 931,
+              "r": 6,
+              "baseline": 138.886,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d6",
+              "cx": 1763,
+              "cy": 940,
+              "r": 9,
+              "baseline": 164.03,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d7",
+              "cx": 1680,
+              "cy": 954,
+              "r": 10,
+              "baseline": 172.397,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d8",
+              "cx": 1559,
+              "cy": 967,
+              "r": 10,
+              "baseline": 160.421,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d9",
+              "cx": 110,
+              "cy": 972,
+              "r": 7,
+              "baseline": 150.741,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d10",
+              "cx": 862,
+              "cy": 983,
+              "r": 16,
+              "baseline": 181.626,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d11",
+              "cx": 1325,
+              "cy": 986,
+              "r": 12,
+              "baseline": 175.153,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d12",
+              "cx": 1231,
+              "cy": 995,
+              "r": 13,
+              "baseline": 191.771,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d13",
+              "cx": 1169,
+              "cy": 999,
+              "r": 13,
+              "baseline": 183.862,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d14",
+              "cx": 1072,
+              "cy": 1000,
+              "r": 14,
+              "baseline": 184.0,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d15",
+              "cx": 57,
+              "cy": 1004,
+              "r": 6,
+              "baseline": 120.023,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d16",
+              "cx": 167,
+              "cy": 1005,
+              "r": 7,
+              "baseline": 144.862,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d17",
+              "cx": 208,
+              "cy": 1021,
+              "r": 7,
+              "baseline": 160.0,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d18",
+              "cx": 709,
+              "cy": 1025,
+              "r": 13,
+              "baseline": 181.714,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d19",
+              "cx": 1881,
+              "cy": 1037,
+              "r": 7,
+              "baseline": 143.569,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d20",
+              "cx": 262,
+              "cy": 1043,
+              "r": 8,
+              "baseline": 169.115,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d21",
+              "cx": 1859,
+              "cy": 1058,
+              "r": 6,
+              "baseline": 136.909,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d22",
+              "cx": 314,
+              "cy": 1070,
+              "r": 7,
+              "baseline": 142.466,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-12:d23",
+              "cx": 732,
+              "cy": 1075,
+              "r": 11,
+              "baseline": 179.009,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-13": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 23,
+            "min_area": 27,
+            "max_area": 471
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-13:d0",
+              "cx": 1912,
+              "cy": 272,
+              "r": 11,
+              "baseline": 204.007,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d1",
+              "cx": 1853,
+              "cy": 419,
+              "r": 13,
+              "baseline": 184.176,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d2",
+              "cx": 1741,
+              "cy": 645,
+              "r": 13,
+              "baseline": 181.89,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d3",
+              "cx": 1692,
+              "cy": 711,
+              "r": 13,
+              "baseline": 186.367,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d4",
+              "cx": 10,
+              "cy": 803,
+              "r": 8,
+              "baseline": 164.731,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d5",
+              "cx": 91,
+              "cy": 832,
+              "r": 11,
+              "baseline": 175.473,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d6",
+              "cx": 152,
+              "cy": 856,
+              "r": 12,
+              "baseline": 175.176,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d7",
+              "cx": 1873,
+              "cy": 864,
+              "r": 8,
+              "baseline": 157.526,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d8",
+              "cx": 192,
+              "cy": 868,
+              "r": 9,
+              "baseline": 169.6,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d9",
+              "cx": 1581,
+              "cy": 871,
+              "r": 12,
+              "baseline": 177.955,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d10",
+              "cx": 17,
+              "cy": 888,
+              "r": 7,
+              "baseline": 153.379,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d11",
+              "cx": 290,
+              "cy": 900,
+              "r": 10,
+              "baseline": 167.111,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d12",
+              "cx": 1827,
+              "cy": 918,
+              "r": 8,
+              "baseline": 159.436,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d13",
+              "cx": 49,
+              "cy": 923,
+              "r": 7,
+              "baseline": 167.241,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d14",
+              "cx": 565,
+              "cy": 925,
+              "r": 11,
+              "baseline": 177.5,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d15",
+              "cx": 687,
+              "cy": 933,
+              "r": 13,
+              "baseline": 187.943,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d16",
+              "cx": 1916,
+              "cy": 942,
+              "r": 6,
+              "baseline": 155.105,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d17",
+              "cx": 1903,
+              "cy": 948,
+              "r": 6,
+              "baseline": 126.295,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d18",
+              "cx": 82,
+              "cy": 957,
+              "r": 7,
+              "baseline": 159.328,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d19",
+              "cx": 1795,
+              "cy": 957,
+              "r": 8,
+              "baseline": 163.872,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d20",
+              "cx": 59,
+              "cy": 975,
+              "r": 6,
+              "baseline": 140.818,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d21",
+              "cx": 870,
+              "cy": 987,
+              "r": 12,
+              "baseline": 179.006,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d22",
+              "cx": 102,
+              "cy": 999,
+              "r": 7,
+              "baseline": 143.552,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d23",
+              "cx": 1844,
+              "cy": 1007,
+              "r": 7,
+              "baseline": 149.931,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d24",
+              "cx": 149,
+              "cy": 1014,
+              "r": 8,
+              "baseline": 152.205,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d25",
+              "cx": 1722,
+              "cy": 1024,
+              "r": 6,
+              "baseline": 128.341,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d26",
+              "cx": 155,
+              "cy": 1025,
+              "r": 6,
+              "baseline": 160.977,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d27",
+              "cx": 1807,
+              "cy": 1042,
+              "r": 5,
+              "baseline": 118.688,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d28",
+              "cx": 920,
+              "cy": 1043,
+              "r": 11,
+              "baseline": 172.847,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d29",
+              "cx": 1688,
+              "cy": 1046,
+              "r": 7,
+              "baseline": 159.672,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-13:d30",
+              "cx": 1655,
+              "cy": 1056,
+              "r": 6,
+              "baseline": 125.705,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-14": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 27,
+            "min_area": 39,
+            "max_area": 678
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-14:d0",
+              "cx": 42,
+              "cy": 742,
+              "r": 9,
+              "baseline": 171.73,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d1",
+              "cx": 70,
+              "cy": 787,
+              "r": 12,
+              "baseline": 173.983,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d2",
+              "cx": 1854,
+              "cy": 805,
+              "r": 11,
+              "baseline": 148.12,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d3",
+              "cx": 1826,
+              "cy": 819,
+              "r": 9,
+              "baseline": 156.3,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d4",
+              "cx": 1785,
+              "cy": 831,
+              "r": 8,
+              "baseline": 155.013,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d5",
+              "cx": 1728,
+              "cy": 847,
+              "r": 8,
+              "baseline": 156.564,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d6",
+              "cx": 1806,
+              "cy": 859,
+              "r": 8,
+              "baseline": 148.795,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d7",
+              "cx": 1482,
+              "cy": 909,
+              "r": 11,
+              "baseline": 173.267,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d8",
+              "cx": 1771,
+              "cy": 910,
+              "r": 7,
+              "baseline": 145.466,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d9",
+              "cx": 1358,
+              "cy": 915,
+              "r": 11,
+              "baseline": 175.253,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d10",
+              "cx": 1153,
+              "cy": 920,
+              "r": 16,
+              "baseline": 190.321,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d11",
+              "cx": 893,
+              "cy": 921,
+              "r": 15,
+              "baseline": 180.426,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d12",
+              "cx": 178,
+              "cy": 926,
+              "r": 8,
+              "baseline": 163.526,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d13",
+              "cx": 740,
+              "cy": 926,
+              "r": 14,
+              "baseline": 183.451,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d14",
+              "cx": 227,
+              "cy": 966,
+              "r": 7,
+              "baseline": 152.017,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d15",
+              "cx": 624,
+              "cy": 979,
+              "r": 12,
+              "baseline": 178.358,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d16",
+              "cx": 1805,
+              "cy": 995,
+              "r": 6,
+              "baseline": 118.045,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d17",
+              "cx": 1790,
+              "cy": 996,
+              "r": 7,
+              "baseline": 152.19,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d18",
+              "cx": 1742,
+              "cy": 1015,
+              "r": 7,
+              "baseline": 138.448,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d19",
+              "cx": 1647,
+              "cy": 1023,
+              "r": 7,
+              "baseline": 137.879,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d20",
+              "cx": 287,
+              "cy": 1029,
+              "r": 8,
+              "baseline": 151.513,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d21",
+              "cx": 646,
+              "cy": 1031,
+              "r": 8,
+              "baseline": 167.141,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d22",
+              "cx": 1683,
+              "cy": 1039,
+              "r": 6,
+              "baseline": 134.841,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d23",
+              "cx": 315,
+              "cy": 1053,
+              "r": 9,
+              "baseline": 173.67,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d24",
+              "cx": 1606,
+              "cy": 1058,
+              "r": 8,
+              "baseline": 151.526,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d25",
+              "cx": 4,
+              "cy": 1059,
+              "r": 11,
+              "baseline": 27.312,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d26",
+              "cx": 670,
+              "cy": 1062,
+              "r": 9,
+              "baseline": 162.17,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d27",
+              "cx": 374,
+              "cy": 1069,
+              "r": 7,
+              "baseline": 147.914,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-14:d28",
+              "cx": 343,
+              "cy": 1074,
+              "r": 6,
+              "baseline": 156.977,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-21": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 33,
+            "min_area": 70,
+            "max_area": 1206
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-21:d0",
+              "cx": 1893,
+              "cy": 861,
+              "r": 10,
+              "baseline": 164.913,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d1",
+              "cx": 1913,
+              "cy": 861,
+              "r": 8,
+              "baseline": 158.486,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d2",
+              "cx": 184,
+              "cy": 873,
+              "r": 10,
+              "baseline": 166.405,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d3",
+              "cx": 1819,
+              "cy": 891,
+              "r": 8,
+              "baseline": 159.859,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d4",
+              "cx": 275,
+              "cy": 895,
+              "r": 11,
+              "baseline": 170.787,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d5",
+              "cx": 1753,
+              "cy": 911,
+              "r": 11,
+              "baseline": 166.2,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d6",
+              "cx": 381,
+              "cy": 922,
+              "r": 13,
+              "baseline": 181.419,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d7",
+              "cx": 1693,
+              "cy": 929,
+              "r": 9,
+              "baseline": 158.01,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d8",
+              "cx": 509,
+              "cy": 934,
+              "r": 12,
+              "baseline": 183.028,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d9",
+              "cx": 610,
+              "cy": 937,
+              "r": 14,
+              "baseline": 185.016,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d10",
+              "cx": 1610,
+              "cy": 952,
+              "r": 8,
+              "baseline": 165.359,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d11",
+              "cx": 818,
+              "cy": 960,
+              "r": 14,
+              "baseline": 193.541,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-21:d12",
+              "cx": 826,
+              "cy": 1002,
+              "r": 16,
+              "baseline": 188.604,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-22": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 27,
+            "min_area": 39,
+            "max_area": 678
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-22:d0",
+              "cx": 50,
+              "cy": 264,
+              "r": 14,
+              "baseline": 193.299,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d1",
+              "cx": 109,
+              "cy": 382,
+              "r": 14,
+              "baseline": 184.07,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d2",
+              "cx": 198,
+              "cy": 612,
+              "r": 13,
+              "baseline": 197.771,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d3",
+              "cx": 303,
+              "cy": 769,
+              "r": 15,
+              "baseline": 193.706,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d4",
+              "cx": 1882,
+              "cy": 794,
+              "r": 8,
+              "baseline": 154.436,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d5",
+              "cx": 1798,
+              "cy": 816,
+              "r": 7,
+              "baseline": 146.966,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d6",
+              "cx": 1824,
+              "cy": 821,
+              "r": 9,
+              "baseline": 171.02,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d7",
+              "cx": 42,
+              "cy": 866,
+              "r": 6,
+              "baseline": 157.545,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d8",
+              "cx": 1700,
+              "cy": 867,
+              "r": 9,
+              "baseline": 156.36,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d9",
+              "cx": 90,
+              "cy": 873,
+              "r": 7,
+              "baseline": 166.379,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d10",
+              "cx": 1588,
+              "cy": 877,
+              "r": 9,
+              "baseline": 162.56,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d11",
+              "cx": 144,
+              "cy": 883,
+              "r": 9,
+              "baseline": 171.29,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d12",
+              "cx": 1477,
+              "cy": 885,
+              "r": 11,
+              "baseline": 179.58,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d13",
+              "cx": 231,
+              "cy": 899,
+              "r": 9,
+              "baseline": 160.06,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d14",
+              "cx": 344,
+              "cy": 908,
+              "r": 12,
+              "baseline": 171.886,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d15",
+              "cx": 1833,
+              "cy": 916,
+              "r": 6,
+              "baseline": 139.227,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d16",
+              "cx": 1303,
+              "cy": 917,
+              "r": 10,
+              "baseline": 173.413,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d17",
+              "cx": 417,
+              "cy": 927,
+              "r": 10,
+              "baseline": 170.675,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d18",
+              "cx": 1217,
+              "cy": 929,
+              "r": 12,
+              "baseline": 179.261,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d19",
+              "cx": 1807,
+              "cy": 950,
+              "r": 6,
+              "baseline": 145.5,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d20",
+              "cx": 1821,
+              "cy": 963,
+              "r": 6,
+              "baseline": 143.705,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d21",
+              "cx": 1163,
+              "cy": 968,
+              "r": 9,
+              "baseline": 166.02,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d22",
+              "cx": 1795,
+              "cy": 973,
+              "r": 6,
+              "baseline": 171.977,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d23",
+              "cx": 1774,
+              "cy": 983,
+              "r": 7,
+              "baseline": 132.224,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-22:d24",
+              "cx": 1119,
+              "cy": 1055,
+              "r": 9,
+              "baseline": 165.4,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-23": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 23,
+            "min_area": 27,
+            "max_area": 471
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-23:d0",
+              "cx": 1877,
+              "cy": 616,
+              "r": 9,
+              "baseline": 158.87,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d1",
+              "cx": 1882,
+              "cy": 653,
+              "r": 9,
+              "baseline": 171.72,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d2",
+              "cx": 1764,
+              "cy": 784,
+              "r": 10,
+              "baseline": 162.667,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d3",
+              "cx": 21,
+              "cy": 807,
+              "r": 7,
+              "baseline": 150.103,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d4",
+              "cx": 3,
+              "cy": 824,
+              "r": 6,
+              "baseline": 149.132,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d5",
+              "cx": 94,
+              "cy": 824,
+              "r": 8,
+              "baseline": 155.051,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d6",
+              "cx": 176,
+              "cy": 860,
+              "r": 8,
+              "baseline": 166.0,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d7",
+              "cx": 1703,
+              "cy": 860,
+              "r": 9,
+              "baseline": 161.05,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d8",
+              "cx": 1906,
+              "cy": 865,
+              "r": 6,
+              "baseline": 135.023,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d9",
+              "cx": 1876,
+              "cy": 900,
+              "r": 6,
+              "baseline": 140.023,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d10",
+              "cx": 406,
+              "cy": 902,
+              "r": 10,
+              "baseline": 162.556,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d11",
+              "cx": 74,
+              "cy": 910,
+              "r": 7,
+              "baseline": 160.672,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d12",
+              "cx": 313,
+              "cy": 910,
+              "r": 8,
+              "baseline": 164.859,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d13",
+              "cx": 1012,
+              "cy": 918,
+              "r": 14,
+              "baseline": 193.426,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d14",
+              "cx": 793,
+              "cy": 926,
+              "r": 12,
+              "baseline": 183.199,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d15",
+              "cx": 1846,
+              "cy": 931,
+              "r": 5,
+              "baseline": 129.281,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d16",
+              "cx": 505,
+              "cy": 934,
+              "r": 12,
+              "baseline": 176.523,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d17",
+              "cx": 643,
+              "cy": 940,
+              "r": 12,
+              "baseline": 180.477,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d18",
+              "cx": 119,
+              "cy": 952,
+              "r": 8,
+              "baseline": 166.41,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d19",
+              "cx": 41,
+              "cy": 967,
+              "r": 5,
+              "baseline": 105.031,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d20",
+              "cx": 1801,
+              "cy": 973,
+              "r": 6,
+              "baseline": 143.886,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d21",
+              "cx": 58,
+              "cy": 974,
+              "r": 5,
+              "baseline": 145.281,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d22",
+              "cx": 71,
+              "cy": 979,
+              "r": 5,
+              "baseline": 144.75,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d23",
+              "cx": 1005,
+              "cy": 985,
+              "r": 10,
+              "baseline": 166.087,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d24",
+              "cx": 92,
+              "cy": 988,
+              "r": 6,
+              "baseline": 112.045,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d25",
+              "cx": 164,
+              "cy": 994,
+              "r": 7,
+              "baseline": 166.638,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d26",
+              "cx": 149,
+              "cy": 1012,
+              "r": 7,
+              "baseline": 168.776,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d27",
+              "cx": 1717,
+              "cy": 1022,
+              "r": 7,
+              "baseline": 128.103,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d28",
+              "cx": 1662,
+              "cy": 1039,
+              "r": 7,
+              "baseline": 136.069,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d29",
+              "cx": 215,
+              "cy": 1044,
+              "r": 7,
+              "baseline": 154.983,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-23:d30",
+              "cx": 1561,
+              "cy": 1075,
+              "r": 8,
+              "baseline": 165.106,
+              "masked": false
+            }
+          ]
+        },
+        "SM-CAM-24": {
+          "w": 1920,
+          "h": 1080,
+          "params": {
+            "thr": 25,
+            "tophat": 23,
+            "min_area": 27,
+            "max_area": 471
+          },
+          "dots": [
+            {
+              "id": "SM-CAM-24:d0",
+              "cx": 273,
+              "cy": 389,
+              "r": 10,
+              "baseline": 186.468,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d1",
+              "cx": 312,
+              "cy": 411,
+              "r": 5,
+              "baseline": 121.75,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d2",
+              "cx": 369,
+              "cy": 691,
+              "r": 14,
+              "baseline": 179.594,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d3",
+              "cx": 467,
+              "cy": 743,
+              "r": 14,
+              "baseline": 187.873,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d4",
+              "cx": 1857,
+              "cy": 769,
+              "r": 8,
+              "baseline": 165.641,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d5",
+              "cx": 1830,
+              "cy": 814,
+              "r": 11,
+              "baseline": 176.427,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d6",
+              "cx": 1761,
+              "cy": 847,
+              "r": 9,
+              "baseline": 165.86,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d7",
+              "cx": 1797,
+              "cy": 858,
+              "r": 8,
+              "baseline": 174.282,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d8",
+              "cx": 51,
+              "cy": 861,
+              "r": 9,
+              "baseline": 162.68,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d9",
+              "cx": 489,
+              "cy": 885,
+              "r": 13,
+              "baseline": 192.314,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d10",
+              "cx": 1568,
+              "cy": 907,
+              "r": 9,
+              "baseline": 162.97,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d11",
+              "cx": 109,
+              "cy": 924,
+              "r": 7,
+              "baseline": 150.879,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d12",
+              "cx": 1439,
+              "cy": 929,
+              "r": 12,
+              "baseline": 181.483,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d13",
+              "cx": 1306,
+              "cy": 930,
+              "r": 11,
+              "baseline": 176.513,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d14",
+              "cx": 1714,
+              "cy": 952,
+              "r": 7,
+              "baseline": 166.362,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d15",
+              "cx": 541,
+              "cy": 962,
+              "r": 13,
+              "baseline": 178.281,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d16",
+              "cx": 1257,
+              "cy": 966,
+              "r": 12,
+              "baseline": 182.074,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d17",
+              "cx": 1702,
+              "cy": 977,
+              "r": 7,
+              "baseline": 143.793,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d18",
+              "cx": 1263,
+              "cy": 1039,
+              "r": 10,
+              "baseline": 174.016,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d19",
+              "cx": 225,
+              "cy": 1042,
+              "r": 7,
+              "baseline": 157.828,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d20",
+              "cx": 104,
+              "cy": 1048,
+              "r": 6,
+              "baseline": 127.227,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d21",
+              "cx": 1610,
+              "cy": 1069,
+              "r": 6,
+              "baseline": 149.091,
+              "masked": false
+            },
+            {
+              "id": "SM-CAM-24:d22",
+              "cx": 1253,
+              "cy": 1072,
+              "r": 9,
+              "baseline": 174.74,
+              "masked": false
+            }
+          ]
+        }
+      }
+    }
+  }
+}

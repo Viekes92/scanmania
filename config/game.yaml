@@ -29,8 +29,12 @@ assisted_timeout_ms: 60000
 # the attract show comes back. Range: 30000-600000
 registered_timeout_ms: 180000
 
-max_run_ms: 180000
+max_run_ms: 240000
 # Maximum run duration in ms before the run is auto-aborted. Range: 60000-600000.
+# 4 minutes. This is a backstop for a player who stopped playing — someone
+# stuck, hurt, or wandered off — not a target to beat: a clean run is seconds,
+# not minutes. Raising it lengthens the worst case a queue can be held up by
+# one person, because ABORTED still has to run its result timeout afterwards.
 
 # How long to keep probing the relay boards at BOOT before declaring FAULT.
 # The router takes about two minutes from cold and the NUC is ready long before

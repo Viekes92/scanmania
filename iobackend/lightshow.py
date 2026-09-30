@@ -11,10 +11,13 @@ Invariant: RUN states are always fully dark, whatever the cue file says and
            raises the reading and a genuinely broken beam can still read above
            break_ratio — a MISSED break, where a player runs clean through a
            beam they broke. That fails in the direction nobody sees.
-Invariant: only a CUE may dim the entrance (allow_always_on=True, passed from
-           _apply() alone) — it is dark from sign-in to the result and lit
-           wherever somebody is walking in or out. blackout() restores it, and
-           power_down() is the only path that leaves it dark. See ADR 0010.
+Invariant: outside a RUN, only a CUE may dim the entrance (allow_always_on=True,
+           passed from _apply() alone) — it is dark from sign-in to the result
+           and lit wherever somebody is walking in or out. The RUN states are
+           the exception and take it dark themselves (_always_on_dark), because
+           a correctness property must not depend on a cue having run earlier.
+           blackout() restores it, and power_down() is the only path that leaves
+           it dark. See ADR 0010.
 
 A cue is a list of steps; each step sets levels and holds. Loop for ambient
 states, one-shot for moments:
@@ -143,6 +146,7 @@ class LightCuePlayer:
         if state in _DARK_STATES:
             # Dark wins over every cue and over the GM's work lights.
             self._all_off(fade=False)
+            self._always_on_dark()
             return
 
         if self._work_lights is True and state not in _CUE_OWNS_STATES:
@@ -193,6 +197,43 @@ class LightCuePlayer:
     def _all_on(self) -> None:
         if hasattr(self._dmx, "set_maze_lights"):
             self._dmx.set_maze_lights(True)
+
+    def _always_on_dark(self) -> None:
+        """
+        Take the always_on fixtures dark too, for a RUN state only.
+
+        set_maze_lights() deliberately skips always_on lights, so this branch
+        used to leave the entrance wherever it happened to be and relied
+        entirely on the registered/arm cue having already dimmed it — which in
+        turn relied on runner._release_work_lights() clearing the GM override
+        in time for that cue to play at all. With the override still set,
+        _restart() returns at _all_on() for REGISTERED and ARM, the cue never
+        runs, and the entrance stays at full through the whole run. Measured:
+        255 across COUNTDOWN and all three segments.
+
+        Nothing reaches that state today, but it is a correctness property of
+        this class resting on a line in another module. Assert it here: the
+        docstring promises RUN states are dark whatever the GM has set, and
+        ambient light in the container raises every dot's raw reading, which
+        fails as a MISSED break — the direction nobody sees.
+
+        blackout() still restores these, and power_down() is still the only
+        path that leaves them dark at the end of the day. See ADR 0010.
+        """
+        if not hasattr(self._dmx, "lights_state"):
+            return
+        try:
+            fixtures = self._dmx.lights_state()
+        except Exception as exc:
+            log.warning("could not read the light state: %s", exc)
+            return
+        for name, st in fixtures.items():
+            if not st.get("always_on"):
+                continue
+            try:
+                self._dmx.set_light(name, 0, fade=False, allow_always_on=True)
+            except Exception as exc:
+                log.warning("could not take '%s' dark for the run: %s", name, exc)
 
     def _apply(self, step: dict) -> None:
         fade = bool(step.get("fade", True))

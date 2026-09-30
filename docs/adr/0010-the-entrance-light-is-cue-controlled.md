@@ -60,5 +60,31 @@ within `max_run_ms`, and `aborted` and `fault` both relight the entrance. The
 residual risk is a run state entered with somebody inside who is not the
 player — which MASTER MODE and the GM walk-round exist to prevent.
 
+## Amendment, 2026-09-27 — the RUN states no longer rely on a cue
+
+The decision above is unchanged. How it is enforced is.
+
+"Only a cue holds the key" turned out to make a correctness property depend on
+a cue having run *earlier*, in a different state, which in turn depended on
+`runner._release_work_lights()` having cleared the GM's work-light override in
+time for that cue to play at all. With the override still set,
+`LightCuePlayer._restart()` returns at `_all_on()` for REGISTERED and ARM, no
+cue runs, and `set_maze_lights()` skips `always_on` fixtures by design — so the
+entrance stayed at 255 through COUNTDOWN and all three segments. Measured
+directly against `LightCuePlayer`; driving the real `GameRunner` showed no live
+exposure, because the sign-in release always won the race in practice.
+
+A safety property resting on the ordering of two calls in another module is not
+one you can read off the code. `_DARK_STATES` now takes the `always_on`
+fixtures dark itself (`LightCuePlayer._always_on_dark`), so the RUN states hold
+whatever happened before them. Cues still own the entrance in every other
+state, `blackout()` still restores it, and `power_down()` is still the only
+path that leaves it dark.
+
+The test that should have caught it asserted the opposite — `left == 0` only,
+plus a `test_the_entrance_stays_lit_through_a_run` written 2026-09-15, two days
+before this ADR, and never revisited when the decision changed. Both are now
+correct and the run states are checked per-state.
+
 Supersedes the absolute stated in ADR 0002's consequences and in
 `config/hardware.yaml`.

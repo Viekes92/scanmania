@@ -189,6 +189,51 @@ def test_a_run_is_dark_even_with_the_gm_work_lights_on(dmx):
     assert p.work_lights is True, "the override is remembered, not cancelled"
 
 
+@pytest.mark.parametrize("state", sorted(_DARK_STATES))
+def test_the_entrance_is_dark_in_every_run_state_whatever_the_gm_set(dmx, state):
+    """
+    The entrance too — not just the house lights.
+
+    This is the half the original test missed. set_maze_lights() skips
+    always_on fixtures by design, so a RUN state only went dark for the
+    entrance because the registered/arm cue had already dimmed it — which
+    needed runner._release_work_lights() to have cleared the GM override in
+    time for that cue to run. With the override still set, _restart() returns
+    at _all_on() for REGISTERED and ARM, no cue ever plays, and the entrance
+    sits at 255 through COUNTDOWN and all three segments.
+
+    The entrance is the brightest leak in the container and ambient light
+    raises every dot's raw reading, so this fails as a MISSED break.
+    """
+    p = LightCuePlayer(dmx, CUES)
+    p.set_work_lights(True)                 # the GM left them on
+    p.set_state("ATTRACT")
+    assert dmx.light_level("entrance") == 255, "precondition: lit before the run"
+
+    p.set_state(state)
+    assert dmx.light_level("entrance") == 0, \
+        f"the entrance is still lit in {state}"
+
+
+def test_the_entrance_comes_back_after_the_run(dmx):
+    """
+    Taking it dark for a run must not strand it: the way out has to relight.
+
+    ADR 0010 traded "never switched off" for "lit whenever somebody is walking
+    in or out", and ABORTED is exactly that case — a run cut short with a
+    person still inside. The real cue table lights it there; this mirrors it.
+    """
+    cues = {**CUES, "aborted": {"steps": [{"left": 255, "right": 255,
+                                           "entrance": 255, "ms": 10,
+                                           "fade": False}]}}
+    p = LightCuePlayer(dmx, cues)
+    p.set_state("RUN_SEG_1")
+    assert dmx.light_level("entrance") == 0, "dark for the run"
+    p.set_state("ABORTED")                  # somebody is walking out
+    assert dmx.light_level("entrance") == 255, \
+        "a run cut short must leave the way out lit"
+
+
 def test_going_dark_is_instant_not_a_fade(dmx):
     """A fade into a run would leave the room lit for part of the countdown."""
     p = LightCuePlayer(dmx, CUES)
@@ -241,10 +286,20 @@ def test_an_aborted_run_still_gets_the_gm_work_light(dmx):
     assert dmx.lights_state()["left"]["target"] == 255
 
 
-def test_the_entrance_stays_lit_through_a_run(dmx):
+def test_the_always_on_guard_still_holds_outside_a_run(dmx):
+    """
+    _all_off() must not be able to dim an always_on fixture.
+
+    This is the half of the guard that survives ADR 0010: outside the run
+    states only a cue may take the entrance down, so a state with no cue at
+    all leaves it lit rather than dark. Was
+    test_the_entrance_stays_lit_through_a_run, which also asserted it stayed
+    lit through COUNTDOWN and RUN_SEG_1 — written 2026-09-15, two days before
+    ADR 0010 decided the opposite, and never revisited.
+    """
     p = LightCuePlayer(dmx, CUES)
     p.set_work_lights(False)
-    for state in ("ATTRACT", "COUNTDOWN", "RUN_SEG_1", "FINISHED"):
+    for state in ("ATTRACT", "FINISHED", "SOME_STATE_WITH_NO_CUE"):
         p.set_state(state)
         assert dmx.light_level("entrance") == 255, f"entrance dark in {state}"
 

@@ -197,7 +197,9 @@ hazer:
       entrance:
         channel: 5               # decoder ch3
         default: 255
-        # always_on means "only a light cue may dim it" — see ADR 0010. It is
+        # always_on means "only a light cue may dim it", except in the RUN
+        # states, which take it dark themselves so the guarantee does not
+        # depend on an earlier cue having run — see ADR 0010. It is
         # dark from sign-in to the result and lit in attract/master/aborted/
         # fault, the states where somebody is walking in or out. Two absolutes
         # remain: blackout() RESTORES it, so a dying process leaves the way out

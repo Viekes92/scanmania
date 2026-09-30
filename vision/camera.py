@@ -385,8 +385,18 @@ class CameraStream:
     # Boot-time drift check
     # ------------------------------------------------------------------
 
+    @property
     def fps(self) -> float:
-        """Current decoded FPS (rolling average of last 60 inter-frame intervals)."""
+        """
+        Current decoded FPS (rolling average of last 60 inter-frame intervals).
+
+        A PROPERTY, like is_stalled and last_frame_ns below it. It was a plain
+        method while every one of its three consumers in vision/service.py read
+        it as an attribute, so detector_stats() raised TypeError on
+        round(stream.fps, 1) — inside _get_state_message(), which meant EVERY
+        BroadcastState failed and the GM console and both displays went stale
+        while the game itself ran on normally.
+        """
         if not self._fps_accumulator:
             return 0.0
         avg_interval = sum(self._fps_accumulator) / len(self._fps_accumulator)

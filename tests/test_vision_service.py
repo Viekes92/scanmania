@@ -366,3 +366,28 @@ def test_a_dot_whose_baseline_is_noise_is_not_watched():
     assert d.stats()["cameras"]["SM-CAM-21"]["watched"] == 0
     assert d.stats()["cameras"]["SM-CAM-21"]["blind"] == 1, (
         "the unwatchable dot must be REPORTED as blind, not hidden")
+
+
+# ---------------------------------------------------------------------------
+# Telemetry must not raise — it is called from inside BroadcastState
+# ---------------------------------------------------------------------------
+
+def test_telemetry_reads_fps_as_a_number_not_a_method(service):
+    """
+    CameraStream.fps was a plain method while all three of its consumers here
+    read it as an attribute. round(stream.fps, 1) therefore raised TypeError
+    inside detector_stats(), which _get_state_message() calls — so EVERY
+    BroadcastState failed and the GM console and both displays went stale while
+    the game itself carried on. Guard all three call sites.
+    """
+    stream = next(iter(service._streams.values()))
+    assert isinstance(stream.fps, float), "fps must be a property, not a method"
+
+    stats = service.detector_stats()
+    for cam in stats["cameras"].values():
+        assert isinstance(cam["fps"], float)
+
+    assert isinstance(service.fps(), float)
+
+    for cam in service.camera_stats().values():
+        assert isinstance(cam["fps"], float)

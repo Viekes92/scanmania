@@ -7,6 +7,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — every state broadcast was failing on the box
+
+- **`CameraStream.fps` is a property.** It was a plain method while all three of
+  its consumers in `vision/service.py` read it as an attribute, so
+  `round(stream.fps, 1)` raised `TypeError: type method doesn't define
+  __round__` inside `detector_stats()`. That is called from
+  `_get_state_message()`, so **every** `BroadcastState` side effect failed: the
+  GM console and both displays went stale while the game itself ran on
+  normally, transitioning and lighting the maze with nothing on screen. Its two
+  neighbours `is_stalled` and `last_frame_ns` were already properties;
+  `fps` was the odd one out. Regression test asserts all three call sites
+  (`detector_stats`, `fps`, `camera_stats`) return numbers.
+
 ### Fixed — findings from a full review
 
 - **The RUN states now take the entrance dark themselves.**

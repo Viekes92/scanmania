@@ -1915,6 +1915,10 @@ async def test_boot_self_test_waits_out_a_slow_router(
                    inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
     await r.dispatch(BootComplete())
     await r._run_self_test()
+    # The probe ENQUEUES its verdict rather than dispatching it, so that the
+    # MASTER-exit path (where it runs as a concurrent task) cannot interleave
+    # side effects with the event drain. Drain it here.
+    await _drain(r, iterations=3, pause=0)
 
     assert calls["n"] >= 4, "it gave up before the boards came back"
     # Not merely "not FAULT" — that is equally true of "nothing happened".
@@ -1956,6 +1960,7 @@ async def test_self_test_still_faults_when_the_boards_are_really_gone(
                    inputs_backend=fake_inputs, vision_backend=fake_vision, db=db)
     await r.dispatch(BootComplete())
     await r._run_self_test()
+    await _drain(r, iterations=3, pause=0)   # the verdict is enqueued
     assert r.state == "FAULT", "dead boards did not raise a fault"
     for a in ("_show_task", "_self_test_task"):
         r._cancel_task(a)

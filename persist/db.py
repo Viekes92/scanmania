@@ -562,6 +562,44 @@ class Database:
             rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def get_last_run(self) -> dict | None:
+        """
+        The most recently FINISHED run — the outdoor display's "last run" line.
+
+        Completed runs only: 'in_progress' has no time yet, 'aborted' has one
+        that means nothing to a spectator, and 'voided' was struck by the GM on
+        purpose. Ordered by ended_at, not started_at: a run that was saved late
+        is still the one that finished last.
+
+        ALWAYS scoped to the operating day, and deliberately NOT to
+        game.leaderboard.scope. The board answers "who is fastest here", which
+        a multi-day activation reasonably wants to span days; this line answers
+        "who just ran", and yesterday's name under this morning's queue is
+        wrong on a street-facing screen however the board is configured. So at
+        a multi-day venue the line is empty until the day's first finish, which
+        is the honest answer. See day_bounds().
+        """
+        where = ["r.outcome IN ('clean', 'busted')", "r.elapsed_ms IS NOT NULL"]
+        params: list[Any] = []
+        start, end = day_bounds()
+        # Bounded on both sides, for the same reason get_leaderboard is: a
+        # session recorded while the clock was wrong would otherwise pin a
+        # junk row here permanently.
+        where.append("r.started_at >= ? AND r.started_at < ?")
+        params.extend([start, end])
+        async with self._db.execute(
+            f"""SELECT r.id, r.player_id, p.nickname AS player_nickname,
+                       r.started_at, r.ended_at, r.elapsed_ms, r.outcome,
+                       r.penalty_count, r.penalty_total_ms, r.raw_elapsed_ms
+                FROM runs r LEFT JOIN players p ON p.id = r.player_id
+                WHERE {" AND ".join(where)}
+                ORDER BY r.ended_at DESC, r.started_at DESC
+                LIMIT 1""",
+            params,
+        ) as cur:
+            row = await cur.fetchone()
+        return dict(row) if row else None
+
     async def close_orphaned_runs(self) -> int:
         """
         Mark runs left 'in_progress' by a crash or power cut as aborted.

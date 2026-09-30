@@ -12,7 +12,14 @@
   the sponsor lockup along the bottom. That bottom strip is the part that ends
   up in the photo, so it never moves.
 
-  Brand tokens and the Proxima Nova faces come from /static/shared/brand.css.
+  Brand tokens and the Proxima Nova faces come from /static/shared/brand.css,
+  but every piece of TYPE on this screen is white. The red and blue stay in the
+  artwork, the logo and the sponsor lockup; they are chrome, not text. This is
+  a street-facing panel read from several metres in daylight, and #005AA9 on
+  black is 2.8:1 — the leaderboard was the worst of it. Do not "restore" the
+  brand colours to the text here; the verdict reads from the WORD (CLEAN RUN /
+  BUSTED), not from a colour. The one exception is the reconnect badge's
+  BORDER, which stays red so a fault still looks like a fault.
 
   The stopwatch is interpolated between broadcasts and hard-corrected on every
   message (invariant 2). Nothing here computes a duration from wall clock.
@@ -64,8 +71,25 @@
       text-align: center;
       margin-top: 0.6vh;
     }
-    .clock .mm { color: var(--sm-blue); }
-    .clock .ss { color: var(--sm-red); }
+    /* All type on this screen is white — see the header comment. The .mm/.ss
+       spans stay, setClock() builds them and writes the halves separately. */
+    .clock .mm { color: #fff; }
+    .clock .ss { color: #fff; }
+
+    /* Penalties, under the clock. This lives in the MARKUP, inside #header:
+       it used to be created in JS and inserted as a direct child of #stage,
+       which made it the third grid item and handed it the 1fr row meant for
+       #centre — so the first penalty of a run collapsed the middle of the
+       screen. Reserve its height either way so nothing shifts when it fills. */
+    #penaltyNote {
+      text-align: center;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: #fff;
+      margin-top: 0.6vh;
+      font-size: 2.2vh;
+      min-height: 2.6vh;
+    }
 
     /* ---- the middle: camera stage + overlays ---------------------------- */
     #centre {
@@ -100,8 +124,10 @@
       line-height: 0.9;
       letter-spacing: -0.01em;
     }
-    .verdict.win  { color: var(--sm-blue); }
-    .verdict.lose { color: var(--sm-red); }
+    /* .win/.lose are still set from JS; the verdict reads from the WORD
+       (CLEAN RUN / BUSTED), not from a colour. */
+    .verdict.win  { color: #fff; }
+    .verdict.lose { color: #fff; }
 
     .sub {
       font-weight: 800;
@@ -110,13 +136,13 @@
       margin-top: 1vh;
       word-break: break-word;
     }
-    .sub.blue { color: var(--sm-blue); }
+    .sub.blue { color: #fff; }
 
     .cd-number {
       font-weight: 900;
       font-size: clamp(120px, 46vw, 700px);
       line-height: 0.85;
-      color: var(--sm-red);
+      color: #fff;
       font-variant-numeric: tabular-nums;
     }
 
@@ -130,7 +156,7 @@
       font-size: clamp(13px, 3vw, 40px);
       letter-spacing: 0.34em;
       text-transform: uppercase;
-      color: var(--sm-blue);
+      color: #fff;
     }
 
     /* ---- footer: leaderboard + sponsor ---------------------------------
@@ -144,19 +170,56 @@
       padding-top: 1.5vh;
     }
 
+    /* The run that just happened. The result overlay is gone within
+       seconds of the player walking out, and the queue outside is still
+       looking at the screen — so the name and time stay down here, in the
+       strip that ends up in the photo. Height is reserved so the footer does
+       not jump when the day's first run lands. */
+    #lastRun {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5em;
+      white-space: nowrap;
+      font-weight: 700;
+      font-size: clamp(14px, 3.6vw, 48px);
+      line-height: 1.32;
+      color: #fff;
+      min-height: 1.32em;
+      margin-bottom: 1.1vh;
+    }
+    #lastRun .lab {
+      font-weight: 800;
+      font-size: clamp(13px, 3.2vw, 42px);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+    #lastRun .nm {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      max-width: 38vw;
+    }
+    #lastRun .tm {
+      margin-left: auto;
+      font-variant-numeric: tabular-nums;
+    }
+    /* Empty before the day's first finish: hidden, not removed, so the
+       reserved height above still holds the footer in place. */
+    #lastRun.empty { visibility: hidden; }
+
     #leaderboard .title {
       font-weight: 800;
       font-size: clamp(13px, 3.2vw, 42px);
       letter-spacing: 0.2em;
       text-transform: uppercase;
-      color: var(--sm-blue);
+      color: #fff;
       margin-bottom: 0.6vh;
     }
     .lb-row {
       font-weight: 700;
       font-size: clamp(14px, 3.6vw, 48px);
       line-height: 1.32;
-      color: var(--sm-blue);
+      color: #fff;
       display: flex;
       gap: 0.5em;
       white-space: nowrap;
@@ -169,11 +232,11 @@
     }
     .lb-row .tm {
       margin-left: auto;
-      color: var(--sm-red);
+      color: #fff;
       font-variant-numeric: tabular-nums;
     }
     .lb-row.top .nm { text-transform: uppercase; }
-    .lb-empty { color: var(--sm-dim); font-weight: 700;
+    .lb-empty { color: #fff; font-weight: 700;
                 font-size: clamp(13px, 3vw, 38px); }
 
     #sponsor { width: min(26vw, 300px); display: block; }
@@ -188,7 +251,7 @@
       font-size: 12px;
       letter-spacing: 0.22em;
       text-transform: uppercase;
-      color: var(--sm-red);
+      color: #fff;
       border: 2px solid var(--sm-red);
       padding: 4px 10px;
     }
@@ -203,7 +266,10 @@
 
   <!-- header -->
   <img class="logo" id="gameName" src="/static/shared/scanmania-design/sm-text-tp.png" alt="ScanMania">
-  <div class="clock" id="stopwatch"><span class="mm">00:</span><span class="ss">00.00</span></div>
+  <div id="header">
+    <div class="clock" id="stopwatch"><span class="mm">00:</span><span class="ss">00.00</span></div>
+    <div id="penaltyNote"></div>
+  </div>
 
   <!-- middle: camera stage, with state overlays on top -->
   <div id="centre">
@@ -238,6 +304,11 @@
   <!-- footer -->
   <div id="footer">
     <div id="leaderboard">
+      <div id="lastRun" class="empty">
+        <span class="lab">Last run</span>
+        <span class="nm"></span>
+        <span class="tm"></span>
+      </div>
       <div class="title">Leaderboard</div>
       <div id="lbRows"><div class="lb-empty">No runs yet</div></div>
     </div>
@@ -276,6 +347,10 @@
   const abortedOv     = document.getElementById("abortedOverlay");
   const abortedTime   = document.getElementById("abortedTime");
   const lbRows        = document.getElementById("lbRows");
+  const penaltyNote   = document.getElementById("penaltyNote");
+  const lastRunEl     = document.getElementById("lastRun");
+  const lastRunName   = lastRunEl.querySelector(".nm");
+  const lastRunTime   = lastRunEl.querySelector(".tm");
   const reconnect     = document.getElementById("reconnect");
 
   const OVERLAYS = [nextUpBanner, countdownOv, bustOverlay, finishedOv, abortedOv];
@@ -356,6 +431,27 @@
     });
   }
 
+  /* Who just ran. Written with textContent, never innerHTML — same reason
+     as the leaderboard: a nickname is public input and this screen faces the
+     street. Guarded on a signature so it is not rebuilt 10x a second for a
+     value that changes once a run. */
+  let lastRunSig = null;
+
+  function renderLastRun(lr) {
+    const sig = lr ? JSON.stringify([lr.player_nickname, lr.elapsed_ms]) : "";
+    if (sig === lastRunSig) return;
+    lastRunSig = sig;
+    if (!lr || !lr.player_nickname) {
+      lastRunName.textContent = "";
+      lastRunTime.textContent = "";
+      lastRunEl.classList.add("empty");
+      return;
+    }
+    lastRunName.textContent = lr.player_nickname;
+    lastRunTime.textContent = lr.elapsed_ms != null ? fmtFlat(lr.elapsed_ms) : "";
+    lastRunEl.classList.remove("empty");
+  }
+
   async function seedLeaderboard() {
     try {
       const r = await fetch("/api/admin/leaderboard");
@@ -380,23 +476,12 @@
 
     /* Penalties, under the clock. This screen faces the street and people
        photograph it, so a time that includes ten seconds of penalty should say
-       so rather than looking like a slow run. */
-    (function () {
-      let el = document.getElementById("penaltyNote");
-      const pc = msg.penalty_count || 0;
-      if (!el) {
-        el = document.createElement("div");
-        el.id = "penaltyNote";
-        el.style.cssText =
-          "text-align:center; font-family:var(--font-ui,inherit); font-weight:800;" +
-          "letter-spacing:0.08em; color:#EC1C24; margin-top:0.6vh; font-size:2.2vh;";
-        const sw = document.getElementById("stopwatch");
-        if (sw && sw.parentNode) sw.parentNode.insertBefore(el, sw.nextSibling);
-      }
-      el.textContent = pc
-        ? `INCL. +${((msg.penalty_total_ms || 0) / 1000).toFixed(1)}s PENALTY`
-        : "";
-    })();
+       so rather than looking like a slow run. The element is in the markup and
+       styled in the stylesheet — creating it here made it a direct child of
+       #stage, which put it in the wrong grid row. */
+    penaltyNote.textContent = (msg.penalty_count || 0)
+      ? `INCL. +${((msg.penalty_total_ms || 0) / 1000).toFixed(1)}s PENALTY`
+      : "";
     swClientAtMsg  = performance.now() / 1000;
 
     if (RUN_STATES.has(state)) {
@@ -456,6 +541,10 @@
         renderLeaderboard(msg.leaderboard);
       }
     }
+
+    // Server-side and day-scoped, so a reload or the 09:00 rollover lands on
+    // the right answer without the page having to remember anything.
+    renderLastRun(msg.last_run);
   }
 
   /* -----------------------------------------------------------------------

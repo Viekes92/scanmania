@@ -214,6 +214,12 @@ class GameRunner:
         self._board_states: dict[str, dict] = {}  # board_id → {status, coils, rtt_ms}
         self._cached_leaderboard: list[dict] = []
         self._last_rank: int | None = None
+        # The last finished run, for the outdoor display's "last run" line.
+        # Unlike _last_outcome/_last_rank this deliberately SURVIVES the reset
+        # back to ATTRACT: the queue outside wants to see who just ran and what
+        # they got, and the result overlay is gone seconds later. Cleared only
+        # by the operating-day rollover and by voiding that very run.
+        self._last_run: dict | None = None
 
         # Preset resolver — bridges preset names to relay board coil writes
         self._resolver = None
@@ -270,6 +276,7 @@ class GameRunner:
         # `if (msg.leaderboard)` is true for an empty array — so the public board
         # went blank after every restart until someone finished a run.
         await self._refresh_leaderboard()
+        await self._refresh_last_run()
 
         extra_tasks: list[asyncio.Task] = []
         if hasattr(self.inputs, "run"):
@@ -368,6 +375,15 @@ class GameRunner:
             )
         except Exception as exc:
             log.warning("leaderboard refresh failed: %s", exc)
+
+    async def _refresh_last_run(self) -> None:
+        """Re-read the last finished run from the DB. Never raises."""
+        if self.db is None or not hasattr(self.db, "get_last_run"):
+            return
+        try:
+            self._last_run = await self.db.get_last_run()
+        except Exception as exc:
+            log.warning("last-run refresh failed: %s", exc)
 
     def _record_event(self, event: Any, old_state: str, new_state: str) -> None:
         """Queue one event row. Never raises, never blocks the FSM."""
@@ -1845,6 +1861,20 @@ class GameRunner:
         """Persist the run to SQLite."""
         log.info("[SideEffect] SaveRun(outcome=%r, run_id=%r)", effect.outcome, effect.run_id)
         self._last_outcome = effect.outcome
+        # The outdoor "last run" line. Captured from memory BEFORE the DB is
+        # touched, and before the no-DB return below: the run happened whether
+        # or not it could be recorded, and the queue outside is looking at the
+        # screen either way. Aborted runs are skipped — a time nobody completed
+        # means nothing to a spectator.
+        if effect.outcome in (RunOutcome.clean, RunOutcome.busted):
+            self._last_run = {
+                "id": effect.run_id,
+                "player_nickname": self.context.player_nickname,
+                "elapsed_ms": self.stopwatch.elapsed_ms(),
+                "outcome": effect.outcome,
+                "penalty_count": self.context.penalty_count,
+                "penalty_total_ms": self.stopwatch.penalty_ms,
+            }
         if not self.db or not hasattr(self.db, "insert_run"):
             log.warning("SaveRun: no valid DB — skipping")
             return
@@ -1920,6 +1950,11 @@ class GameRunner:
             self._last_rank = None
         except Exception:
             log.exception("VoidRun: leaderboard refresh failed")
+        # A struck run must not go on sitting on the street-facing display.
+        # Fall back to the run before it rather than blanking the line.
+        if self._last_run and self._last_run.get("id") == effect.run_id:
+            self._last_run = None
+            await self._refresh_last_run()
 
     async def _handle_broadcast_state(self, effect: BroadcastState) -> None:
         """Broadcast current FSM state + stopwatch clock over WebSocket."""
@@ -2293,7 +2328,14 @@ class GameRunner:
                 if attempt > 1:
                     log.info("Self-test: all boards reachable after %.0f s",
                              time.monotonic() - started)
-                await self.dispatch(SelfTestPass())
+                # Enqueued, never dispatched. On the MASTER-exit path this
+                # runs as _self_test_task, concurrently with _event_drain —
+                # and dispatch() awaits _execute_side_effects(), so a GM
+                # press drained at the same moment would interleave its side
+                # effects with this transition's. The queue is what serialises
+                # the FSM and every other producer already uses it. At boot
+                # the drain has not started yet, so this simply waits for it.
+                await self.put_event(SelfTestPass())
                 return
             if time.monotonic() + gap >= deadline:
                 break
@@ -2306,7 +2348,8 @@ class GameRunner:
             await asyncio.sleep(gap)
 
         from core.events import SelfTestFail
-        await self.dispatch(SelfTestFail(
+        # Enqueued for the same reason as SelfTestPass above.
+        await self.put_event(SelfTestFail(
             reason=f"Boards failed after {time.monotonic() - started:.0f} s: "
                    f"{', '.join(failed)}"))
 
@@ -2439,8 +2482,13 @@ class GameRunner:
                 if today != last_day:
                     last_day = today
                     await self._refresh_leaderboard()
-                    log.info("operating day rolled to %s — leaderboard refreshed",
-                             today)
+                    # Same reasoning for the "last run" line: it is scoped to
+                    # the operating day, so the rollover must re-read it or
+                    # yesterday's name stays under this morning's board.
+                    self._last_run = None
+                    await self._refresh_last_run()
+                    log.info("operating day rolled to %s — leaderboard and "
+                             "last run refreshed", today)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -2533,6 +2581,9 @@ class GameRunner:
             "rank": self._last_rank,
             "boards": self._board_states,
             "leaderboard": self._cached_leaderboard,
+            # Who just ran, and what they got. Outlives the result overlay on
+            # purpose — see _last_run. None before the day's first finish.
+            "last_run": self._last_run,
             "inputs": {
                 "connected": getattr(self.inputs, "is_connected", False),
                 "states": dict(zip(

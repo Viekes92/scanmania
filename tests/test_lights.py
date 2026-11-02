@@ -4,8 +4,11 @@ tests/test_lights.py — DMX room lights and the state-driven cues.
 Inputs:  HazerController with a lights config; LightCuePlayer with cues
 Outputs: assertions on channel mapping, the entrance guard, fades, and the
          rule that a run is always dark
-Invariant: the entrance is dimmed only by a cue (ADR 0010), and COUNTDOWN/RUN states are
-           dark regardless of cue or GM override.
+Invariant: the entrance is dimmed only by a cue (ADR 0010), and COUNTDOWN/RUN
+           states are held at one level — 0, or hazer.lights.run_level when fill
+           light is configured (ADR 0012) — regardless of cue or GM override.
+           The default is 0, so "a run is dark" is still what an unconfigured
+           box does, and the tests above assert it.
 """
 
 from __future__ import annotations
@@ -588,3 +591,147 @@ def test_the_override_defaults_to_the_cue_table_not_to_on(dmx):
     p.set_state("ATTRACT")
     assert dmx.lights_state()["left"]["target"] != 255, \
         "attract is at full work light on a fresh boot"
+
+
+# ---------------------------------------------------------------------------
+# Fill light — hazer.lights.run_level (ADR 0012)
+#
+# The default is 0 and every test above asserts what that gives: a run is dark,
+# because ambient light inside a dot's ROI raises the raw reading and a broken
+# beam can still read above break_ratio — a MISSED break. The tests here are
+# about the opt-in: a run somebody can film, traded for that guarantee, with
+# detection on MANUAL or ASSISTED and a gamemaster watching.
+#
+# What must survive the trade is the OTHER half of the invariant: the level is
+# one number for all four states, and neither a cue nor the GM can move it.
+# ---------------------------------------------------------------------------
+
+def test_without_a_fill_level_nothing_changes(dmx):
+    """The default is the game as shipped. Belt and braces on the default."""
+    p = LightCuePlayer(dmx, CUES)
+    assert p.run_level == 0
+    p.set_state("RUN_SEG_1")
+    assert dmx.light_level("left") == 0
+
+
+@pytest.mark.parametrize("state", sorted(_DARK_STATES))
+def test_the_fill_light_holds_every_run_state_at_one_level(dmx, state):
+    """
+    One level across COUNTDOWN and all three segments.
+
+    Not a per-state cue, on purpose: a step at GO or at a checkpoint is a
+    change in the room the player reads as information, and on camera it is an
+    exposure shift in the middle of the shot.
+    """
+    p = LightCuePlayer(dmx, CUES, run_level=2)
+    p.set_state(state)
+    assert dmx.light_level("left") == 2
+    assert dmx.light_level("right") == 2
+
+
+@pytest.mark.parametrize("state", sorted(_DARK_STATES))
+def test_the_fill_light_still_takes_the_entrance_dark(dmx, state):
+    """
+    The fill is the house fixtures. The entrance is never part of it.
+
+    It leaks straight down the container and it is what a player standing on
+    the plate is looking into — the one fixture that would be in frame and in
+    their eyes at once.
+    """
+    p = LightCuePlayer(dmx, CUES, run_level=4)
+    p.set_work_lights(True)                 # the GM left them on
+    p.set_state("ATTRACT")
+    assert dmx.light_level("entrance") == 255, "precondition: lit before the run"
+    p.set_state(state)
+    assert dmx.light_level("entrance") == 0, f"the entrance is lit in {state}"
+
+
+def test_a_cue_cannot_change_the_fill_level(dmx):
+    """
+    The run states are still not the cue table's to light.
+
+    That is the half of the invariant the fill light does not touch: run_level
+    is set once, by an operator, for all four states — not per state by a cue
+    file somebody is editing between runs.
+    """
+    cues = {**CUES, "run_seg_1": {"steps": [{"left": 255, "right": 255, "ms": 10}]}}
+    p = LightCuePlayer(dmx, cues, run_level=3)
+    p.set_state("RUN_SEG_1")
+    assert dmx.light_level("left") == 3, "the cue must not win"
+
+
+def test_the_gm_work_lights_cannot_change_the_fill_level(dmx):
+    """A forgotten tap must not relight the container mid-run."""
+    p = LightCuePlayer(dmx, CUES, run_level=3)
+    p.set_work_lights(True)
+    assert dmx.light_level("left") == 255
+    p.set_state("RUN_SEG_2")
+    assert dmx.light_level("left") == 3
+    assert p.work_lights is True, "the override is remembered, not cancelled"
+
+
+def test_the_fill_light_snaps_rather_than_fades(dmx):
+    """
+    Same reason going dark snaps: a fade into a run is still moving during it.
+
+    COUNTDOWN is where the step lands, and three seconds is not long enough to
+    hide an 800 ms ramp.
+    """
+    p = LightCuePlayer(dmx, CUES, run_level=2)
+    dmx.set_light("left", 255, fade=False)
+    p.set_state("COUNTDOWN")
+    assert dmx.light_level("left") == 2, "must already be there, not fading"
+
+
+def test_the_fill_level_can_be_retuned_live(dmx):
+    """
+    reload() re-applies, because this is tuned by eye against a camera.
+
+    The number means nothing on its own — these decoders are effectively full
+    past about 10 — so it is set by standing in the container, nudging it and
+    looking at the picture. Needing a service restart per nudge would make that
+    a job for a quiet afternoon rather than the ten minutes before a final.
+    """
+    p = LightCuePlayer(dmx, CUES, run_level=2)
+    p.set_state("RUN_SEG_1")
+    assert dmx.light_level("left") == 2
+    p.reload(run_level=5)
+    assert p.run_level == 5
+    assert dmx.light_level("left") == 5, "the new level applies without a restart"
+
+
+def test_reload_can_take_the_fill_light_away_again(dmx):
+    """0 must put a run back to dark, not leave the last level latched."""
+    p = LightCuePlayer(dmx, CUES, run_level=5)
+    p.set_state("RUN_SEG_3")
+    assert dmx.light_level("left") == 5
+    p.reload(run_level=0)
+    assert dmx.light_level("left") == 0
+
+
+def test_reload_swaps_the_cue_table_too(dmx):
+    """
+    The same trap runner._handle_play_show() re-arms the laser show for.
+
+    A playing cue holds its own step list, so swapping the config alone left it
+    animating the pre-edit table until a restart.
+    """
+    p = LightCuePlayer(dmx, CUES)
+    p.set_state("ABORTED")                  # no aborted cue in CUES
+    dmx.set_light("left", 0, fade=False)    # _all_off() fades; pin it
+    p.reload({**CUES, "aborted": {"steps": [{"left": 40, "right": 40,
+                                             "ms": 10, "fade": False}]}})
+    assert dmx.light_level("left") == 40, \
+        "the reloaded cue must apply without a state change"
+
+
+def test_a_nonsense_fill_level_cannot_reach_the_fixtures(dmx):
+    """
+    Clamped in the player as well as in the loader.
+
+    config/loader.py checks the key, but this class is constructed directly by
+    tests and by tools/ — nothing else guards the number on that path.
+    """
+    assert LightCuePlayer(dmx, CUES, run_level=900).run_level == 255
+    assert LightCuePlayer(dmx, CUES, run_level=-5).run_level == 0
+    assert LightCuePlayer(dmx, CUES, run_level=None).run_level == 0

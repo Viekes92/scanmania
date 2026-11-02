@@ -175,9 +175,24 @@
       padding: 5px 12px;
     }
     #reconnectBadge.visible { display: block; }
+
+    /* ---- the seal (game.yaml display.hide_times) -------------------------
+       A grand-prize final where nobody in the queue may know what there is to
+       beat. Two marker classes, one switch: `.sealed-hide` is everything that
+       is or implies a time, `.sealed-show` is what stands in its place.
+
+       <body> ships WITH the class and JS only ever takes it off, on a
+       broadcast that says hide_times is false. A screen that comes up before
+       the WebSocket connects therefore shows no time rather than a stale one,
+       and the failure direction of a dropped connection is "sealed", which is
+       the direction that cannot spoil a final.                             */
+    body.hide-times .sealed-hide { display: none !important; }
+    .sealed-show { display: none; }
+    body.hide-times .sealed-show { display: block; }
   </style>
 </head>
-<body>
+<!-- Sealed until a broadcast says otherwise — see the CSS above. -->
+<body class="hide-times">
 
 <div class="sm-lasers"></div>
 
@@ -210,34 +225,44 @@
 
   <!-- RUNNING -->
   <section class="scene" id="sceneRun">
-    <div class="clock" id="runStopwatch"><span class="mm">00:</span><span class="ss">00.00</span></div>
+    <div class="clock sealed-hide" id="runStopwatch"><span class="mm">00:</span><span class="ss">00.00</span></div>
     <div class="segment" id="runSegment">Segment 1 / 3</div>
   </section>
 
   <!-- BUSTED -->
   <section class="scene" id="sceneBusted">
     <div class="verdict lose">BUSTED</div>
-    <div class="clock small" id="bustedTime"><span class="mm">00:</span><span class="ss">00.00</span></div>
+    <div class="clock small sealed-hide" id="bustedTime"><span class="mm">00:</span><span class="ss">00.00</span></div>
   </section>
 
   <!-- FINISHED -->
   <section class="scene" id="sceneFinished">
     <div class="verdict win">CLEAN RUN</div>
     <div class="name" id="finishedName"></div>
-    <div class="clock small" id="finishedTime"><span class="mm">00:</span><span class="ss">00.00</span></div>
+    <div class="clock small sealed-hide" id="finishedTime"><span class="mm">00:</span><span class="ss">00.00</span></div>
   </section>
 
-  <!-- RESULT -->
+  <!-- RESULT.
+
+       Two halves, and exactly one of them is ever visible. Sealed, the
+       player's time and their position are both gone — a rank is a time you
+       can work backwards from once two people compare screens — so what is
+       left is the verdict and their name, which is what FINISHED already
+       showed them a moment earlier. That continuity is the point: the scene
+       changes behind the scenes, not in front of the player. -->
   <section class="scene" id="sceneResult">
-    <div class="eyebrow">YOUR TIME</div>
-    <div class="clock" id="resultTime"><span class="mm">00:</span><span class="ss">00.00</span></div>
-    <div class="rank" id="resultRank"></div>
+    <div class="eyebrow sealed-hide">YOUR TIME</div>
+    <div class="clock sealed-hide" id="resultTime"><span class="mm">00:</span><span class="ss">00.00</span></div>
+    <div class="rank sealed-hide" id="resultRank"></div>
+
+    <div class="verdict sealed-show" id="resultVerdict"></div>
+    <div class="name sealed-show" id="resultName"></div>
   </section>
 
   <!-- ABORTED -->
   <section class="scene" id="sceneAborted">
     <div class="verdict lose">RUN ENDED</div>
-    <div class="clock small" id="abortedTime"><span class="mm">00:</span><span class="ss">00.00</span></div>
+    <div class="clock small sealed-hide" id="abortedTime"><span class="mm">00:</span><span class="ss">00.00</span></div>
   </section>
 
 </div>
@@ -261,6 +286,8 @@
   const finishedTime   = document.getElementById("finishedTime");
   const resultTime     = document.getElementById("resultTime");
   const resultRank     = document.getElementById("resultRank");
+  const resultVerdict  = document.getElementById("resultVerdict");
+  const resultName     = document.getElementById("resultName");
   const abortedTime    = document.getElementById("abortedTime");
   const reconnectBadge = document.getElementById("reconnectBadge");
   const waitingText    = document.getElementById("waitingText");
@@ -276,6 +303,20 @@
   let swClientAtMsg  = 0;
   let swRunning      = false;
   let rafId          = null;
+
+  /* The seal — game.yaml display.hide_times, on every state broadcast.
+     Starts true to match the class already on <body>: a page that has not
+     heard from the server yet shows no time, rather than guessing. The
+     stopwatch itself keeps running and setClock() keeps writing into hidden
+     elements, on purpose — unsealing is then a class change and nothing has to
+     be back-filled. Invariant 2 is untouched either way. */
+  let sealed = true;
+
+  function applySeal(hide) {
+    if (hide === sealed) return;
+    sealed = hide;
+    document.body.classList.toggle("hide-times", hide);
+  }
 
   function fmtParts(ms) {
     if (ms == null || isNaN(ms)) ms = 0;
@@ -356,7 +397,12 @@
         "transition:opacity 180ms ease-out;";
       document.body.appendChild(el);
     }
-    el.textContent = `+${(ms / 1000).toFixed(0)}s`;
+    /* Sealed, the number is the whole leak: +5s twice tells a player their
+       time to within the seconds they can count themselves. The flash still
+       fires — clipping a beam is the one thing that happens TO a player, and
+       they have to know it happened — it just stops naming the price. */
+    el.textContent = sealed ? "PENALTY" : `+${(ms / 1000).toFixed(0)}s`;
+    el.style.fontSize = sealed ? "11vw" : "18vw";
     el.style.opacity = "1";
     clearTimeout(el._t);
     el._t = setTimeout(() => { el.style.opacity = "0"; }, 1200);
@@ -364,6 +410,10 @@
 
   function applyState(msg) {
     const state = msg.state || "ATTRACT";
+
+    /* Before any scene is chosen: showScene() below picks which half of the
+       RESULT scene to fill, and it has to be reading the current seal. */
+    applySeal(!!msg.hide_times);
 
     swElapsedAtMsg = msg.elapsed_ms || 0;
     swClientAtMsg  = performance.now() / 1000;
@@ -442,6 +492,12 @@
       showScene("result");
       setClock(resultTime, swElapsedAtMsg);
       resultRank.textContent = msg.rank != null ? `RANK #${msg.rank}` : "";
+      // The sealed half. Same convention as /display/out: the verdict reads
+      // from the WORD, and anything that is not an explicit bust is clean.
+      const busted = msg.outcome === "busted";
+      resultVerdict.textContent = busted ? "BUSTED" : "CLEAN RUN";
+      resultVerdict.className = "verdict sealed-show " + (busted ? "lose" : "win");
+      resultName.textContent = msg.player_nickname || "";
 
     } else if (state === "ABORTED") {
       swRunning = false; stopInterpolation();

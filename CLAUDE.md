@@ -1,5 +1,26 @@
 # CLAUDE.md — ScanMania
 
+## BRANCH: grand-prize
+
+You are on `grand-prize`, not `main`. Three things below are **not true on this
+branch** — read `docs/grand-prize.md` before changing anything near them:
+
+1. **`/display/in` and `/display/out` show no times at all** when
+   `display.hide_times` is set in `game.yaml` — no clock, no result time, no
+   rank, and on the outdoor screen no leaderboard. Both pages ship sealed in
+   their markup and unseal only on a broadcast that says otherwise. The
+   stopwatch, the run rows, the GM console and the admin portal are untouched.
+2. **A run is not necessarily dark.** `hazer.lights.run_level` in
+   `hardware.yaml` holds the house fixtures at one low level through COUNTDOWN
+   and the RUN segments so the run can be filmed. It is a deliberate trade
+   against camera detection — ADR 0012. The entrance is still dark, and a cue
+   still cannot touch those states.
+3. **The GM console has a PLATE button** that sends `PlateHigh` by hand, live
+   in REGISTERED only.
+
+All three default to OFF, so the invariants below are what you get with no
+config. Keep it that way: this branch is meant to be mergeable.
+
 ## What this is
 ScanMania is a laser-maze game in a shipping container. A camera watches the ceiling where each laser beam terminates as a bright dot; a dot disappearing means a beam was broken. A player runs from a start plate to a stop button — break a beam and the run is over, fastest clean run wins.
 

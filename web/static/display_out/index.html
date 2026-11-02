@@ -256,9 +256,33 @@
       padding: 4px 10px;
     }
     #reconnect.visible { display: block; }
+
+    /* ---- the seal (game.yaml display.hide_times) -------------------------
+       A grand-prize final where nobody in the queue may know what there is to
+       beat. On this screen the seal takes MORE than the clock: the whole
+       leaderboard block goes, LAST RUN with it. A ranked board with the times
+       blanked still publishes the order, and the order is what the next player
+       wants — so there is nothing to show between the logo and the sponsor but
+       the verdict, which is exactly what a street-facing panel should be
+       saying during a final anyway.
+
+       <body> ships WITH the class and JS only ever takes it off. A screen that
+       comes up before the WebSocket connects shows no times, and a dropped
+       connection fails sealed — the direction that cannot spoil a final.    */
+    body.hide-times .sealed-hide { display: none !important; }
+
+    /* #leaderboard was the 1fr half of the footer grid. Gone, the sponsor
+       would fall into that column and slide to the left edge — and the bottom
+       strip is the part that ends up in people's photographs, so it does not
+       get to move. One column, still right-aligned, same place on screen. */
+    body.hide-times #footer {
+      grid-template-columns: 1fr;
+      justify-items: end;
+    }
   </style>
 </head>
-<body>
+<!-- Sealed until a broadcast says otherwise — see the CSS above. -->
+<body class="hide-times">
 
 <div class="sm-lasers"></div>
 
@@ -267,7 +291,7 @@
   <!-- header -->
   <img class="logo" id="gameName" src="/static/shared/scanmania-design/sm-text-tp.png" alt="ScanMania">
   <div id="header">
-    <div class="clock" id="stopwatch"><span class="mm">00:</span><span class="ss">00.00</span></div>
+    <div class="clock sealed-hide" id="stopwatch"><span class="mm">00:</span><span class="ss">00.00</span></div>
     <div id="penaltyNote"></div>
   </div>
 
@@ -286,24 +310,26 @@
 
     <div class="overlay" id="bustOverlay">
       <div class="verdict lose">BUSTED</div>
-      <div class="sub" id="bustTime"></div>
+      <div class="sub sealed-hide" id="bustTime"></div>
     </div>
 
     <div class="overlay" id="finishedOverlay">
       <div class="verdict win" id="finishedClean">CLEAN RUN</div>
-      <div class="sub" id="finishedTime"></div>
-      <div class="sub blue" id="finishedRank"></div>
+      <div class="sub sealed-hide" id="finishedTime"></div>
+      <div class="sub blue sealed-hide" id="finishedRank"></div>
     </div>
 
     <div class="overlay" id="abortedOverlay">
       <div class="verdict lose">RUN ENDED</div>
-      <div class="sub" id="abortedTime"></div>
+      <div class="sub sealed-hide" id="abortedTime"></div>
     </div>
   </div>
 
   <!-- footer -->
   <div id="footer">
-    <div id="leaderboard">
+    <!-- The whole block goes when sealed: the order leaks as much as the
+         times do. LAST RUN lives inside it and goes with it. -->
+    <div id="leaderboard" class="sealed-hide">
       <div id="lastRun" class="empty">
         <span class="lab">Last run</span>
         <span class="nm"></span>
@@ -362,6 +388,20 @@
      Stopwatch — see display_in for the reasoning. Invariant 2.
   ----------------------------------------------------------------------- */
   let swElapsedAtMsg = 0, swClientAtMsg = 0, swRunning = false, rafId = null;
+
+  /* The seal — game.yaml display.hide_times, on every state broadcast.
+     Starts true to match the class already on <body>: a page that has not
+     heard from the server yet shows no time, rather than guessing. The
+     stopwatch keeps running and the leaderboard keeps rendering into hidden
+     elements, on purpose — unsealing is then a class change with nothing to
+     back-fill. Invariant 2 is untouched either way. */
+  let sealed = true;
+
+  function applySeal(hide) {
+    if (hide === sealed) return;
+    sealed = hide;
+    document.body.classList.toggle("hide-times", hide);
+  }
 
   function fmtParts(ms) {
     if (ms == null || isNaN(ms)) ms = 0;
@@ -472,6 +512,8 @@
   function applyState(msg) {
     const state = msg.state || "ATTRACT";
 
+    applySeal(!!msg.hide_times);
+
     swElapsedAtMsg = msg.elapsed_ms || 0;
 
     /* Penalties, under the clock. This screen faces the street and people
@@ -479,9 +521,15 @@
        so rather than looking like a slow run. The element is in the markup and
        styled in the stylesheet — creating it here made it a direct child of
        #stage, which put it in the wrong grid row. */
-    penaltyNote.textContent = (msg.penalty_count || 0)
-      ? `INCL. +${((msg.penalty_total_ms || 0) / 1000).toFixed(1)}s PENALTY`
-      : "";
+    /* Sealed, the total is the leak — "INCL. +10.0s PENALTY" alone narrows the
+       run. The note stays, because a crowd that saw somebody clip a beam
+       should see it acknowledged; it just counts penalties instead of
+       seconds. */
+    const pc = msg.penalty_count || 0;
+    penaltyNote.textContent =
+      !pc                 ? ""
+      : sealed            ? (pc === 1 ? "PENALTY" : `${pc} PENALTIES`)
+      : `INCL. +${((msg.penalty_total_ms || 0) / 1000).toFixed(1)}s PENALTY`;
     swClientAtMsg  = performance.now() / 1000;
 
     if (RUN_STATES.has(state)) {

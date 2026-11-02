@@ -56,6 +56,20 @@ def register_routes(
         """Start the count-in sequence. Player must already be on the start plate."""
         return _dispatch("count_in")
 
+    @router.post("/api/gm/plate")
+    async def gm_plate():
+        """
+        Stand in for the start plate: send the PlateHigh the Opta would send.
+
+        REGISTERED -> ARM is the one transition that waits on a sensor rather
+        than on the console, so a plate that is not reporting strands a
+        signed-in player with no way forward but FORCE RESET and a re-sign-in.
+        This is the manual path, and it is the same event — the FSM accepts
+        PlateHigh in REGISTERED and nowhere else, so it cannot start a run, skip
+        a count-in or re-arm anything mid-run.
+        """
+        return _dispatch("plate")
+
     @router.post("/api/gm/bust")
     async def gm_bust():
         """Manually bust the current run (manual detection mode or override)."""

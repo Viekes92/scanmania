@@ -55,7 +55,14 @@ ssh "$HOST" "mkdir -p '$REMOTE_DIR'"
 # soundtrack with sine tones. The generator guards that exact hazard with
 # --force; this did not guard it at all.
 BACKUP="$REMOTE_DIR/.replaced-$(date +%Y%m%dT%H%M%S)"
-if ssh "$HOST" "ls '$REMOTE_DIR'/*.wav '$REMOTE_DIR'/*.mp3 '$REMOTE_DIR'/*.ogg >/dev/null 2>&1"; then
+# find, not `ls a b c`: ls exits NON-ZERO if ANY one of the globs matches
+# nothing, so with no .ogg on the box — which is every box — this test failed
+# and the whole block below was skipped in silence. The backup never ran and
+# neither did the "type replace" confirmation, which is the guard the comment
+# above describes. .flac is included here too; it is in FILES at the top of
+# the script but was missing from both globs here.
+AUDIO_GLOB=( -name '*.wav' -o -name '*.mp3' -o -name '*.ogg' -o -name '*.flac' )
+if ssh "$HOST" "find '$REMOTE_DIR' -maxdepth 1 -type f \\( ${AUDIO_GLOB[*]} \\) | grep -q ."; then
     echo
     echo "The box already has audio. It will be overwritten where names match."
     ssh "$HOST" "ls -la '$REMOTE_DIR' | tail -n +2"
@@ -64,8 +71,12 @@ if ssh "$HOST" "ls '$REMOTE_DIR'/*.wav '$REMOTE_DIR'/*.mp3 '$REMOTE_DIR'/*.ogg >
         read -r reply
         [ "$reply" = "replace" ] || { echo "Nothing sent."; exit 1; }
     fi
-    ssh "$HOST" "mkdir -p '$BACKUP' && cp -p '$REMOTE_DIR'/*.wav '$REMOTE_DIR'/*.mp3 '$REMOTE_DIR'/*.ogg '$BACKUP'/ 2>/dev/null || true"
-    echo "Previous audio kept at $BACKUP"
+    ssh "$HOST" "mkdir -p '$BACKUP' && find '$REMOTE_DIR' -maxdepth 1 -type f \\( ${AUDIO_GLOB[*]} \\) -exec cp -p {} '$BACKUP'/ \\;"
+    # Prove it rather than announcing it: a backup that silently copied
+    # nothing is worse than no backup, because it stops you looking.
+    kept=$(ssh "$HOST" "find '$BACKUP' -type f | wc -l")
+    [ "$kept" -gt 0 ] || { echo "ABORT: backup to $BACKUP copied nothing."; exit 1; }
+    echo "Previous audio kept at $BACKUP ($kept file(s))"
 fi
 
 # rsync if the box has it (only sends what changed — a 14 MB bed does not need

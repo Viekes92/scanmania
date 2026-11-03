@@ -460,3 +460,20 @@ def test_the_soundtrack_is_levelled_and_not_clipping():
              "-show_entries", "stream=sample_rate", "-of", "default=nw=1:nk=1",
              str(f)], capture_output=True, text=True).stdout.strip()
         assert rate == "48000", f"{f.name} is {rate} Hz, not the card's 48000"
+
+
+def test_push_sounds_backup_guard_cannot_silently_skip():
+    """
+    `ls a b c` exits non-zero if ANY glob misses, so with no .ogg on the box —
+    which is every box — the backup block was skipped in silence, taking the
+    "type replace" confirmation with it. The script's own comment says the box
+    is the only copy of the soundtrack, so both of those matter.
+    """
+    from pathlib import Path
+    sh = (Path(__file__).resolve().parents[1]
+          / "tools/push_sounds.sh").read_text()
+    assert "ls '$REMOTE_DIR'/*.wav '$REMOTE_DIR'/*.mp3" not in sh, \
+        "the multi-glob ls test is back; it fails whenever one extension is absent"
+    assert "find '$REMOTE_DIR' -maxdepth 1 -type f" in sh
+    # And the backup has to prove it copied something.
+    assert 'ABORT: backup to $BACKUP copied nothing.' in sh

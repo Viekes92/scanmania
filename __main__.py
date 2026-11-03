@@ -428,9 +428,17 @@ async def async_main(args: argparse.Namespace) -> int:
     runner.hazer = hazer
     if hazer is not None and hasattr(hazer, "set_light"):
         from iobackend.lightshow import LightCuePlayer
-        runner.lights = LightCuePlayer(hazer, cfg.mazes.light_cues)
+        run_level = int(((hazer_cfg.get("lights") or {}).get("run_level") or 0))
+        runner.lights = LightCuePlayer(hazer, cfg.mazes.light_cues,
+                                       run_level=run_level)
         web_app_lights = runner.lights
         log.info("Light cues: %s", ", ".join(sorted(cfg.mazes.light_cues)) or "none")
+        # Worth a boot line of its own: a lit run is a deliberate trade against
+        # detection (ADR 0012), and "why was that run not dark" is much easier
+        # to answer from the log than from the cue file.
+        log.info("Run fill light: %s",
+                 f"level {run_level} through COUNTDOWN and the RUN segments"
+                 if run_level else "none — runs are dark")
     if audio_player is not None:
         from audio.cues import AudioCuePlayer
         runner.audio = AudioCuePlayer(audio_player, acfg)

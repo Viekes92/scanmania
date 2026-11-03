@@ -1,16 +1,22 @@
 """
 iobackend/lightshow.py — drives the room lights from the FSM state.
 
-Inputs:  light cues from mazes.yaml, the current FSM state, the DMX controller
+Inputs:  light cues from mazes.yaml, hazer.lights.run_level from hardware.yaml,
+         the current FSM state, the DMX controller
 Outputs: set_light() calls on the DMX owner; nothing talks to Art-Net directly
-Invariant: RUN states are always fully dark, whatever the cue file says and
-           whatever the GM has set. The outcome states (FINISHED/BUSTED/RESULT)
-           belong to the cue table too — the work-light override resumes at
-           ATTRACT, not over the top of the result. The detector samples raw brightness inside
+Invariant: RUN states are held at exactly one level — 0, or `run_level` when an
+           operator has deliberately configured fill light — whatever the cue
+           file says and whatever the GM has set. The outcome states
+           (FINISHED/BUSTED/RESULT) belong to the cue table too — the
+           work-light override resumes at ATTRACT, not over the top of the
+           result. The detector samples raw brightness inside
            each dot's ROI with no background subtraction, so ambient light
            raises the reading and a genuinely broken beam can still read above
            break_ratio — a MISSED break, where a player runs clean through a
-           beam they broke. That fails in the direction nobody sees.
+           beam they broke. That fails in the direction nobody sees. run_level
+           defaults to 0 for exactly that reason, and anything above 0 is a
+           deliberate trade of that guarantee for a run somebody can film:
+           ADR 0012. What a cue or the GM cannot do, either way, is change it.
 Invariant: outside a RUN, only a CUE may dim the entrance (allow_always_on=True,
            passed from _apply() alone) — it is dark from sign-in to the result
            and lit wherever somebody is walking in or out. The RUN states are
@@ -41,8 +47,13 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-# States where the container must be dark for detection to be trustworthy.
-# Not configurable on purpose: this is a correctness property, not a look.
+# States the cue table does not get to light. Dark for detection to be
+# trustworthy, or — when an operator has set hazer.lights.run_level above 0 —
+# held at that one low fill level instead.
+#
+# The SET is not configurable on purpose: which states a cue may not touch is a
+# correctness property, not a look. Only the level is configurable, and it is
+# one number for all four states so there is no step at GO or at a checkpoint.
 _DARK_STATES = frozenset({
     "COUNTDOWN", "RUN_SEG_1", "RUN_SEG_2", "RUN_SEG_3",
 })
@@ -72,9 +83,16 @@ class LightCuePlayer:
     and a second sender would zero the first one's work twice a second.
     """
 
-    def __init__(self, dmx: Any, cues: dict[str, Any] | None = None) -> None:
+    def __init__(self, dmx: Any, cues: dict[str, Any] | None = None,
+                 run_level: int = 0) -> None:
         self._dmx = dmx
         self._cues = cues or {}
+        # Fill light for COUNTDOWN and the RUN segments, so a run can be
+        # filmed. 0 — the default, and the normal game — means a run is dark.
+        # Clamped here as well as in the loader: this class is constructed
+        # directly by tests and by tools, and a nonsense level must not reach
+        # the fixtures.
+        self._run_level = max(0, min(255, int(run_level or 0)))
         self._state: str | None = None
         self._task: asyncio.Task | None = None
         # "Work lights": the GM's solid-on override for loading and unloading.
@@ -101,6 +119,36 @@ class LightCuePlayer:
     @property
     def work_lights(self) -> bool:
         return self._work_lights
+
+    @property
+    def run_level(self) -> int:
+        """The fill level held through COUNTDOWN and the RUN segments."""
+        return self._run_level
+
+    def reload(self, cues: dict[str, Any] | None = None,
+               run_level: int | None = None) -> None:
+        """
+        Swap in freshly loaded cues and/or a new fill level, and re-apply.
+
+        A running cue holds a reference to its own step list, so swapping the
+        config alone left it playing the pre-edit sequence — the same trap
+        runner._handle_play_show() re-arms the laser show for.
+
+        Forgets the current state and sets it again rather than calling
+        reset(), because reset() deliberately stops there and waits for the
+        next transition: a `run_level` is tuned by standing in the container
+        and looking at the camera, and a level that only landed on the next
+        state change would be untunable in the state you are watching.
+        """
+        if cues is not None:
+            self._cues = cues or {}
+        if run_level is not None:
+            self._run_level = max(0, min(255, int(run_level or 0)))
+        state, self._state = self._state, None
+        if state is not None:
+            self.set_state(state)
+        else:
+            self._cancel()
 
     def set_work_lights(self, on: bool) -> None:
         self._work_lights = on
@@ -144,8 +192,17 @@ class LightCuePlayer:
         state = self._state or ""
 
         if state in _DARK_STATES:
-            # Dark wins over every cue and over the GM's work lights.
-            self._all_off(fade=False)
+            # This branch wins over every cue and over the GM's work lights.
+            # Normally that means dark. With run_level set it means exactly
+            # run_level — still not something a cue or the GM can move, which
+            # is the property that matters: a run looks the same every time.
+            if self._run_level > 0:
+                self._fill_light(self._run_level)
+            else:
+                self._all_off(fade=False)
+            # The entrance goes dark either way. It leaks straight down the
+            # container and it is what a player on the plate is looking into,
+            # so it is never the fixture you film by.
             self._always_on_dark()
             return
 
@@ -197,6 +254,34 @@ class LightCuePlayer:
     def _all_on(self) -> None:
         if hasattr(self._dmx, "set_maze_lights"):
             self._dmx.set_maze_lights(True)
+
+    def _fill_light(self, level: int) -> None:
+        """
+        Hold every non-always_on fixture at `level` for a COUNTDOWN or RUN.
+
+        Snapped, not faded, for the same reason _all_off() is: a fade into a
+        run leaves the room still moving through the first seconds of it, and
+        COUNTDOWN is where the step would land. The level is low by design —
+        the decoders here are effectively full past about 10 — so there is no
+        hard edge to ramp out of, which is the case fade: true exists for.
+
+        Driven off lights_state() rather than a hardcoded left/right pair so a
+        renamed or added fixture is covered without touching this.
+        """
+        if not hasattr(self._dmx, "lights_state"):
+            return
+        try:
+            fixtures = self._dmx.lights_state()
+        except Exception as exc:
+            log.warning("could not read the light state: %s", exc)
+            return
+        for name, st in fixtures.items():
+            if st.get("always_on"):
+                continue          # the entrance — _always_on_dark() has it
+            try:
+                self._dmx.set_light(name, level, fade=False)
+            except Exception as exc:
+                log.warning("could not set the run fill on '%s': %s", name, exc)
 
     def _always_on_dark(self) -> None:
         """

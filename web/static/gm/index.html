@@ -317,7 +317,10 @@
        applicable. Each control now owns a column for the whole session. */
     #actions {
       display: grid;
-      grid-template-columns: repeat(6, 1fr);
+      /* SEVEN slots since PLATE joined the row. Still one row, still fixed
+         columns: every button has to keep its column in every state, or a
+         control moves under the operator's thumb between two broadcasts. */
+      grid-template-columns: repeat(7, 1fr);
       gap: 10px;
       padding: 12px 14px;
       border-bottom: 1px solid var(--border);
@@ -342,6 +345,19 @@
       transform: scale(0.97);
     }
 
+    /* Seven columns instead of six leaves about 150px a slot on the iPad, and
+       NEW PLAYER at a flat 18px with 2px of tracking does not fit that. Shrink
+       the label inside the row only — FORCE RESET and MASTER MODE are
+       full-width buttons using the same class and stay at 18px. Tightening the
+       tracking rather than wrapping: a two-line label changes the button's
+       visual weight, and these are read at a glance. */
+    #actions .action-btn {
+      font-size: clamp(12px, 1.45vw, 18px);
+      letter-spacing: clamp(0.5px, 0.18vw, 2px);
+      padding: 0 4px;
+      white-space: nowrap;
+    }
+
     .action-btn:disabled {
       opacity: 0.28;
       cursor: not-allowed;
@@ -350,6 +366,18 @@
     }
 
     /* Individual action colours — outlined style */
+    /* Blue, not green: PLATE sits next to COUNT IN and the two are tapped
+       seconds apart, so they must not read as the same control. Blue is the
+       chrome colour here, and --accent-text is its readable tint. */
+    #btnPlate {
+      border: 2px solid var(--accent);
+      color: var(--accent-text);
+    }
+    #btnPlate:active:not(:disabled) {
+      background: var(--accent);
+      color: #fff;
+    }
+
     #btnCountIn {
       border: 2px solid var(--green);
       color: var(--green);
@@ -1000,8 +1028,14 @@
   <!-- -----------------------------------------------------------------------
        PRIMARY ACTIONS
   ----------------------------------------------------------------------- -->
-  <!-- Six fixed slots, in game order. Every button keeps its column in every
+  <!-- Seven fixed slots, in game order. Every button keeps its column in every
        state; inapplicable ones dim rather than disappear.
+
+       PLATE sends the PlateHigh the start plate would send, and it sits where
+       it does because that is where it falls in the game: sign the player in,
+       put them on the plate, count them in. It is live in REGISTERED only —
+       the one state the FSM accepts that event in — so it dims the moment it
+       has done its job and cannot touch a run in progress.
 
        They used to be flex:1 with display:none, so the surviving buttons
        resized and relocated on each transition. COUNTDOWN -> RUN happens with
@@ -1016,6 +1050,7 @@
        and it was taking a third to half of this bar in every state. -->
   <div id="actions">
     <button class="action-btn" id="btnNewPlayer" style="border:2px solid var(--green); color:var(--green);">NEW PLAYER</button>
+    <button class="action-btn" id="btnPlate"      disabled>PLATE</button>
     <button class="action-btn" id="btnCountIn"    disabled>COUNT IN</button>
     <button class="action-btn" id="btnCancel"     disabled>CANCEL</button>
     <button class="action-btn" id="btnAbort"      disabled>ABORT</button>
@@ -1304,6 +1339,7 @@
     const detectionBadge   = document.getElementById("detectionBadge");
     const bannerManual     = document.getElementById("bannerManual");
     const bannerMasked     = document.getElementById("bannerMasked");
+    const btnPlate         = document.getElementById("btnPlate");
     const btnCountIn       = document.getElementById("btnCountIn");
     const btnBust          = document.getElementById("btnBust");
     const btnAbort         = document.getElementById("btnAbort");
@@ -1424,6 +1460,9 @@
 
       /* --- Button enable/disable + visibility rules (from plan §7.2) --- */
       // Enabled states
+      // REGISTERED only — the one state the FSM accepts PlateHigh in. Live in
+      // any other state it would be a button that silently does nothing.
+      const plateEnabled      = (state === "REGISTERED");
       const countInEnabled    = (state === "ARM");
       const bustEnabled       = RUN_STATES.has(state);
       const abortEnabled      = (RUN_STATES.has(state) || state === "COUNTDOWN");
@@ -1431,6 +1470,7 @@
       const voidEnabled       = POST_RUN_STATES.has(state);
 
       // Apply disabled attribute
+      btnPlate.disabled      = !plateEnabled;
       btnCountIn.disabled    = !countInEnabled;
       btnBust.disabled       = !bustEnabled;
       btnAbort.disabled      = !abortEnabled;
@@ -1901,6 +1941,9 @@
     /* -----------------------------------------------------------------------
        Action button wiring
     ----------------------------------------------------------------------- */
+    // No tap-to-confirm: it is only reachable in REGISTERED, the worst it can
+    // do is arm a player who is not on the plate yet, and CANCEL undoes that.
+    btnPlate.addEventListener("click",   () => gmPost("plate"));
     btnCountIn.addEventListener("click", () => gmPost("count-in"));
     btnAbort.addEventListener("click",   () => gmPost("abort"));
     btnCancel.addEventListener("click",  () => gmPost("cancel"));

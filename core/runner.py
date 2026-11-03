@@ -2002,6 +2002,20 @@ class GameRunner:
         """Translate a GM console action string to an FSM event and enqueue it."""
         if action == "count_in":
             self._event_queue.put_nowait(CountInRequested())
+        elif action == "plate":
+            # The start plate, by hand. Same event the Opta sends when someone
+            # actually stands on it, so the FSM cannot tell the difference and
+            # there is no second path into ARM to keep correct: the FSM accepts
+            # PlateHigh in REGISTERED and nowhere else, and that one handler
+            # stays the only way in.
+            #
+            # For the moment the plate itself does not fire — and FORCE RESET
+            # plus a re-sign-in was the only way round it, which is a minute of
+            # a queue's time per player. The GM is standing at the entrance
+            # watching the player step on; they are a better sensor than a
+            # switch that is not reporting.
+            log.info("GM triggered the start plate by hand")
+            self._event_queue.put_nowait(PlateHigh())
         elif action == "bust":
             self._event_queue.put_nowait(GmBust())
         elif action == "abort":
@@ -2083,6 +2097,21 @@ class GameRunner:
                     self._apply_maze(self._current_preset)
             except Exception as exc:
                 log.error("vision reload failed: %s", exc)
+
+        # Light cues and the run fill level have the same problem a running
+        # show does: the player holds its own references, so swapping the
+        # config alone left it playing the pre-edit cue table. Re-point it and
+        # re-apply the current state, so tuning run_level by eye in the
+        # container does not need a service restart.
+        if self.lights is not None and hasattr(self.lights, "reload"):
+            try:
+                self.lights.reload(
+                    new_config.mazes.light_cues,
+                    run_level=int(((getattr(new_config.hardware, "hazer", None) or {})
+                                   .get("lights") or {}).get("run_level") or 0),
+                )
+            except Exception as exc:
+                log.error("light cue reload failed: %s", exc)
 
         if self._show_name and self._show_task and not self._show_task.done():
             name = self._show_name
@@ -2577,6 +2606,16 @@ class GameRunner:
                 max(0, (self._countdown_go_ns - time.monotonic_ns()) // 1_000_000)
                 if self._countdown_go_ns is not None else None
             ),
+            # Seal the public screens. Both display pages start sealed and
+            # unseal only on a message that says false, so a screen that comes
+            # up before the WebSocket connects cannot flash a time. The clock,
+            # the rank and the leaderboard above are all still sent — the GM
+            # console and the admin portal read the same broadcast and the
+            # operator has to be able to settle the prize. See
+            # docs/grand-prize.md.
+            "hide_times": bool(getattr(
+                getattr(getattr(self.config, "game", None), "display", None),
+                "hide_times", False)),
             "outcome": self._last_outcome,
             "rank": self._last_rank,
             "boards": self._board_states,

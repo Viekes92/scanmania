@@ -252,3 +252,26 @@ audio:
   # Fired on a TIME PENALTY, which is not a state change — the run continues,
   # so this cannot live in `cues` above. "" for no sound.
   penalty_cue: break.mp3
+
+# ---------------------------------------------------------------------------
+# Display — what the two screens are allowed to show.
+#
+# hide_times: SEAL the result. The in-container screen, the outdoor screen and
+#   the public leaderboard stop showing any time at all: the running clock, the
+#   result time, the rank and the whole leaderboard block go away, and a
+#   penalty reads as "PENALTY" instead of "+5s".
+#
+#   This is for a grand-prize final, where nobody in the queue may know what
+#   there is to beat. The stopwatch still runs, the run row still records
+#   elapsed_ms and raw_elapsed_ms, and the GM console and admin portal still
+#   show everything — the operator has to be able to settle the prize.
+#
+#   The two display pages start SEALED and unseal only when a broadcast says
+#   hide_times is false, so a screen that comes up before the WebSocket
+#   connects can never flash a time. See docs/grand-prize.md.
+#
+#   false = normal play, every time on screen as usual.
+#   Set on the box, not here: this is the normal game, and a final is a
+#   setting for the day. Admin → Config, or see docs/grand-prize.md.
+display:
+  hide_times: false

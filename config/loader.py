@@ -320,6 +320,20 @@ class LeaderboardConfig:
 
 
 @dataclass
+class DisplayConfig:
+    """
+    What the two public screens are allowed to show.
+
+    Only `hide_times` lives here, and it is a SEAL on the public screens, not a
+    change to the game: the stopwatch still runs, the run row still stores
+    elapsed_ms and raw_elapsed_ms, and the GM console and admin portal are
+    untouched. The flag rides on every WebSocket state broadcast so a page
+    picks it up without a reload. See docs/grand-prize.md.
+    """
+    hide_times: bool = False
+
+
+@dataclass
 class AudioConfig:
     """The container's soundtrack. Everything here degrades to silence."""
     enabled: bool = True
@@ -410,6 +424,9 @@ class GameConfig:
     checkpoint_shape_delay_ms: int = 300
     # The soundtrack. Absent from game.yaml means silence, not an error.
     audio: AudioConfig = field(default_factory=AudioConfig)
+    # What the two public screens may show. Absent means normal play — every
+    # time on screen, exactly as before.
+    display: DisplayConfig = field(default_factory=DisplayConfig)
 
 
 @dataclass
@@ -857,7 +874,21 @@ def _validate_hazer(h: dict | None) -> dict | None:
     for key, default in (("haze_burst_s", 0.0), ("haze_interval_s", 0.0)):
         if key in out:
             out[key] = _ranged(out[key], 0.0, 3600.0, default, f"hazer.{key}")
-    fixtures = ((out.get("lights") or {}).get("fixtures") or {})
+    lights = out.get("lights") or {}
+    # Fill light during COUNTDOWN and the RUN segments. 0 is the normal game —
+    # a run is dark, which is what detection needs. Above 0 trades that for a
+    # filmable run; see docs/adr/0012-fill-light-during-a-run.md.
+    #
+    # Checked against 0-16, NOT the full 0-255 a DMX level could take. _ranged
+    # clamps, and clamping a fat-fingered `run_level: 200` to 255 would put the
+    # house lights up through every run — the one direction this key must not
+    # fail in. 16 is already past full on the D5 decoders here (the useful band
+    # is 1-6) with enough headroom for a dimmer fixture, so the clamp lands
+    # somewhere bright but survivable and says so in the log.
+    if "run_level" in lights:
+        lights["run_level"] = _ranged(lights["run_level"], 0, 16, 0,
+                                      "hazer.lights.run_level")
+    fixtures = (lights.get("fixtures") or {})
     for name, spec in list(fixtures.items()):
         if not isinstance(spec, dict):
             continue
@@ -922,6 +953,7 @@ def load_game() -> GameConfig:
     ci = d.get("count_in", {})
     pulses = [CountInPulse(on_ms=p[0], off_ms=p[1]) for p in ci.get("pulses", [])]
     lb = d.get("leaderboard", {})
+    disp = d.get("display") or {}
     return GameConfig(
         mode=d.get("mode", "hard_cutoff"),
         max_run_ms=_ranged(d.get("max_run_ms", 180000),
@@ -975,6 +1007,9 @@ def load_game() -> GameConfig:
             scope=lb.get("scope", "daily"),
             show_busted=lb.get("show_busted", False),
             max_entries=lb.get("max_entries", 20),
+        ),
+        display=DisplayConfig(
+            hide_times=bool(disp.get("hide_times", False)),
         ),
     )
 

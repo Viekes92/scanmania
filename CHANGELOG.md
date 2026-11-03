@@ -7,6 +7,75 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — grand-prize mode (branch `grand-prize`)
+
+Three changes for a final where the times must stay secret until the prize is
+awarded. All three default to OFF: with no config the box behaves exactly as
+before. Runbook in `docs/grand-prize.md`.
+
+- **`display.hide_times` in `game.yaml` seals the two public screens.** The
+  running clock, the result time and the rank go from both displays, and the
+  whole leaderboard block goes from `/display/out` — LAST RUN with it. A ranked
+  board with the times blanked still publishes the order, and the order is what
+  the next player in the queue wants. What is left is the verdict and the
+  player's name; `/display/in`'s RESULT scene swaps its "YOUR TIME" half for
+  those, so it carries on from FINISHED instead of going blank. A penalty reads
+  `PENALTY` rather than `+5s` — two of those name the run to within the seconds
+  a player can count themselves.
+
+  Not touched: the stopwatch (invariant 2 holds), the run row's `elapsed_ms`
+  and `raw_elapsed_ms`, the GM console, the admin portal and the API. The
+  operator has to be able to settle the prize. Note that
+  `/api/admin/leaderboard` is unauthenticated by design, so the seal is on the
+  *screens*, not on the network.
+
+  The flag rides on every state broadcast, so it can be flipped from the admin
+  config editor without a kiosk restart. Both pages ship **sealed** —
+  `<body class="hide-times">` is in the markup and the JS only ever takes the
+  class off — so a screen that comes up mid-final shows no time rather than a
+  stale one, and a dropped WebSocket fails sealed.
+
+- **`hazer.lights.run_level` in `hardware.yaml` lights a run for the camera.**
+  COUNTDOWN and the three RUN segments were held at a hard 0 over any cue and
+  over the GM's work-light switch; they are now held at `run_level` instead,
+  default 0. A pitch-dark container photographs as a black rectangle, and the
+  final is being filmed.
+
+  **This is a deliberate trade against camera detection** — ambient light
+  raises the raw reading inside every dot's ROI, so a broken beam can read
+  above `break_ratio` and the break is MISSED. Run the final on manual or
+  assisted detection. Reasoning and what it does *not* give up: ADR 0012.
+
+  The half of the invariant that matters is kept: one level for all four states
+  (no step at GO or at a checkpoint), snapped not faded, and neither a cue nor
+  the GM can move it. The entrance is **not** part of the fill and still goes
+  dark for every RUN state. Range-checked to 0-16 rather than 0-255 because
+  `_ranged` clamps — against the full range a fat-fingered `200` would clamp to
+  255 and put the house lights up through every run. A boot line names the
+  level that actually loaded.
+
+- **PLATE on the GM console** sends the `PlateHigh` the Opta would send, which
+  is the `REGISTERED → ARM` transition. It is the one transition that waits on
+  a sensor rather than the console, so a plate that is not reporting stranded a
+  signed-in player with no way forward but FORCE RESET and a re-sign-in. Live
+  in REGISTERED only — the FSM accepts that event in that state and nowhere
+  else, so a mis-tap or a stale iPad cannot start a run or touch one in
+  progress. The action row is seven fixed columns now, with the label type
+  scaled down inside it; every button still keeps its column in every state.
+
+- **`LightCuePlayer.reload()`**, called from `runner.reload_config()`. Light
+  cues and the fill level now take effect live, like a show already did — the
+  player held its own references, so swapping the config left it animating the
+  pre-edit cue table until a restart. `run_level` is set by eye against a
+  camera, which is a job for the ten minutes before a final, not a restart per
+  nudge.
+
+- 35 tests (`tests/test_grand_prize.py`, plus a fill-light section in
+  `tests/test_lights.py`): every default asserted OFF, the seal proved not to
+  reach the stopwatch, the fill level proved immune to cues and to the GM
+  override, the entrance proved still dark, and `PlateHigh` proved a no-op in
+  every state but REGISTERED. 535 total.
+
 ### Fixed — every state broadcast was failing on the box
 
 - **`CameraStream.fps` is a property.** It was a plain method while all three of

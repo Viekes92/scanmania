@@ -52,7 +52,7 @@ result_display_ms: 15000
 arm_timeout_ms: 180000
 # How long to wait in ARM state (player registered but never counted in) before auto-resetting. Range: 30000-600000.
 
-detection_mode: assisted
+detection_mode: manual
 
 # --- Time penalties ---------------------------------------------------------
 # A confirmed beam break costs the player TIME, it does not end their run.
@@ -274,4 +274,4 @@ audio:
 #   Set on the box, not here: this is the normal game, and a final is a
 #   setting for the day. Admin → Config, or see docs/grand-prize.md.
 display:
-  hide_times: false
+  hide_times: true

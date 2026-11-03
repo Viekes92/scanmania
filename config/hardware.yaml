@@ -204,7 +204,7 @@ hazer:
     # is set to — it leaks straight down the container and it is the one
     # fixture a player standing on the plate is looking into. Sane range 0-255,
     # useful range 0-6.
-    run_level: 2
+    run_level: 10
     fixtures:
       # A 3-channel decoder addressed at DMX 3, so its own ch1/ch2/ch3 land on
       # DMX 3/4/5. Check this against the decoder before an event: the always_on

@@ -47,6 +47,11 @@ VISION_FPS             = "vision.fps"
 RELAY_MISMATCH         = "relay.mismatch"
 RELAY_TIMEOUT          = "relay.timeout"
 PICO_LINK_DOWN         = "pico.link_down"
+# A hardware input driven by hand from the GM console because the Opta was not
+# reporting. Tagged with which input and the state it was fired in: a run made
+# of manual checkpoints is a legitimate run, but it is worth being able to tell
+# one from a sensor-driven one afterwards.
+MANUAL_INPUT           = "inputs.manual"
 PREFLIGHT_FAILED       = "preflight.failed"
 COUNTIN_ABORTED        = "countin.aborted"
 STATE_TRANSITION       = "state.transition"

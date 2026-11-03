@@ -129,6 +129,21 @@ _INPUT_EVENT_MAP = {
     ("stop",  1): StopPressed,
 }
 
+# The same four, reachable by hand from the GM console when the Opta is not
+# reporting. Deliberately the RISING edge only: PlateLow is not here, because
+# nothing in the FSM handles it (once armed, stay armed) and a button for an
+# event no state accepts is worse than no button.
+#
+# Keyed by the console's action string, which is also the input name in
+# hardware.yaml's input_map, so the console's four buttons and the Opta's four
+# channels cannot drift apart.
+_MANUAL_INPUTS = {
+    "plate": PlateHigh,
+    "cp1":   Cp1Pressed,
+    "cp2":   Cp2Pressed,
+    "stop":  StopPressed,
+}
+
 
 class GameRunner:
     """
@@ -2002,20 +2017,27 @@ class GameRunner:
         """Translate a GM console action string to an FSM event and enqueue it."""
         if action == "count_in":
             self._event_queue.put_nowait(CountInRequested())
-        elif action == "plate":
-            # The start plate, by hand. Same event the Opta sends when someone
-            # actually stands on it, so the FSM cannot tell the difference and
-            # there is no second path into ARM to keep correct: the FSM accepts
-            # PlateHigh in REGISTERED and nowhere else, and that one handler
-            # stays the only way in.
+        elif action in _MANUAL_INPUTS:
+            # One of the four hardware inputs, by hand.
             #
-            # For the moment the plate itself does not fire — and FORCE RESET
-            # plus a re-sign-in was the only way round it, which is a minute of
-            # a queue's time per player. The GM is standing at the entrance
-            # watching the player step on; they are a better sensor than a
-            # switch that is not reporting.
-            log.info("GM triggered the start plate by hand")
-            self._event_queue.put_nowait(PlateHigh())
+            # These enqueue exactly the events the Opta sends, so the FSM
+            # cannot tell the difference and there is no second path through a
+            # run to keep correct. Each is accepted in one state and ignored
+            # everywhere else, which is the real guard — the console greying a
+            # button out is a courtesy, and /api/gm/* has no password.
+            #
+            # The plate alone was not enough. With the Opta down, PLATE gets a
+            # player into ARM and COUNT IN starts them running, and then
+            # nothing can end the run: no checkpoint, no stop button, so the
+            # only ways out are ABORT (which records no time) and the
+            # four-minute backstop. A half-manual game is not a playable one.
+            # The GM is watching the player cross each checkpoint; they are a
+            # better sensor than a switch that is not reporting.
+            event_cls = _MANUAL_INPUTS[action]
+            log.info("GM triggered %s by hand (%s)", action, event_cls.__name__)
+            metrics.emit(metrics.MANUAL_INPUT, tags={"input": action,
+                                                     "state": self.state})
+            self._event_queue.put_nowait(event_cls())
         elif action == "bust":
             self._event_queue.put_nowait(GmBust())
         elif action == "abort":

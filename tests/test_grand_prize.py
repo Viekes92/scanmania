@@ -220,51 +220,115 @@ async def test_an_unknown_gm_action_is_still_rejected(runner):
 
 
 @pytest.mark.asyncio
-async def test_the_plate_route_is_registered():
-    """The console POSTs /api/gm/plate; a 404 would show as a failed tap."""
+async def test_the_manual_input_route_is_registered():
+    """The console POSTs /api/gm/input/<name>; a 404 reads as a dead button."""
     from fastapi import APIRouter
     from web.routes_gm import register_routes
 
     router = APIRouter()
     register_routes(router, lambda action, payload: None)
-    paths = {r.path for r in router.routes}
-    assert "/api/gm/plate" in paths
+    assert "/api/gm/input/{name}" in {r.path for r in router.routes}
 
 
 @pytest.mark.asyncio
-async def test_the_plate_route_dispatches_the_plate_action(runner):
-    """End to end from the HTTP handler to a PlateHigh on the queue."""
+async def test_an_unknown_manual_input_is_a_404_not_a_silent_no_op():
+    from fastapi import APIRouter, HTTPException
+    from web.routes_gm import register_routes
+
+    seen = []
+    router = APIRouter()
+    register_routes(router, lambda a, p: seen.append(a))
+    handler = next(r.endpoint for r in router.routes
+                   if r.path == "/api/gm/input/{name}")
+    with pytest.raises(HTTPException) as exc:
+        await handler("cp9")
+    assert exc.value.status_code == 404
+    assert not seen, "nothing should reach the runner"
+
+
+@pytest.mark.asyncio
+async def test_all_four_inputs_can_be_driven_by_hand(runner):
+    """
+    The plate alone makes the game STARTABLE, not playable.
+
+    With the Opta down, a manual PLATE gets a player into ARM and COUNT IN
+    starts them running — and then nothing ends the run. No checkpoint, no
+    stop button, so the only ways out are ABORT (which records no time) and
+    the four-minute backstop. All four, or none of it is worth having.
+    """
+    from core.events import (RUN_SEG_1, RUN_SEG_2, RUN_SEG_3, FINISHED,
+                             Cp1Pressed, Cp2Pressed, StopPressed)
+
+    for action, state, nxt, cls in (
+        ("plate", REGISTERED, ARM,        PlateHigh),
+        ("cp1",   RUN_SEG_1,  RUN_SEG_2,  Cp1Pressed),
+        ("cp2",   RUN_SEG_2,  RUN_SEG_3,  Cp2Pressed),
+        ("stop",  RUN_SEG_3,  FINISHED,   StopPressed),
+    ):
+        # Each transition leaves its own side-effect events behind (ARM
+        # enqueues a PreflightPass, for one). Clear them, or the next
+        # iteration reads the previous step's tail instead of its own event.
+        while not runner._event_queue.empty():
+            runner._event_queue.get_nowait()
+        runner.state = state
+        runner.on_gm_action(action, {})
+        ev = runner._event_queue.get_nowait()
+        assert isinstance(ev, cls), f"{action} sent {type(ev).__name__}"
+        await runner.dispatch(ev)
+        assert runner.state == nxt, f"{action} in {state} did not reach {nxt}"
+
+
+@pytest.mark.asyncio
+async def test_a_manual_input_is_ignored_outside_its_one_state(runner):
+    """
+    The FSM is the guard, not the greyed-out button.
+
+    /api/gm/* has no password and the iPad can be stale, so a mis-tap has to
+    be a no-op in the state machine.
+    """
+    from core.events import RUN_SEG_1, RUN_SEG_3
+    for action in ("plate", "cp1", "cp2", "stop"):
+        for state in ("ATTRACT", "MASTER", "COUNTDOWN", "FINISHED"):
+            while not runner._event_queue.empty():
+                runner._event_queue.get_nowait()
+            runner.state = state
+            runner.on_gm_action(action, {})
+            await runner.dispatch(runner._event_queue.get_nowait())
+            assert runner.state == state, \
+                f"{action} moved the FSM out of {state}"
+
+
+def test_the_console_has_all_four_manual_inputs():
+    """Cheap guard on a frontend with no build step."""
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "web/static/gm/index.html").read_text()
+    for needle in ('id="miPlate"', 'id="miCp1"', 'id="miCp2"', 'id="miStop"',
+                   "gmPost(`input/${mi.action}`)", 'id="manualLabel"',
+                   "OPTA NOT REPORTING"):
+        assert needle in html, needle
+    # The action row went back to six when PLATE moved out of it.
+    assert "grid-template-columns: repeat(6, 1fr)" in html
+    assert "btnPlate" not in html, "the old single plate button is gone"
+
+
+@pytest.mark.asyncio
+async def test_the_manual_route_dispatches_through_to_the_queue(runner):
+    """End to end from the HTTP handler to the event on the queue."""
     from fastapi import APIRouter
     from web.routes_gm import register_routes
 
     router = APIRouter()
     register_routes(router, runner.on_gm_action)
     handler = next(r.endpoint for r in router.routes
-                   if r.path == "/api/gm/plate")
-    assert (await handler())["ok"] is True
+                   if r.path == "/api/gm/input/{name}")
+    assert (await handler("plate"))["ok"] is True
     assert isinstance(runner._event_queue.get_nowait(), PlateHigh)
 
 
 # ===========================================================================
 # The GM console markup — the button exists and is wired
 # ===========================================================================
-
-def test_the_console_has_a_plate_button():
-    """
-    Cheap guard on a single-file frontend with no build step and no unit tests.
-
-    It catches the two ways this silently half-lands: a button with no handler,
-    and a handler for a button that was renamed.
-    """
-    from pathlib import Path
-    html = (Path(__file__).resolve().parents[1]
-            / "web/static/gm/index.html").read_text()
-    assert 'id="btnPlate"' in html
-    assert 'gmPost("plate")' in html
-    # Seven slots now, and the row is fixed-width on purpose: a control that
-    # moves between two broadcasts moves under the operator's thumb.
-    assert "grid-template-columns: repeat(7, 1fr)" in html
-
 
 @pytest.mark.parametrize("page", ["display_in", "display_out"])
 def test_both_displays_ship_sealed(page):

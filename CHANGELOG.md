@@ -7,6 +7,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — manual stand-ins for all four hardware inputs
+
+- **A `Manual inputs` strip on the GM console: PLATE · CP 1 · CP 2 · STOP**,
+  posting to `POST /api/gm/input/{name}`. Each sends exactly the event the
+  Opta sends, so the FSM cannot tell the difference and there is no second
+  path through a run to keep correct.
+
+  The PLATE button added earlier was not enough. With the Opta down it gets a
+  player into ARM and COUNT IN starts them running, and then **nothing can end
+  the run** — no checkpoint, no stop button, so the only ways out are ABORT,
+  which records no time, and the four-minute backstop. The plate alone makes
+  the game startable, not playable.
+
+  Each button is live only in the one state its event is accepted in, and that
+  one is **highlighted** — with dead inputs the strip is the input panel, and
+  "which one next" has to read at a glance in a dark container. The FSM is
+  still the guard, not the greyed-out button: `/api/gm/*` has no password and
+  the iPad can be stale, so a mis-tap is a no-op in the state machine.
+
+  The strip has its own row rather than more columns in the action bar: these
+  are not game decisions, they are a stand-in for a sensor, and mixing them in
+  with ABORT and PENALTY is how somebody taps STOP meaning to tap something
+  else. The action row goes back to six columns.
+
+  The label turns red and reads `OPTA NOT REPORTING` when `inputs.connected`
+  is false. The strip is always present — a fallback you have to go and enable
+  is not a fallback — but it only looks like an alarm when it is the thing
+  keeping the game running.
+
+- **`inputs.manual` metric**, tagged with which input and the state it fired
+  in. A run made of manual checkpoints is a legitimate run, but it is worth
+  being able to tell one from a sensor-driven one afterwards.
+
+- 5 tests; 545 total.
+
 ### Added — tuning the fill light from the console, and a readable segment
 
 - **`Run light − n +` in the GM console's Health strip**, posting to a new

@@ -121,30 +121,56 @@ Full reasoning, and what the change deliberately does *not* give up, in
 
 ---
 
-## 3. PLATE on the GM console
+## 3. Manual inputs on the GM console
 
-A **PLATE** button, second in the action row, between NEW PLAYER and COUNT IN.
-It sends the `PlateHigh` the Opta would send when somebody stands on the start
-plate, which is the `REGISTERED → ARM` transition.
+A **`Manual inputs`** strip under the action row: **PLATE · CP 1 · CP 2 ·
+STOP**. Each sends exactly the event the Opta would send for that channel, so
+a whole run can be driven by hand when the input module is not reporting.
 
-It is the only transition in the game that waits on a sensor rather than on the
-console, so a plate that is not reporting used to strand a signed-in player
-with no way forward but FORCE RESET and a re-sign-in — a minute of the queue's
-time, per player.
+| button | event | state it works in |
+|---|---|---|
+| PLATE | `PlateHigh` | REGISTERED → ARM |
+| CP 1 | `Cp1Pressed` | RUN_SEG_1 → RUN_SEG_2 |
+| CP 2 | `Cp2Pressed` | RUN_SEG_2 → RUN_SEG_3 |
+| STOP | `StopPressed` | RUN_SEG_3 → FINISHED |
 
-- Live in **REGISTERED only**. The FSM accepts `PlateHigh` in that state and
-  nowhere else, so a mis-tap — or a stale iPad, or anything else on the network
-  POSTing `/api/gm/plate` — cannot start a run, skip a count-in or touch a run
-  in progress. The greyed-out button is the courtesy; the state machine is the
-  guarantee.
-- **No tap-to-confirm.** The worst it can do is arm a player who has not
-  stepped on the plate yet, and CANCEL undoes that.
-- Blue, not green, because it sits next to COUNT IN and the two are tapped
-  seconds apart.
+**All four, not just the plate.** With the Opta down, a manual PLATE gets a
+player into ARM and COUNT IN starts them running — and then nothing can *end*
+the run. No checkpoint, no stop button, so the only ways out are ABORT, which
+records no time, and the four-minute backstop. The plate alone makes the game
+startable, not playable.
 
-The action row is seven fixed columns now instead of six, with the label type
-scaled down inside the row. Every button still keeps its column in every state
-— a control that moves between two broadcasts moves under the operator's thumb.
+- **The live one is highlighted.** With dead inputs this strip is the input
+  panel, and which one comes next has to read at a glance in a dark container.
+- **Each is live in one state only.** The FSM accepts each event in exactly
+  one state, so a mis-tap — or a stale iPad, or anything else on the network
+  POSTing `/api/gm/input/...` — is a no-op. The greyed-out button is the
+  courtesy; the state machine is the guarantee.
+- **No tap-to-confirm.** They are stand-ins for a sensor, not decisions, and
+  the point is that they are as fast as stepping on the plate.
+- **The label turns red** and reads `OPTA NOT REPORTING` when the input module
+  is actually down, so you are told why nothing is happening rather than
+  having to work it out.
+
+Driving a run by hand is recorded: each tap emits `inputs.manual`, tagged with
+the input and the state it fired in.
+
+### When the Opta stops answering
+
+Symptom: nothing responds — plate, checkpoints and stop button all dead at
+once. Check it before blaming the game:
+
+```bash
+ping 172.16.0.100                 # device alive?
+journalctl -u scanmania | grep ModbusInputs | tail
+```
+
+`Connection refused` with ping working means the device is up but its Modbus
+server is not listening — a sketch that died, not a network fault. **Power-
+cycle the Opta**, not the NUC. The game reconnects on its own within 3 s and
+logs `ModbusInputs connected to 172.16.0.100:502`.
+
+Until it comes back, run the game from the manual strip above.
 
 ---
 

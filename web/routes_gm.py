@@ -18,6 +18,12 @@ from pydantic import BaseModel, Field
 log = logging.getLogger(__name__)
 
 
+# The four hardware inputs that can be driven by hand. Mirrors
+# core.runner._MANUAL_INPUTS; kept as names rather than imported events
+# because this layer only ever speaks action strings.
+_MANUAL_INPUTS = frozenset({"plate", "cp1", "cp2", "stop"})
+
+
 class VoidBody(BaseModel):
     reason: str = Field(default="", max_length=200)
 
@@ -56,19 +62,31 @@ def register_routes(
         """Start the count-in sequence. Player must already be on the start plate."""
         return _dispatch("count_in")
 
-    @router.post("/api/gm/plate")
-    async def gm_plate():
+    @router.post("/api/gm/input/{name}")
+    async def gm_manual_input(name: str):
         """
-        Stand in for the start plate: send the PlateHigh the Opta would send.
+        Stand in for one of the four hardware inputs when the Opta is down.
 
-        REGISTERED -> ARM is the one transition that waits on a sensor rather
-        than on the console, so a plate that is not reporting strands a
-        signed-in player with no way forward but FORCE RESET and a re-sign-in.
-        This is the manual path, and it is the same event — the FSM accepts
-        PlateHigh in REGISTERED and nowhere else, so it cannot start a run, skip
-        a count-in or re-arm anything mid-run.
+        name: plate | cp1 | cp2 | stop
+
+        Sends exactly the event the Opta would send, so the FSM cannot tell
+        the difference and there is no second path through a run to keep
+        correct. Each event is accepted in one state and ignored everywhere
+        else — PlateHigh only in REGISTERED, Cp1Pressed only in RUN_SEG_1, and
+        so on — which is the real guard. The console greying a button out is a
+        courtesy; /api/gm/* has no password and the iPad can be stale.
+
+        All four, not just the plate: with the Opta down, a manual PLATE gets a
+        player into ARM and COUNT IN starts them running, and then nothing can
+        END the run. No checkpoint, no stop button, so the only ways out are
+        ABORT, which records no time, and the four-minute backstop. The plate
+        alone makes the game startable, not playable.
         """
-        return _dispatch("plate")
+        if name not in _MANUAL_INPUTS:
+            raise HTTPException(
+                status_code=404,
+                detail=f"unknown input {name!r}. Valid: {sorted(_MANUAL_INPUTS)}")
+        return _dispatch(name)
 
     @router.post("/api/gm/bust")
     async def gm_bust():

@@ -317,10 +317,7 @@
        applicable. Each control now owns a column for the whole session. */
     #actions {
       display: grid;
-      /* SEVEN slots since PLATE joined the row. Still one row, still fixed
-         columns: every button has to keep its column in every state, or a
-         control moves under the operator's thumb between two broadcasts. */
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       gap: 10px;
       padding: 12px 14px;
       border-bottom: 1px solid var(--border);
@@ -345,19 +342,6 @@
       transform: scale(0.97);
     }
 
-    /* Seven columns instead of six leaves about 150px a slot on the iPad, and
-       NEW PLAYER at a flat 18px with 2px of tracking does not fit that. Shrink
-       the label inside the row only — FORCE RESET and MASTER MODE are
-       full-width buttons using the same class and stay at 18px. Tightening the
-       tracking rather than wrapping: a two-line label changes the button's
-       visual weight, and these are read at a glance. */
-    #actions .action-btn {
-      font-size: clamp(12px, 1.45vw, 18px);
-      letter-spacing: clamp(0.5px, 0.18vw, 2px);
-      padding: 0 4px;
-      white-space: nowrap;
-    }
-
     .action-btn:disabled {
       opacity: 0.28;
       cursor: not-allowed;
@@ -366,17 +350,56 @@
     }
 
     /* Individual action colours — outlined style */
-    /* Blue, not green: PLATE sits next to COUNT IN and the two are tapped
-       seconds apart, so they must not read as the same control. Blue is the
-       chrome colour here, and --accent-text is its readable tint. */
-    #btnPlate {
+    /* ---- manual hardware inputs ----------------------------------------
+       The four Opta channels, by hand, for when the Opta is not reporting.
+       Their own strip rather than more columns in the action row: these are
+       not game decisions, they are a stand-in for a sensor, and mixing them
+       in with ABORT and PENALTY is how somebody taps STOP meaning to tap
+       something else.
+
+       The one the game is WAITING for is highlighted. With dead inputs this
+       strip becomes the input panel, and "which one next" has to be readable
+       at a glance in a dark container. */
+    #manualInputs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      padding: 0 14px 12px;
+    }
+    .mi-btn {
+      height: 52px;
+      font-size: 16px;
+      font-weight: 900;
+      font-family: var(--font-ui);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: filter 0.1s, transform 0.08s, background 0.08s, color 0.08s;
+    }
+    .mi-btn.armed {
       border: 2px solid var(--accent);
       color: var(--accent-text);
+      box-shadow: 0 0 10px rgba(0, 90, 169, 0.3);
     }
-    #btnPlate:active:not(:disabled) {
-      background: var(--accent);
-      color: #fff;
+    .mi-btn:active:not(:disabled) { transform: scale(0.97); background: var(--accent); color: #fff; }
+    .mi-btn:disabled { opacity: 0.28; cursor: not-allowed; }
+
+    /* Loud only when the Opta is actually down — otherwise this strip is a
+       rarely-used fallback and should not look like an alarm. */
+    #manualLabel {
+      padding: 10px 14px 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
     }
+    #manualLabel.down { color: var(--red-text); }
 
     #btnCountIn {
       border: 2px solid var(--green);
@@ -1053,14 +1076,8 @@
   <!-- -----------------------------------------------------------------------
        PRIMARY ACTIONS
   ----------------------------------------------------------------------- -->
-  <!-- Seven fixed slots, in game order. Every button keeps its column in every
+  <!-- Six fixed slots, in game order. Every button keeps its column in every
        state; inapplicable ones dim rather than disappear.
-
-       PLATE sends the PlateHigh the start plate would send, and it sits where
-       it does because that is where it falls in the game: sign the player in,
-       put them on the plate, count them in. It is live in REGISTERED only —
-       the one state the FSM accepts that event in — so it dims the moment it
-       has done its job and cannot touch a run in progress.
 
        They used to be flex:1 with display:none, so the surviving buttons
        resized and relocated on each transition. COUNTDOWN -> RUN happens with
@@ -1075,12 +1092,23 @@
        and it was taking a third to half of this bar in every state. -->
   <div id="actions">
     <button class="action-btn" id="btnNewPlayer" style="border:2px solid var(--green); color:var(--green);">NEW PLAYER</button>
-    <button class="action-btn" id="btnPlate"      disabled>PLATE</button>
     <button class="action-btn" id="btnCountIn"    disabled>COUNT IN</button>
     <button class="action-btn" id="btnCancel"     disabled>CANCEL</button>
     <button class="action-btn" id="btnAbort"      disabled>ABORT</button>
     <button class="action-btn" id="btnBust"       disabled>PENALTY</button>
     <button class="action-btn" id="btnVoid"       disabled>VOID</button>
+  </div>
+
+  <!-- Manual stand-ins for the four Opta inputs. See the CSS above for why
+       they are not in the action row. Each is live only in the state its
+       event is accepted in, and the live one is highlighted — with the Opta
+       down this strip is how a run is driven from end to end. -->
+  <div id="manualLabel">Manual inputs</div>
+  <div id="manualInputs">
+    <button class="mi-btn" id="miPlate" disabled>Plate</button>
+    <button class="mi-btn" id="miCp1"   disabled>CP 1</button>
+    <button class="mi-btn" id="miCp2"   disabled>CP 2</button>
+    <button class="mi-btn" id="miStop"  disabled>Stop</button>
   </div>
 
   <!-- Recovery control, deliberately out of thumb reach of the game buttons. -->
@@ -1376,7 +1404,15 @@
     const detectionBadge   = document.getElementById("detectionBadge");
     const bannerManual     = document.getElementById("bannerManual");
     const bannerMasked     = document.getElementById("bannerMasked");
-    const btnPlate         = document.getElementById("btnPlate");
+    const manualLabel      = document.getElementById("manualLabel");
+    const MANUAL_INPUTS    = [
+      // [element id, action, the ONE state the FSM accepts it in]
+      ["miPlate", "plate", "REGISTERED"],
+      ["miCp1",   "cp1",   "RUN_SEG_1"],
+      ["miCp2",   "cp2",   "RUN_SEG_2"],
+      ["miStop",  "stop",  "RUN_SEG_3"],
+    ].map(([id, action, state]) => ({
+      el: document.getElementById(id), action, state }));
     const btnCountIn       = document.getElementById("btnCountIn");
     const btnBust          = document.getElementById("btnBust");
     const btnAbort         = document.getElementById("btnAbort");
@@ -1497,9 +1533,6 @@
 
       /* --- Button enable/disable + visibility rules (from plan §7.2) --- */
       // Enabled states
-      // REGISTERED only — the one state the FSM accepts PlateHigh in. Live in
-      // any other state it would be a button that silently does nothing.
-      const plateEnabled      = (state === "REGISTERED");
       const countInEnabled    = (state === "ARM");
       const bustEnabled       = RUN_STATES.has(state);
       const abortEnabled      = (RUN_STATES.has(state) || state === "COUNTDOWN");
@@ -1507,13 +1540,32 @@
       const voidEnabled       = POST_RUN_STATES.has(state);
 
       // Apply disabled attribute
-      btnPlate.disabled      = !plateEnabled;
       btnCountIn.disabled    = !countInEnabled;
       btnBust.disabled       = !bustEnabled;
       btnAbort.disabled      = !abortEnabled;
       btnCancel.disabled     = !cancelEnabled;
       btnVoid.disabled       = !voidEnabled;
       btnForceReset.disabled = false;  // always enabled
+
+      /* --- Manual hardware inputs ---
+         Each is live only in the state its event is accepted in, and that one
+         is highlighted: with the Opta down this strip IS the input panel, and
+         "which one next" has to read at a glance in a dark container.
+
+         The label turns red only when the Opta is actually not reporting. The
+         strip is always there — a fallback you have to go and enable is not a
+         fallback — but it should only look like an alarm when it is the thing
+         keeping the game running. */
+      const optaDown = !!(msg.inputs && msg.inputs.connected === false);
+      for (const mi of MANUAL_INPUTS) {
+        const live = (state === mi.state);
+        mi.el.disabled = !live;
+        mi.el.classList.toggle("armed", live);
+      }
+      manualLabel.classList.toggle("down", optaDown);
+      manualLabel.textContent = optaDown
+        ? "Manual inputs — OPTA NOT REPORTING, drive the run from here"
+        : "Manual inputs";
 
       // Nothing is hidden. Every button holds its column and dims when it does
       // not apply, so no control ever moves under the operator's thumb. The
@@ -1978,9 +2030,12 @@
     /* -----------------------------------------------------------------------
        Action button wiring
     ----------------------------------------------------------------------- */
-    // No tap-to-confirm: it is only reachable in REGISTERED, the worst it can
-    // do is arm a player who is not on the plate yet, and CANCEL undoes that.
-    btnPlate.addEventListener("click",   () => gmPost("plate"));
+    /* Manual inputs. No tap-to-confirm: each is reachable in exactly one
+       state, they are stand-ins for a sensor rather than decisions, and the
+       whole point is that they are as fast as stepping on the plate. */
+    for (const mi of MANUAL_INPUTS) {
+      mi.el.addEventListener("click", () => gmPost(`input/${mi.action}`));
+    }
     btnCountIn.addEventListener("click", () => gmPost("count-in"));
     btnAbort.addEventListener("click",   () => gmPost("abort"));
     btnCancel.addEventListener("click",  () => gmPost("cancel"));

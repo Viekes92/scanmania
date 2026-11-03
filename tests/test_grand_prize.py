@@ -763,3 +763,16 @@ def test_the_scoreboard_has_a_two_tap_clear():
     # Cleared runs are hidden by default but never unreachable.
     assert 'allRuns.filter(r => r.outcome !== "voided")' in html
     assert 'id="showCleared"' in html
+
+
+def test_the_sealed_outdoor_screen_hides_the_penalty_count_too():
+    """
+    "3 PENALTIES" is "+45s" to anyone who can multiply.
+
+    Penalties are a known fixed size, so the count alone narrows the run as
+    surely as the clock does.
+    """
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "web/static/display_out/index.html").read_text()
+    assert '<div id="penaltyNote" class="sealed-hide"></div>' in html

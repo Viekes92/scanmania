@@ -310,7 +310,7 @@
   <img class="logo" id="gameName" src="/static/shared/scanmania-design/sm-text-tp.png" alt="ScanMania">
   <div id="header">
     <div class="clock sealed-hide" id="stopwatch"><span class="mm">00:</span><span class="ss">00.00</span></div>
-    <div id="penaltyNote"></div>
+    <div id="penaltyNote" class="sealed-hide"></div>
   </div>
 
   <!-- middle: camera stage, with state overlays on top -->
@@ -539,10 +539,11 @@
        so rather than looking like a slow run. The element is in the markup and
        styled in the stylesheet — creating it here made it a direct child of
        #stage, which put it in the wrong grid row. */
-    /* Sealed, the total is the leak — "INCL. +10.0s PENALTY" alone narrows the
-       run. The note stays, because a crowd that saw somebody clip a beam
-       should see it acknowledged; it just counts penalties instead of
-       seconds. */
+    /* Sealed, this element is HIDDEN outright (class sealed-hide). The count
+       alone is a leak: penalties are a known fixed size, so "3 PENALTIES" is
+       "+45s" to anyone who can multiply. The text below is still built —
+       into a hidden node — so unsealing needs no back-fill, exactly like the
+       clock. */
     const pc = msg.penalty_count || 0;
     penaltyNote.textContent =
       !pc                 ? ""

@@ -501,3 +501,48 @@ def test_the_sealed_outdoor_screen_gives_the_room_to_the_logos():
     # Unsealed, nothing moves: the clock and board still need that room.
     assert ".logo { width: min(74vw, 900px);" in html
     assert "#sponsor { width: min(26vw, 300px);" in html
+
+
+# ===========================================================================
+# /scoreboard — the organiser's view
+# ===========================================================================
+
+def test_the_scoreboard_route_is_registered():
+    """A 404 here is a page Olli cannot open."""
+    from web.server import ScanManiaApp
+    import inspect
+    src = inspect.getsource(ScanManiaApp)
+    assert '@app.get("/scoreboard")' in src
+    assert '_serve_page("scoreboard")' in src
+    # Its own static mount, like every other page subdir.
+    assert '"scoreboard")' in src
+
+
+def test_the_scoreboard_ignores_the_seal():
+    """
+    This page exists BECAUSE the public screens are sealed.
+
+    If it ever grew a `sealed-hide` class or started gating its rows on
+    hide_times, it would stop being the one place the prize can be settled
+    from. It mirrors the flag only to warn the operator.
+    """
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "web/static/scoreboard/index.html").read_text()
+    assert "sealed-hide" not in html
+    assert 'class="hide-times"' not in html
+    # Times are rendered unconditionally.
+    assert "tm.textContent = fmt(e.elapsed_ms);" in html
+    # The seal only drives a warning banner.
+    assert 'sealEl.classList.toggle("on", !!msg.hide_times);' in html
+
+
+def test_the_scoreboard_writes_nicknames_as_text():
+    """A nickname is public input, typed at sign-in."""
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "web/static/scoreboard/index.html").read_text()
+    # The hazard is an ASSIGNMENT, not the word — the file's own comment
+    # explains why it uses textContent, and that comment is not a bug.
+    assert ".innerHTML" not in html.replace("never innerHTML", "")
+    assert "nm.textContent = e.player_nickname" in html

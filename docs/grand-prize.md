@@ -174,6 +174,31 @@ Until it comes back, run the game from the manual strip above.
 
 ---
 
+## 4. `/scoreboard` — the organiser's view
+
+Names and times, ranked, live. Open it on a laptop or a phone.
+
+**This is the one page that deliberately ignores `hide_times.`** That is the
+whole point: the two public screens are sealed so nobody in the queue knows
+what there is to beat, and somebody still has to read the times to award the
+prize. The GM console is busy with a run and the admin portal needs a password
+and shows forty other things; this is just the answer.
+
+- One row per **player**, not per run — their best clean run.
+- Busted and aborted runs never appear: a time nobody completed is not a score.
+- Day-scoped server-side, so the 09:00 rollover is handled.
+- Live over the same WebSocket as the displays, seeded from
+  `/api/admin/leaderboard` so a reload lands on the answer immediately.
+- While the seal is on it shows a red reminder that the public screens are
+  hiding times, so nobody mistakes this page for one of them.
+
+**It is unauthenticated**, like `/gm` and like the `/api/admin/leaderboard` it
+reads — anyone on the venue network can open it. Keep it off any screen the
+public can see during a sealed final, and do not link it from the display
+pages.
+
+---
+
 ## Running the final
 
 1. Deploy the branch. `git -C /opt/scanmania status` first — the NUC's

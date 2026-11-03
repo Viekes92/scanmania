@@ -291,7 +291,8 @@ class ScanManiaApp:
 
     def _mount_static(self) -> None:
         """Mount subdirectory static trees and the root static tree."""
-        for subdir in ("gm", "admin", "admin_beams", "display_in", "display_out"):
+        for subdir in ("gm", "admin", "admin_beams", "display_in", "display_out",
+                       "scoreboard"):
             path = _STATIC_ROOT / subdir
             path.mkdir(parents=True, exist_ok=True)
             # Each subdir gets its own mount so assets resolve correctly.
@@ -331,6 +332,24 @@ class ScanManiaApp:
         @app.get("/display/out")
         async def page_display_out():
             return _serve_page("display_out")
+
+        @app.get("/scoreboard")
+        async def page_scoreboard():
+            """
+            Names and times, ranked, live — for whoever is awarding the prize.
+
+            The one page that deliberately IGNORES display.hide_times. The two
+            public screens are sealed during a final so the queue cannot know
+            what there is to beat; somebody still has to read the times. The
+            GM console is busy with a run and the admin portal needs a
+            password and shows forty other things, so this is the view that is
+            just the answer.
+
+            Unauthenticated, like /gm and like /api/admin/leaderboard which it
+            reads. That means anyone on the venue network can open it — keep
+            it off any screen the public can see during a sealed final.
+            """
+            return _serve_page("scoreboard")
 
         @app.get("/")
         async def page_root():

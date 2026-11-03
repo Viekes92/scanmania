@@ -7,6 +7,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — `/scoreboard`, the organiser's view
+
+- **Names and times, ranked, live**, on a page built to be opened on a laptop
+  or phone by whoever is awarding the prize.
+
+  **The one page that deliberately ignores `display.hide_times`**, which is
+  its entire reason to exist: the public screens are sealed so the queue
+  cannot know what there is to beat, and somebody still has to read the
+  times. The GM console is busy with a run and the admin portal needs a
+  password and shows forty other things.
+
+  One row per player (their best clean run, via `get_leaderboard`'s GROUP BY),
+  busted and aborted excluded, day-scoped server-side. Live over the displays'
+  WebSocket, seeded from `/api/admin/leaderboard` so a reload lands on the
+  answer rather than waiting for the next broadcast. While the seal is on it
+  shows a red reminder that the public screens are hiding times, so nobody
+  mistakes this page for one of them.
+
+  Unauthenticated, like `/gm` and like the endpoint it reads — so keep it off
+  any screen the public can see during a final. Noted in the page header, the
+  route docstring and the runbook.
+
+- 3 tests; 554 total.
+
 ### Fixed — audio crackle that got worse with uptime
 
 - **The mixer was opening at 44100 Hz / 512 frames against a card running

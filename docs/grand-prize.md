@@ -198,6 +198,19 @@ and shows forty other things; this is just the answer.
   rollover is handled and the browser never recomputes it.
 - The WebSocket is a change signal only — when it fires, the page re-reads the
   day from the API.
+
+**`Clear the day`** voids every settled run of the operating day. Two taps —
+the first arms it red, the second fires, and it disarms itself after four
+seconds.
+
+It **voids, it does not delete**. Every row stays in the database with its
+original outcome in `pre_void_outcome`, so admin can unvoid any of them. That
+is the only reason a button like this is allowed on a page with no password.
+A run still in progress is skipped, so a clear cannot settle a run out from
+under somebody in the container, and the clear is written to the config audit
+with the ids it touched.
+
+Cleared runs drop off the feed — `Show cleared` brings them back.
 - While the seal is on it shows a red reminder that the public screens are
   hiding times, so nobody mistakes this page for one of them.
 

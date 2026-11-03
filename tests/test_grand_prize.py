@@ -652,3 +652,114 @@ async def test_a_config_reload_does_not_undo_the_gm_detection_switch(runner, fak
     new_cfg.game.detection_mode = "auto"          # stale value in the file
     await runner.reload_config(new_cfg)
     assert runner.context.detection_mode == "manual"
+
+
+# ===========================================================================
+# CLEAR — the scoreboard's bulk void
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_clearing_the_day_voids_rather_than_deletes(db):
+    """
+    Nothing is dropped. That is what makes an unauthenticated button OK.
+
+    pre_void_outcome keeps the original, so admin can unvoid any of them —
+    a clear loses nothing it cannot put back.
+    """
+    from persist.db import day_bounds
+    start, _ = day_bounds()
+    await db.upsert_player(id="p1", nickname="Runner")
+    await db.insert_run({"id": "r1", "player_id": "p1", "started_at": start,
+                         "outcome": "clean", "detection_mode": "manual",
+                         "elapsed_ms": 12345})
+
+    ids = await db.void_runs_in_day("cleared from the scoreboard")
+    assert ids == ["r1"]
+
+    row = await db.get_run("r1")
+    assert row["outcome"] == "voided"
+    assert row["pre_void_outcome"] == "clean", "the original must be recoverable"
+    assert row["elapsed_ms"] == 12345, "the row itself is untouched"
+    assert len(await db.list_runs(limit=50)) == 1, "nothing was deleted"
+
+
+@pytest.mark.asyncio
+async def test_clearing_skips_a_run_still_in_progress(db):
+    """
+    Somebody is in the container. Settling their run from under them, from a
+    page with no password, would be the one genuinely destructive thing here.
+    """
+    from persist.db import day_bounds
+    start, _ = day_bounds()
+    await db.upsert_player(id="p1", nickname="Runner")
+    await db.insert_run({"id": "live", "player_id": "p1", "started_at": start,
+                         "outcome": "in_progress", "detection_mode": "manual"})
+
+    assert await db.void_runs_in_day("x") == []
+    assert (await db.get_run("live"))["outcome"] == "in_progress"
+
+
+@pytest.mark.asyncio
+async def test_clearing_leaves_an_existing_void_reason_alone(db):
+    """
+    Re-voiding a voided run would overwrite why it was voided, and
+    pre_void_outcome with 'voided' — which is how unvoid loses the original.
+    """
+    from persist.db import day_bounds
+    start, _ = day_bounds()
+    await db.upsert_player(id="p1", nickname="Runner")
+    await db.insert_run({"id": "r1", "player_id": "p1", "started_at": start,
+                         "outcome": "busted", "detection_mode": "manual"})
+    await db.void_run("r1", "wrong player")
+
+    assert await db.void_runs_in_day("cleared") == [], "already voided — skip"
+    row = await db.get_run("r1")
+    assert row["voided_reason"] == "wrong player"
+    assert row["pre_void_outcome"] == "busted"
+
+
+@pytest.mark.asyncio
+async def test_clearing_is_bounded_to_the_operating_day(db):
+    """A clear today must not reach back into yesterday's event."""
+    from persist.db import day_bounds
+    start, _ = day_bounds()
+    await db.upsert_player(id="p1", nickname="Runner")
+    await db.insert_run({"id": "old", "player_id": "p1",
+                         "started_at": "2020-01-01T00:00:00+00:00",
+                         "outcome": "clean", "detection_mode": "manual",
+                         "elapsed_ms": 1})
+    await db.insert_run({"id": "new", "player_id": "p1", "started_at": start,
+                         "outcome": "clean", "detection_mode": "manual",
+                         "elapsed_ms": 2})
+
+    assert await db.void_runs_in_day("cleared") == ["new"]
+    assert (await db.get_run("old"))["outcome"] == "clean"
+
+
+def test_the_clear_route_is_registered_before_the_run_id_routes():
+    """
+    Starlette matches in registration order. Registered after
+    /api/admin/runs/{run_id}/..., 'clear-day' would be read as a run id.
+    """
+    import inspect
+    import web.routes_admin as ra
+    src = inspect.getsource(ra.register_routes)
+    assert '"/api/admin/runs/clear-day"' in src
+    assert src.index('"/api/admin/runs/clear-day"') < src.index('"/api/admin/runs/{run_id}"')
+
+
+def test_the_scoreboard_has_a_two_tap_clear():
+    """
+    Destructive-looking, on a page with no password: it has to take two taps
+    and it has to be recoverable. Both are asserted here.
+    """
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "web/static/scoreboard/index.html").read_text()
+    assert 'id="btnClear"' in html
+    assert '"/api/admin/runs/clear-day"' in html
+    assert 'clearEl.textContent = "Tap again to clear";' in html
+    assert "setTimeout(disarm, 4000)" in html, "an armed button must disarm itself"
+    # Cleared runs are hidden by default but never unreachable.
+    assert 'allRuns.filter(r => r.outcome !== "voided")' in html
+    assert 'id="showCleared"' in html

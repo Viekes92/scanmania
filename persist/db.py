@@ -517,6 +517,44 @@ class Database:
         )
         await self._db.commit()
 
+    async def void_runs_in_day(self, reason: str) -> list[str]:
+        """
+        Void every settled run of the operating day. Returns the ids voided.
+
+        VOID, not delete. Reversible run by run through /unvoid, the history
+        and the run count stay honest, and it is already how this box clears a
+        run — pre_void_outcome does the remembering. Nothing here drops a row.
+
+        A run still IN PROGRESS is skipped: somebody is in the container right
+        now and voiding their run mid-flight would settle it from under them.
+        Already-voided rows are skipped too, so the reason on the original
+        void survives and the returned list is what actually changed.
+
+        Bounded on both sides like every other daily query — with only a lower
+        bound, a session recorded while the clock was wrong would be caught by
+        a clear issued days later.
+        """
+        start, end = day_bounds()
+        async with self._db.execute(
+            """SELECT id FROM runs
+               WHERE started_at >= ? AND started_at < ?
+                 AND outcome NOT IN ('voided', 'in_progress')""",
+            (start, end),
+        ) as cur:
+            ids = [r[0] for r in await cur.fetchall()]
+        if not ids:
+            return []
+        await self._db.execute(
+            f"""UPDATE runs
+                SET pre_void_outcome = outcome,
+                    outcome = 'voided',
+                    voided_reason = ?
+                WHERE id IN ({",".join("?" * len(ids))})""",
+            (reason, *ids),
+        )
+        await self._db.commit()
+        return ids
+
     # ------------------------------------------------------------------
     # Leaderboard
     # ------------------------------------------------------------------

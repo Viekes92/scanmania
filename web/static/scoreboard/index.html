@@ -97,6 +97,55 @@
     }
     #sealNote.on { display: block; }
 
+    /* ---- controls -------------------------------------------------------
+       CLEAR voids every settled run of the day. Void, not delete — admin can
+       put any of them back — which is the only reason a destructive-looking
+       button is acceptable on a page with no password. Two taps, and the
+       second one is a different colour so a stray thumb cannot do it. */
+    #controls {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-top: 18px;
+      flex-wrap: wrap;
+    }
+    #btnClear {
+      height: 42px;
+      padding: 0 18px;
+      font-family: var(--sm-font);
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      background: transparent;
+      color: var(--sm-dim);
+      border: 2px solid #2a2f38;
+      border-radius: 8px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    #btnClear:hover:not(:disabled) { color: #fff; border-color: #3a414d; }
+    #btnClear.armed {
+      color: #fff;
+      background: var(--sm-red);
+      border-color: var(--sm-red);
+    }
+    #btnClear:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--sm-dim);
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle input { width: 16px; height: 16px; accent-color: var(--sm-blue); }
+
     /* ---- the board ------------------------------------------------------ */
     #rows { margin-top: 24px; }
 
@@ -196,6 +245,14 @@
     </div>
   </header>
 
+  <div id="controls">
+    <button type="button" id="btnClear">Clear the day</button>
+    <label class="toggle">
+      <input type="checkbox" id="showCleared">
+      Show cleared
+    </label>
+  </div>
+
   <div id="rows"><div class="empty">Loading…</div></div>
 
   <footer id="count"></footer>
@@ -210,6 +267,8 @@
   const countEl = document.getElementById("count");
   const sealEl  = document.getElementById("sealNote");
   const connEl  = document.getElementById("conn");
+  const clearEl = document.getElementById("btnClear");
+  const showClr = document.getElementById("showCleared");
 
   /* Same formatting as the displays, so a time read here matches a time read
      anywhere else to the centisecond. */
@@ -266,14 +325,25 @@
     return el;
   }
 
+  let allRuns = [];
+
   function render(runs) {
+    if (runs) allRuns = runs;
+    // Cleared runs are hidden by default — that is what CLEAR is FOR, and a
+    // board still full of struck-through rows has not been cleared. They are
+    // never gone though: the toggle brings them back, and admin can unvoid
+    // any of them, so "why is my run not up there" still has an answer.
+    const visible = showClr.checked
+      ? allRuns
+      : allRuns.filter(r => r.outcome !== "voided");
+
     // Newest first. The API already returns started_at DESC; sorting here too
     // so the order is a property of this page rather than a thing it inherits.
-    const list = (runs || []).slice().sort(
+    const list = visible.slice().sort(
       (a, b) => String(b.started_at).localeCompare(String(a.started_at)));
 
-    const sig = JSON.stringify(list.map(
-      r => [r.id, r.player_nickname, r.elapsed_ms, r.outcome]));
+    const sig = JSON.stringify([showClr.checked, list.map(
+      r => [r.id, r.player_nickname, r.elapsed_ms, r.outcome])]);
     if (sig === lastSig) return;
     lastSig = sig;
 
@@ -290,8 +360,10 @@
     list.forEach((r, i) => rowsEl.append(row(r, i === 0)));
 
     const clean = list.filter(r => r.outcome === "clean").length;
+    const hidden = allRuns.length - list.length;
     countEl.textContent =
-      `${list.length} run${list.length === 1 ? "" : "s"} today · ${clean} clean`;
+      `${list.length} run${list.length === 1 ? "" : "s"} today · ${clean} clean`
+      + (hidden ? ` · ${hidden} cleared, hidden` : "");
   }
 
   /* Every run of the day, every outcome. scope=daily is resolved SERVER-side
@@ -306,6 +378,50 @@
       render(d.runs || []);
     } catch (e) { /* leave whatever is on screen */ }
   }
+
+  /* CLEAR — two taps. The first arms it and turns it red; the second fires.
+     It disarms itself after four seconds, so a tap that was not followed up
+     cannot sit there waiting for an unrelated one later.
+
+     Voids rather than deletes, so this is recoverable from admin. That is
+     the whole reason it is allowed to exist on a page with no password. */
+  let armed = false, armTimer = null;
+
+  function disarm() {
+    armed = false;
+    clearTimeout(armTimer);
+    clearEl.classList.remove("armed");
+    clearEl.textContent = "Clear the day";
+  }
+
+  clearEl.addEventListener("click", async () => {
+    if (!armed) {
+      armed = true;
+      clearEl.classList.add("armed");
+      clearEl.textContent = "Tap again to clear";
+      armTimer = setTimeout(disarm, 4000);
+      return;
+    }
+    disarm();
+    clearEl.disabled = true;
+    clearEl.textContent = "Clearing…";
+    try {
+      const r = await fetch("/api/admin/runs/clear-day", { method: "POST" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      clearEl.textContent = `Cleared ${d.voided}`;
+      lastSig = null;                 // force a repaint even if ids match
+      await load();
+    } catch (e) {
+      clearEl.textContent = "Clear failed";
+      console.error("clear failed:", e);
+    } finally {
+      clearEl.disabled = false;
+      setTimeout(disarm, 2500);
+    }
+  });
+
+  showClr.addEventListener("change", () => render(null));
 
   let wsSig = null;
 

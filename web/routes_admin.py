@@ -529,6 +529,32 @@ def register_routes(
     # gating any of the four — see docs/security.md.
     # ------------------------------------------------------------------
 
+    @router.post("/api/admin/runs/clear-day")
+    async def admin_clear_day():
+        """
+        Void every settled run of the operating day — the scoreboard's CLEAR.
+
+        VOID, not delete: reversible run by run through /unvoid, and the run
+        count stays honest. A run still in progress is skipped, so clearing
+        cannot settle a run out from under somebody in the container.
+
+        Unauthenticated, like the rest of what /scoreboard and /gm call. That
+        is a deliberate trade and it rests on this being REVERSIBLE — a tap
+        here loses nothing that admin cannot put back. It is not a precedent
+        for an unauthenticated delete. The page requires a second tap to
+        confirm, and every clear is written to the config audit with the ids
+        it touched, so "who wiped the board" has an answer.
+        """
+        ids = await db.void_runs_in_day("cleared from the scoreboard")
+        await db.insert_config_audit(
+            actor="scoreboard",
+            path="runs/clear-day",
+            before={"voided_count": len(ids)},
+            after={"run_ids": ids[:200]},
+        )
+        log.info("Scoreboard CLEAR: voided %d run(s) of the operating day", len(ids))
+        return {"ok": True, "voided": len(ids)}
+
     @router.get("/api/admin/runs")
     async def admin_runs(
         limit: int = Query(default=50, ge=1, le=500),

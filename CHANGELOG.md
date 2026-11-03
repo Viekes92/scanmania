@@ -28,6 +28,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   roughly quadrupling their time instead of doubling it. Left alone because
   it is a game-balance call, not a consequence of this change.
 
+### Added — CLEAR on the scoreboard
+
+- **A two-tap `Clear the day` button**, voiding every settled run of the
+  operating day in one go (`POST /api/admin/runs/clear-day`,
+  `db.void_runs_in_day`).
+
+- **Void, not delete.** Nothing is dropped: `pre_void_outcome` keeps the
+  original so admin can unvoid any of them, the run count stays honest, and
+  the audit row records the ids. That reversibility is the entire reason a
+  destructive-looking button is acceptable on a page with no password — it is
+  not a precedent for an unauthenticated delete.
+
+- **A run still in progress is skipped.** Somebody is in the container;
+  settling their run from under them would be the one genuinely destructive
+  thing here. Already-voided rows are skipped too, so an existing void reason
+  and its `pre_void_outcome` survive — re-voiding a voided run is how unvoid
+  loses the original outcome.
+
+- Bounded to the operating day on both sides, so a clear today cannot reach
+  back into yesterday's event.
+
+- **Cleared runs are hidden from the feed by default**, because a board still
+  full of struck-through rows has not been cleared — with a `Show cleared`
+  toggle, so they are never unreachable.
+
+- Registered before `/api/admin/runs/{run_id}`: Starlette matches in
+  registration order and `clear-day` would otherwise be read as a run id.
+  Asserted in a test.
+
+- 6 tests; 565 total.
+
 ### Changed — `/scoreboard` is a feed, not a ranking
 
 - **Newest run at the top, no positions, no best-per-player.** A new run

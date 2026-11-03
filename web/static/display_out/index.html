@@ -271,14 +271,30 @@
        connection fails sealed — the direction that cannot spoil a final.    */
     body.hide-times .sealed-hide { display: none !important; }
 
-    /* #leaderboard was the 1fr half of the footer grid. Gone, the sponsor
-       would fall into that column and slide to the left edge — and the bottom
-       strip is the part that ends up in people's photographs, so it does not
-       get to move. One column, still right-aligned, same place on screen. */
+    /* Sealed, this screen is a poster: wordmark, the verdict, sponsor. The
+       clock and the leaderboard were carrying the top and bottom thirds, and
+       with both gone the panel read as a logo stranded above a lot of black.
+       So both logos take the room back.
+
+       Sized against HEIGHT, not width, because the two marks have very
+       different shapes: sm-text-tp is 4.8:1 and cf is 1.25:1 — nearly square
+       — so matching them on width would make the sponsor tower over the
+       wordmark. At these values they are ~200px and ~400px tall on the
+       1080x1920 panel, which leaves ~1100px for #centre. That matters: the
+       countdown digit is 46vw (~500px) and the verdict 17vw, and neither may
+       be squeezed by chrome.
+
+       The sponsor centres rather than staying right. It was right-aligned
+       only to hold its place when the leaderboard sat beside it; alone and at
+       this size, off to one corner reads like a mistake. The bottom strip is
+       still the part that ends up in people's photographs — it is just a
+       better strip now. */
     body.hide-times #footer {
       grid-template-columns: 1fr;
-      justify-items: end;
+      justify-items: center;
     }
+    body.hide-times .logo    { width: min(90vw, 1000px); }
+    body.hide-times #sponsor { width: min(44vw, 500px); }
   </style>
 </head>
 <!-- Sealed until a broadcast says otherwise — see the CSS above. -->

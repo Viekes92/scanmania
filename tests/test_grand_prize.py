@@ -481,3 +481,23 @@ def test_the_sealed_run_scene_scales_the_segment_up():
             / "web/static/display_in/index.html").read_text()
     assert "body.hide-times .segment {" in html
     assert "font-size: clamp(40px, 8.5vw, 200px);" in html
+
+
+def test_the_sealed_outdoor_screen_gives_the_room_to_the_logos():
+    """
+    Sealed, /display/out is a poster: wordmark, verdict, sponsor.
+
+    The clock and the leaderboard were carrying the top and bottom thirds, so
+    with both gone the panel read as a logo stranded above a lot of black.
+    Both marks scale up, and the sponsor centres rather than holding the
+    right-hand position it only had to share with the leaderboard.
+    """
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "web/static/display_out/index.html").read_text()
+    assert "body.hide-times .logo    { width: min(90vw, 1000px); }" in html
+    assert "body.hide-times #sponsor { width: min(44vw, 500px); }" in html
+    assert "justify-items: center;" in html
+    # Unsealed, nothing moves: the clock and board still need that room.
+    assert ".logo { width: min(74vw, 900px);" in html
+    assert "#sponsor { width: min(26vw, 300px);" in html

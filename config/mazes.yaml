@@ -6,20 +6,11 @@ presets:
     channels: '*'
     description: every relay on
   arm_box:
-    # BEAMS 12, 13, 14 — not channels 12/13/14. A beam id encodes
-    # row+strip and maps to a per-board relay, so the global channel is
-    # board_index*16 + relay_channel. Typing the ids in directly lit
-    # beams 32/33/34: row 3, the far end of the container, instead of
-    # row 1 at the plate.
-    #
-    #   beam 12 -> SM-NODE-1 ch2 (V-left) -> global 2
-    #   beam 13 -> SM-NODE-1 ch3 (H-center) -> global 3
-    #   beam 14 -> SM-NODE-1 ch4 (V-right) -> global 4
     channels:
     - 2
     - 3
     - 4
-    description: "what the player sees from the plate — row 1, boxed in"
+    description: "what the player sees from the plate \u2014 row 1, boxed in"
   vertical:
     channels:
     - 2
@@ -96,9 +87,11 @@ presets:
     description: test
   maze_2:
     channels:
+    - 1
     - 2
     - 3
     - 4
+    - 5
     - 8
     - 13
     - 14
@@ -123,6 +116,7 @@ presets:
     - 2
     - 3
     - 4
+    - 5
     - 12
     - 14
     - 15
@@ -142,60 +136,73 @@ presets:
     description: "third maze \u2014 CP2 to END"
 shows:
   attract:
-    description: "idle sparkle — the grid lit, a few channels winking out"
+    description: "idle sparkle \u2014 the grid lit, a few channels winking out"
     loop: true
     steps:
-    # sparkle_off drops N channels chosen fresh each step, so only those few
-    # relays move: 2*N operations per step instead of a full on/off cycle. At
-    # ~1.8 s that is a handful of relay operations a second across 45 channels,
-    # which is what makes it safe to leave running all day.
-    - {preset: all_on, sparkle_off: 4, hold_ms: 1800}
-    - {preset: all_on, sparkle_off: 6, hold_ms: 1800}
-    - {preset: all_on, sparkle_off: 3, hold_ms: 2200}
-    - {preset: all_on, sparkle_off: 7, hold_ms: 1800}
-  # FLASH the verdict, then HOLD it.
-  #
-  # The maze flashes with the house lights (cue `finished` / `busted` below, on
-  # the same five-beat cadence) and then settles solid until RESET swaps in
-  # the attract show. Neither of these loops: a show that ends leaves its last
-  # preset applied and the reconciler keeps re-asserting it, so the final step
-  # IS the hold — no long hold_ms needed, and no relay moves while it waits.
-  #
-  # FIVE flashes is 10 whole-board writes per run on top of the count-in ramp.
-  # That is a deliberate cost, not an oversight: keep it in mind before adding
-  # more, because every step here is 45 channels switching at once.
+    - preset: all_on
+      sparkle_off: 4
+      hold_ms: 1800
+    - preset: all_on
+      sparkle_off: 6
+      hold_ms: 1800
+    - preset: all_on
+      sparkle_off: 3
+      hold_ms: 2200
+    - preset: all_on
+      sparkle_off: 7
+      hold_ms: 1800
   bust:
     loop: false
     description: "busted \u2014 horizontals flash, then bar the maze"
     steps:
-    - {preset: horizontal, hold_ms: 90}
-    - {preset: blackout,   hold_ms: 90}
-    - {preset: horizontal, hold_ms: 90}
-    - {preset: blackout,   hold_ms: 90}
-    - {preset: horizontal, hold_ms: 90}
-    - {preset: blackout,   hold_ms: 90}
-    - {preset: horizontal, hold_ms: 90}
-    - {preset: blackout,   hold_ms: 90}
-    - {preset: horizontal, hold_ms: 90}
-    - {preset: blackout,   hold_ms: 90}
-    # Solid, and left that way. The show ends here.
-    - {preset: horizontal, hold_ms: 100}
+    - preset: horizontal
+      hold_ms: 90
+    - preset: blackout
+      hold_ms: 90
+    - preset: horizontal
+      hold_ms: 90
+    - preset: blackout
+      hold_ms: 90
+    - preset: horizontal
+      hold_ms: 90
+    - preset: blackout
+      hold_ms: 90
+    - preset: horizontal
+      hold_ms: 90
+    - preset: blackout
+      hold_ms: 90
+    - preset: horizontal
+      hold_ms: 90
+    - preset: blackout
+      hold_ms: 90
+    - preset: horizontal
+      hold_ms: 100
   clean:
     loop: false
     description: "clean run \u2014 verticals flash, then read as passable"
     steps:
-    - {preset: vertical, hold_ms: 90}
-    - {preset: blackout, hold_ms: 90}
-    - {preset: vertical, hold_ms: 90}
-    - {preset: blackout, hold_ms: 90}
-    - {preset: vertical, hold_ms: 90}
-    - {preset: blackout, hold_ms: 90}
-    - {preset: vertical, hold_ms: 90}
-    - {preset: blackout, hold_ms: 90}
-    - {preset: vertical, hold_ms: 90}
-    - {preset: blackout, hold_ms: 90}
-    # Solid, and left that way. The show ends here.
-    - {preset: vertical, hold_ms: 100}
+    - preset: vertical
+      hold_ms: 90
+    - preset: blackout
+      hold_ms: 90
+    - preset: vertical
+      hold_ms: 90
+    - preset: blackout
+      hold_ms: 90
+    - preset: vertical
+      hold_ms: 90
+    - preset: blackout
+      hold_ms: 90
+    - preset: vertical
+      hold_ms: 90
+    - preset: blackout
+      hold_ms: 90
+    - preset: vertical
+      hold_ms: 90
+    - preset: blackout
+      hold_ms: 90
+    - preset: vertical
+      hold_ms: 100
   main_game:
     segments:
     - maze_1
@@ -209,9 +216,12 @@ shows:
     loop: true
 light_cues:
   master:
-    description: "GM is in the container — working light, entrance lit"
+    description: "GM is in the container \u2014 working light, entrance lit"
     steps:
-    - {left: 255, right: 255, entrance: 255, ms: 0}
+    - left: 255
+      right: 255
+      entrance: 255
+      ms: 0
   self_test:
     description: "boot probe \u2014 up, so the box is not dark while it checks"
     steps:
@@ -225,98 +235,146 @@ light_cues:
       right: 60
       ms: 0
   attract:
-    description: "idle — both sides breathing together, entrance lit"
+    description: "idle \u2014 both sides breathing together, entrance lit"
     loop: true
     steps:
-    # entrance ON. The cue table is the ONLY thing that sets it now, so a
-    # state that does not name it inherits whatever the last one left —
-    # and every state from sign-in to the result deliberately sets it to 0.
-    # Without it here, the first run of the day took the entrance dark and
-    # it never came back.
-    - {left: 6, right: 6, entrance: 255, ms: 2600}
-    - {left: 1, right: 1, entrance: 255, ms: 2600}
+    - left: 6
+      right: 6
+      entrance: 255
+      ms: 2600
+    - left: 1
+      right: 1
+      entrance: 255
+      ms: 2600
   registered:
-    description: "player signed in — entrance dark, we have left attract"
+    description: "player signed in \u2014 entrance dark, we have left attract"
     loop: true
     steps:
-    # Entrance OFF from here on. It leaks straight down the container, and
-    # everything from sign-in to the result is meant to be read by laser light.
-    # It comes back in ATTRACT, MASTER and FAULT — the states where somebody is
-    # walking in or out.
-    - {left: 20, right: 20, entrance: 0, ms: 1400}
-    - {left: 8, right: 8, entrance: 0, ms: 1400}
+    - left: 20
+      right: 20
+      entrance: 0
+      ms: 1400
+    - left: 8
+      right: 8
+      entrance: 0
+      ms: 1400
   arm:
-    description: "on the plate — the box goes dark around the player"
+    description: "on the plate \u2014 the box goes dark around the player"
     steps:
-    # Entrance included: it leaks badly down the container, and from the plate
-    # that glow is the only thing telling you where the walls are. The lasers
-    # of preset arm_box are meant to be all you can see.
-    - {left: 0, right: 0, entrance: 0, ms: 0}
-  # After the flash the room sits at 3/255 — not off.
-  #
-  # It was a hard 0, on the reasoning that a half-lit room is the one condition
-  # in which you cannot read the laser curtains. That still holds, and 3 is not
-  # half-lit: it is enough to see the walls and the way out while the verdict
-  # shape stays the brightest thing in the container. A true blackout with the
-  # maze solid read as a fault rather than a result.
-  #
-  # The flash itself stays hard (fade: false) and on the same five-beat
-  # cadence as the laser shows above, so the room and the maze flash together.
+    - left: 0
+      right: 0
+      entrance: 0
+      ms: 0
   finished:
-    description: "clean run — flash, then very dim while the verticals read"
+    description: "clean run \u2014 flash, then very dim while the verticals read"
     steps:
-    - {left: 150, right: 150, ms: 90, fade: false}
-    - {left: 0, right: 0, ms: 90, fade: false}
-    - {left: 150, right: 150, ms: 90, fade: false}
-    - {left: 0, right: 0, ms: 90, fade: false}
-    - {left: 150, right: 150, ms: 90, fade: false}
-    - {left: 0, right: 0, ms: 90, fade: false}
-    - {left: 150, right: 150, ms: 90, fade: false}
-    - {left: 0, right: 0, ms: 90, fade: false}
-    - {left: 150, right: 150, ms: 90, fade: false}
-    # RAMP down to the settle — do NOT snap to it.
-    #
-    # This was a hard cut, on the reasoning that a half-lit room is the one
-    # condition in which you cannot read the 18 vertical curtains. The
-    # reasoning is fine; the hardware is not. The D5 DMX5125 decoders driving
-    # these fixtures handle steady values perfectly — 0 is off, 1 and 3 are
-    # visibly different, slow fades land exactly — but a 90 ms hard-edged
-    # burst followed by a single frame at 3 leaves them sitting bright for
-    # the whole result. Art-Net capture shows the NUC transmitting 3 for the
-    # full 29.5 s while the room plainly was not at 3, so it is the decoder
-    # reacting to the EDGE, not the value.
-    #
-    # Fading gives it a slew it can follow instead of an edge it cannot.
-    # Same destination, ~800 ms (hazer.lights.fade_ms) to get there.
-    - {left: 3, right: 3, entrance: 0, ms: 0}
+    - left: 150
+      right: 150
+      ms: 90
+      fade: false
+    - left: 0
+      right: 0
+      ms: 90
+      fade: false
+    - left: 150
+      right: 150
+      ms: 90
+      fade: false
+    - left: 0
+      right: 0
+      ms: 90
+      fade: false
+    - left: 150
+      right: 150
+      ms: 90
+      fade: false
+    - left: 0
+      right: 0
+      ms: 90
+      fade: false
+    - left: 150
+      right: 150
+      ms: 90
+      fade: false
+    - left: 0
+      right: 0
+      ms: 90
+      fade: false
+    - left: 150
+      right: 150
+      ms: 90
+      fade: false
+    - left: 3
+      right: 3
+      entrance: 0
+      ms: 0
   busted:
-    description: "busted — flash, then very dim while the bars read"
+    description: "busted \u2014 flash, then very dim while the bars read"
     steps:
-    - {left: 150, right: 150, ms: 90, fade: false}
-    - {left: 0, right: 0, ms: 90, fade: false}
-    - {left: 150, right: 150, ms: 90, fade: false}
-    - {left: 0, right: 0, ms: 90, fade: false}
-    - {left: 150, right: 150, ms: 90, fade: false}
-    - {left: 0, right: 0, ms: 90, fade: false}
-    - {left: 150, right: 150, ms: 90, fade: false}
-    - {left: 0, right: 0, ms: 90, fade: false}
-    - {left: 150, right: 150, ms: 90, fade: false}
-    # Ramped, not snapped — see `finished` above.
-    - {left: 3, right: 3, entrance: 0, ms: 0}
+    - left: 150
+      right: 150
+      ms: 90
+      fade: false
+    - left: 0
+      right: 0
+      ms: 90
+      fade: false
+    - left: 150
+      right: 150
+      ms: 90
+      fade: false
+    - left: 0
+      right: 0
+      ms: 90
+      fade: false
+    - left: 150
+      right: 150
+      ms: 90
+      fade: false
+    - left: 0
+      right: 0
+      ms: 90
+      fade: false
+    - left: 150
+      right: 150
+      ms: 90
+      fade: false
+    - left: 0
+      right: 0
+      ms: 90
+      fade: false
+    - left: 150
+      right: 150
+      ms: 90
+      fade: false
+    - left: 3
+      right: 3
+      entrance: 0
+      ms: 0
   aborted:
-    description: "run cut short — entrance lit, someone is coming out"
+    description: "run cut short \u2014 entrance lit, someone is coming out"
     steps:
-    - {left: 40, right: 40, entrance: 255, ms: 0}
+    - left: 40
+      right: 40
+      entrance: 255
+      ms: 0
   result:
-    # Must MATCH the level finished/busted settle at, or the room drops a step
-    # partway through the result for no reason the player can see: FINISHED and
-    # RESULT are two states but one continuous moment to anybody watching.
-    description: "score on screen — same very dim, the maze is still the light"
+    description: "score on screen \u2014 same very dim, the maze is still the light"
     steps:
-    - {left: 3, right: 3, entrance: 0, ms: 0, fade: false}
+    - left: 3
+      right: 3
+      entrance: 0
+      ms: 0
+      fade: false
   fault:
-    description: "something is wrong — entrance lit so people can get out"
+    description: "something is wrong \u2014 entrance lit so people can get out"
     loop: true
     steps:
-    - {left: 60, right: 60, entrance: 255, ms: 700}
-    - {left: 15, right: 15, entrance: 255, ms: 700}
+    - left: 60
+      right: 60
+      entrance: 255
+      ms: 700
+    - left: 15
+      right: 15
+      entrance: 255
+      ms: 700

@@ -563,11 +563,32 @@ def test_the_scoreboard_shows_every_run_of_the_day():
     assert '"/api/admin/runs?scope=daily&limit=500"' in html
     # The socket is a change signal only — its leaderboard is a different shape.
     assert "render(msg.leaderboard)" not in html
-    # Did-not-complete rows are shown, dimmed, and never numbered. The badge
-    # class is built as "badge " + outcome at runtime, so assert the CSS.
+    # Did-not-complete rows are shown, dimmed. The badge class is built as
+    # "badge " + outcome at runtime, so assert the CSS.
     for cls in (".row.dnf", ".badge.busted", ".badge.aborted", ".badge.voided"):
         assert cls in html, cls
-    assert 'pos.textContent = dnf ? "—" : rank + ".";' in html
+
+
+def test_the_scoreboard_is_a_feed_not_a_ranking():
+    """
+    Newest first, no positions, no best-per-player.
+
+    A new run appends to the top and nothing below it moves. A ranked view
+    answers "who is winning"; this one answers "what has happened", which is
+    what you want when somebody asks about a time from ten minutes ago.
+    """
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "web/static/scoreboard/index.html").read_text()
+    # Sorted by start time descending, never by elapsed.
+    assert 'String(b.started_at).localeCompare(String(a.started_at))' in html
+    assert "a.elapsed_ms - b.elapsed_ms" not in html, "that is a ranking"
+    # No position column at all.
+    assert 'class="pos"' not in html
+    assert "rank + \".\"" not in html
+    # The newest row is marked, which is not the same as being ranked first.
+    assert "row(r, i === 0)" in html
+    assert ".row.latest" in html
 
 
 @pytest.mark.asyncio
@@ -594,3 +615,40 @@ async def test_list_runs_daily_scope_is_bounded_both_ends(db):
     assert any(r["id"] == "ancient" for r in await db.list_runs(limit=50))
     assert not any(r["id"] == "ancient"
                    for r in await db.list_runs(limit=50, scope="daily"))
+
+
+@pytest.mark.asyncio
+async def test_penalty_values_follow_a_config_reload(runner, fake_config):
+    """
+    They live on the FSM context, built once at construction, so editing
+    game.yaml did nothing until a restart — silently.
+    """
+    import copy
+    assert runner.context.penalty_ms == fake_config.game.penalty_ms
+
+    new_cfg = copy.deepcopy(fake_config)
+    new_cfg.game.penalty_ms = 15_000
+    new_cfg.game.penalty_cooldown_ms = 9_000
+    await runner.reload_config(new_cfg)
+
+    assert runner.context.penalty_ms == 15_000
+    assert runner.context.penalty_cooldown_ms == 9_000
+    # And the consoles see it: the GM button names its own price from this.
+    assert runner._get_state_message()["penalty_each_ms"] == 15_000
+
+
+@pytest.mark.asyncio
+async def test_a_config_reload_does_not_undo_the_gm_detection_switch(runner, fake_config):
+    """
+    detection_mode has a LIVE control and the penalty values do not.
+
+    A reload must not reach over the operator's head and undo a mode they
+    chose thirty seconds ago — which is exactly what re-applying it from the
+    file alongside the penalties would do.
+    """
+    import copy
+    runner.context.detection_mode = "manual"      # as if set from the console
+    new_cfg = copy.deepcopy(fake_config)
+    new_cfg.game.detection_mode = "auto"          # stale value in the file
+    await runner.reload_config(new_cfg)
+    assert runner.context.detection_mode == "manual"

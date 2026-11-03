@@ -61,7 +61,7 @@ detection_mode: manual
 # in front of a queue.
 #
 # penalty_ms: added to the run's elapsed time per penalty. Sane range 0-60000.
-penalty_ms: 5000
+penalty_ms: 15000
 # penalty_cooldown_ms: minimum gap between two penalties, measured in RUN time.
 # Without it a player standing in a beam, or walking out through the maze at
 # the end, collects one penalty per detection and finishes +250 s. The cooldown

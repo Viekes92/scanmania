@@ -7,6 +7,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed — the penalty is 15 s, and penalty values now hot-reload
+
+- **`penalty_ms` 5000 → 15000.**
+
+- **The penalty values follow a config reload.** They live on the FSM context,
+  which is built once at construction, so editing them in `game.yaml` did
+  nothing until a restart — silently, with the file and the running game
+  disagreeing. `reload_config()` now re-applies them.
+
+  `detection_mode` is deliberately NOT re-applied alongside them: it has a
+  live control (the console's AUTO/ASSISTED/MANUAL switch) and a reload must
+  not reach over the operator's head and undo a mode they chose thirty
+  seconds ago. The penalty values have no live control, so the file is their
+  only source and re-reading it is unambiguous. Both halves are tested.
+
+  **Note the interaction with `penalty_cooldown_ms`, still 5000.** The
+  cooldown is the minimum RUN-time gap between two penalties, so a player
+  parked in a beam now collects 15 s every 5 s rather than 5 s every 5 s —
+  roughly quadrupling their time instead of doubling it. Left alone because
+  it is a game-balance call, not a consequence of this change.
+
+### Changed — `/scoreboard` is a feed, not a ranking
+
+- **Newest run at the top, no positions, no best-per-player.** A new run
+  appends and nothing below it moves. Each row is the wall-clock start, the
+  name, the time and an outcome badge.
+
+  A ranked view answers "who is winning"; this answers "what has happened",
+  which is what you want when somebody asks about a time from ten minutes
+  ago. `/display/out`'s board is still the ranked one.
+
+  The start time is a LABEL rendered from the server's ISO timestamp in the
+  viewer's timezone — nothing computes a duration from it (invariant 2).
+
 ### Added — `/scoreboard`, the organiser's view
 
 - **Names and times, ranked, live**, on a page built to be opened on a laptop

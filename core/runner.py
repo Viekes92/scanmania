@@ -2120,6 +2120,27 @@ class GameRunner:
             except Exception as exc:
                 log.error("vision reload failed: %s", exc)
 
+        # Penalty values live on the FSM context, which is built once at
+        # construction — so editing them in game.yaml did nothing until a
+        # restart, silently. Re-apply them here.
+        #
+        # detection_mode is deliberately NOT re-applied alongside them. It has
+        # a LIVE control (the GM console's AUTO/ASSISTED/MANUAL switch), and a
+        # config reload must not reach over the operator's head and undo a
+        # choice they made thirty seconds ago. The penalty values have no live
+        # control, so the file is their only source and re-reading it is
+        # unambiguous.
+        gcfg = getattr(new_config, "game", None)
+        if gcfg is not None:
+            for field in ("penalty_ms", "penalty_cooldown_ms"):
+                new_val = getattr(gcfg, field, None)
+                if new_val is None:
+                    continue
+                if getattr(self.context, field, None) != new_val:
+                    log.info("config reload: %s %s -> %s", field,
+                             getattr(self.context, field, None), new_val)
+                setattr(self.context, field, new_val)
+
         # Light cues and the run fill level have the same problem a running
         # show does: the player holds its own references, so swapping the
         # config alone left it playing the pre-edit cue table. Re-point it and

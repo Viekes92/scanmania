@@ -184,14 +184,16 @@ what there is to beat, and somebody still has to read the times to award the
 prize. The GM console is busy with a run and the admin portal needs a password
 and shows forty other things; this is just the answer.
 
-- **Every run of the day, every outcome.** Clean runs are numbered and sorted
-  fastest-first — that is the prize — and busted, aborted and voided runs sit
-  below them, dimmed and unnumbered, with a badge saying which. They are shown
-  rather than hidden because "why is my run not up there" is a question the
-  operator has to be able to answer, and a missing row cannot.
-- Every attempt, not one per player: a second run and a voided run both matter
-  when you are settling a prize. This is the opposite of `/display/out`'s
-  board, which is one row per player, best clean run, capped at `max_entries`.
+- **A feed, not a ranking.** Every run of the operating day in the order it
+  happened, newest at the top. No positions, no sorting by time, no
+  best-per-player — a new run appends to the top and nothing below it moves.
+- Each row: wall-clock start, name, time, and an outcome badge for anything
+  that did not complete. Those are shown rather than hidden, because "why is
+  my run not up there" is a question the operator has to be able to answer.
+- Every attempt, not one per player — the opposite of `/display/out`'s board,
+  which is one row per player, best clean run, ranked, capped at
+  `max_entries`. That one answers "who is winning"; this one answers "what
+  has happened".
 - Day-scoped **server-side** (`/api/admin/runs?scope=daily`), so the 09:00
   rollover is handled and the browser never recomputes it.
 - The WebSocket is a change signal only — when it fires, the page re-reads the

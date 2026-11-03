@@ -2,8 +2,8 @@
 <!--
   web/static/scoreboard/index.html — the organiser's scoreboard.
 
-  Names and times, ranked, live. Read on a laptop or a phone by whoever is
-  running the prize — not a screen in the container and not a screen the
+  Names and times, newest first, live. Read on a laptop or a phone by whoever
+  is running the prize — not a screen in the container and not a screen the
   public sees.
 
   THIS PAGE DELIBERATELY IGNORES display.hide_times.
@@ -26,16 +26,15 @@
   SCANMANIA_DAY_START_HOUR, because the 09:00 rollover is not something a
   browser should be recomputing.
 
-  EVERY run of the operating day, every outcome — this is the log as well as
-  the ranking. Clean runs are numbered and sorted fastest-first, because that
-  is the prize; everything that did not complete (busted, aborted, voided)
-  sorts below them, unnumbered, so it is visible without ever looking like it
-  is competing.
+  A FEED, not a ranking. Every run of the operating day in the order it
+  happened, newest at the top — no positions, no sorting by time, no
+  best-per-player. A new run appends to the top and nothing below it moves.
 
-  That is deliberately NOT what /display/out's leaderboard does: that one is
-  one row per player, best clean run only, capped at leaderboard.max_entries.
-  This page is for the person awarding the prize, who needs to see a player's
-  second attempt and the run somebody voided.
+  That is deliberate, and it is the opposite of /display/out's leaderboard
+  (one row per player, best clean run, ranked). A ranked view answers "who is
+  winning"; this one answers "what has happened", which is what you want when
+  you are watching the day go by and checking a time somebody is asking about.
+  Reading the fastest off it is a job for your eyes, not the page.
 
   No build step, no CDN: a venue with no internet must still render this.
 -->
@@ -103,7 +102,7 @@
 
     .row {
       display: grid;
-      grid-template-columns: 2.6em 1fr auto;
+      grid-template-columns: 4.4em 1fr auto;
       align-items: baseline;
       gap: 14px;
       padding: 14px 4px;
@@ -111,9 +110,13 @@
       font-size: clamp(18px, 4.4vw, 26px);
       font-weight: 700;
     }
-    .row.top { font-size: clamp(22px, 5.4vw, 34px); font-weight: 900; }
-    .row .pos { color: var(--sm-dim); font-weight: 800; }
-    .row.top .pos { color: var(--sm-red); }
+    /* Wall-clock start, so a run can be matched to "the one about ten past
+       two". Browser-local, from the server's ISO timestamp — this is a label,
+       never arithmetic (invariant 2: nothing computes a duration from wall
+       clock). */
+    .row .at { color: var(--sm-dim); font-weight: 700; font-variant-numeric: tabular-nums; }
+    /* The newest run, which is the one somebody is usually asking about. */
+    .row.latest .at { color: var(--sm-red); }
     .row .nm {
       overflow: hidden;
       text-overflow: ellipsis;
@@ -128,8 +131,7 @@
     /* Did-not-complete rows: present, readable, obviously not in the running.
        Dimmed rather than hidden — "why is my run not up there" is a question
        the operator has to be able to answer, and a missing row cannot. */
-    .row.dnf { color: var(--sm-dim); font-size: clamp(15px, 3.4vw, 20px); font-weight: 600; }
-    .row.dnf .pos { color: #2a2f38; }
+    .row.dnf { color: var(--sm-dim); font-weight: 600; }
     .row.dnf .tm { color: var(--sm-dim); }
 
     .badge {
@@ -224,27 +226,27 @@
 
   let lastSig = null;
 
-  /* Clean runs rank; nothing else does. Sorting is: completed runs by time
-     ascending, then everything else newest-first underneath. A run still in
-     progress has no time yet and sorts to the very bottom. */
-  function ordered(runs) {
-    const clean = runs.filter(r => r.outcome === "clean" && r.elapsed_ms != null)
-                      .sort((a, b) => a.elapsed_ms - b.elapsed_ms);
-    const rest = runs.filter(r => !(r.outcome === "clean" && r.elapsed_ms != null))
-                     .sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)));
-    return { clean, rest };
+  /* Wall-clock HH:MM of the start, in the viewer's timezone. A LABEL — the
+     run's duration is elapsed_ms from the server's monotonic clock and is
+     never derived from this (invariant 2). */
+  function at(iso) {
+    if (!iso) return "--:--";
+    const d = new Date(iso);
+    if (isNaN(d)) return "--:--";
+    return String(d.getHours()).padStart(2, "0") + ":" +
+           String(d.getMinutes()).padStart(2, "0");
   }
 
-  function row(r, rank) {
+  function row(r, latest) {
     // textContent throughout: a nickname is public input, typed at sign-in.
+    const dnf = r.outcome !== "clean" || r.elapsed_ms == null;
     const el = document.createElement("div");
-    const dnf = rank == null;
-    el.className = "row" + (rank === 1 ? " top" : "") + (dnf ? " dnf" : "")
+    el.className = "row" + (latest ? " latest" : "") + (dnf ? " dnf" : "")
                  + (r.outcome === "voided" ? " voided" : "");
 
-    const pos = document.createElement("span");
-    pos.className = "pos";
-    pos.textContent = dnf ? "—" : rank + ".";
+    const when = document.createElement("span");
+    when.className = "at";
+    when.textContent = at(r.started_at);
 
     const nm = document.createElement("span");
     nm.className = "nm";
@@ -260,20 +262,22 @@
     tm.className = "tm";
     tm.textContent = fmt(r.elapsed_ms);
 
-    el.append(pos, nm, tm);
+    el.append(when, nm, tm);
     return el;
   }
 
   function render(runs) {
-    const list = runs || [];
+    // Newest first. The API already returns started_at DESC; sorting here too
+    // so the order is a property of this page rather than a thing it inherits.
+    const list = (runs || []).slice().sort(
+      (a, b) => String(b.started_at).localeCompare(String(a.started_at)));
+
     const sig = JSON.stringify(list.map(
       r => [r.id, r.player_nickname, r.elapsed_ms, r.outcome]));
     if (sig === lastSig) return;
     lastSig = sig;
 
-    const { clean, rest } = ordered(list);
     rowsEl.textContent = "";
-
     if (!list.length) {
       const d = document.createElement("div");
       d.className = "empty";
@@ -283,12 +287,11 @@
       return;
     }
 
-    clean.forEach((r, i) => rowsEl.append(row(r, i + 1)));
-    rest.forEach(r => rowsEl.append(row(r, null)));
+    list.forEach((r, i) => rowsEl.append(row(r, i === 0)));
 
+    const clean = list.filter(r => r.outcome === "clean").length;
     countEl.textContent =
-      `${list.length} run${list.length === 1 ? "" : "s"} today · ` +
-      `${clean.length} clean · ${rest.length} did not count`;
+      `${list.length} run${list.length === 1 ? "" : "s"} today · ${clean} clean`;
   }
 
   /* Every run of the day, every outcome. scope=daily is resolved SERVER-side
@@ -299,7 +302,7 @@
       const r = await fetch("/api/admin/runs?scope=daily&limit=500");
       if (!r.ok) return;
       const d = await r.json();
-      metaEl.textContent = "Today · every run, every outcome";
+      metaEl.textContent = "Today · newest first";
       render(d.runs || []);
     } catch (e) { /* leave whatever is on screen */ }
   }

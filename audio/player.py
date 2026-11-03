@@ -45,12 +45,18 @@ class AudioPlayer:
         cue_volume: float = 0.9,
         device: str = "",
         enabled: bool = True,
+        frequency: int = 48000,
+        buffer_frames: int = 1024,
     ) -> None:
         self._dir = Path(sounds_dir)
         self._music_volume = _clamp(music_volume)
         self._cue_volume = _clamp(cue_volume)
         self._device = device or ""
         self._enabled = bool(enabled)
+        # MATCH THE DEVICE. Both of these were hardcoded (44100 / 512) and
+        # both were wrong for this box — see start() for what that cost.
+        self._frequency = int(frequency)
+        self._buffer_frames = int(buffer_frames)
 
         self._mixer: Any = None
         self._available = False
@@ -90,7 +96,29 @@ class AudioPlayer:
         try:
             # mixer only. pygame.init() would bring up video, which this box
             # does not have and does not need in order to make a noise.
-            kwargs = {"frequency": 44100, "size": -16, "channels": 2, "buffer": 512}
+            #
+            # FREQUENCY MUST MATCH THE OUTPUT DEVICE, and buffer should match
+            # its period size. Both were hardcoded at 44100/512 against a
+            # 48000/1024 USB card, which produced crackle that got worse the
+            # longer the box ran:
+            #
+            #   * 44100 requested against a 48000 device puts a resampler in
+            #     the path that has no reason to exist — five of the six
+            #     sound files are already 48 kHz, so they were being converted
+            #     DOWN to 44.1 and straight back UP to 48. The cheap linear
+            #     resampler on that second hop accumulates phase error over a
+            #     continuous stream, which is why it got worse with uptime
+            #     rather than being bad from the first second.
+            #   * 512-frame writes into a card whose period is 1024 frames,
+            #     on a box also running two Chromium kiosks, a vision loop and
+            #     a 50 ms Modbus poll (load average ~2.9), underran constantly:
+            #     avail_max read 2000x the hardware buffer size.
+            #
+            # Check the device before changing these:
+            #     cat /proc/asound/card0/pcm0p/sub0/hw_params
+            # and read `rate` and `period_size` while something is playing.
+            kwargs = {"frequency": self._frequency, "size": -16,
+                      "channels": 2, "buffer": self._buffer_frames}
             if self._device:
                 kwargs["devicename"] = self._device
             pygame.mixer.init(**kwargs)
@@ -104,8 +132,21 @@ class AudioPlayer:
         self._available = True
         self._error = None
         self._mixer.music.set_volume(self._music_volume)
-        log.info("Audio: mixer up (device=%s, sounds=%s)",
-                 self._device or "system default", self._dir)
+        # Log what we ASKED for and what SDL actually gave us — pygame lets
+        # SDL change the frequency if the device will not take it, silently,
+        # and a mismatch between these two is the whole bug above.
+        try:
+            got_freq, _got_size, got_ch = self._mixer.get_init() or (0, 0, 0)
+        except Exception:
+            got_freq, got_ch = 0, 0
+        log.info("Audio: mixer up (device=%s, %d Hz / %d-frame buffer, "
+                 "SDL gave %d Hz / %dch, sounds=%s)",
+                 self._device or "system default", self._frequency,
+                 self._buffer_frames, got_freq, got_ch, self._dir)
+        if got_freq and got_freq != self._frequency:
+            log.warning("Audio: asked for %d Hz but SDL opened %d Hz — there is "
+                        "a resampler in the path; set audio.frequency to %d",
+                        self._frequency, got_freq, got_freq)
 
         for name in preload or []:
             self._load_cue(name)

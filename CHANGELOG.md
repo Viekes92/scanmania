@@ -7,6 +7,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — audio crackle that got worse with uptime
+
+- **The mixer was opening at 44100 Hz / 512 frames against a card running
+  48000 Hz / 1024.** Two separate faults from one pair of hardcoded numbers:
+
+  * **A resampler nothing needed.** Five of the six sound files are already
+    48 kHz, so every cue was converted DOWN to 44.1 and straight back UP to 48
+    by ALSA's plug layer. That second hop accumulates phase error across a
+    continuous stream, which is why it got worse the longer the box ran rather
+    than being bad from the first second.
+  * **Constant underruns.** 512-frame writes into a 1024-frame period, on a
+    box also running two Chromium kiosks, a vision loop and a 50 ms Modbus
+    poll at load average ~2.9. `/proc/asound/.../status` read `avail_max`
+    2000x the hardware buffer size.
+
+  Both are now config — `audio.frequency` and `audio.buffer_frames`, defaulting
+  to 48000/1024 — because the right values are a property of the venue's sound
+  card, not of the software. The boot log prints what SDL actually opened and
+  **warns when it differs from the request**, since pygame lets SDL silently
+  change the frequency and that mismatch was the whole bug.
+
+- **The soundtrack is levelled.** Integrated loudness ranged over 6.5 LU
+  (game.mp3 at -19.2 LUFS, end.mp3 at -12.7), and `end.mp3` true-peaked at
+  **+2.8 dBTP** — clipping on playback. All six files are now -16.0 LUFS with
+  a -1.5 dBTP ceiling, resampled to 48 kHz.
+
+  Two-pass EBU R128 with `linear=true`, not one-pass: one-pass `loudnorm` is a
+  dynamic normaliser and pumps on a bed with any range to it. Linear applies a
+  single flat gain, so the mix *inside* each file is untouched.
+
+  -16 because `ambient.mp3` already sat at -15.8 and the container is balanced
+  against that bed — everything else moves to meet it, so nobody has to
+  re-level the room. The mix between bed and cues stays where it belongs, in
+  `music_volume` / `cue_volume`, which could not balance anything while the
+  files disagreed with each other.
+
+  **Durations are unchanged to the microsecond**, which matters for
+  `game.mp3`: the spoken 3-2-1 lands at 4.0/5.15/6.05 s and `count_in.
+  audio_lead_ms` is tuned by ear against exactly that.
+
+- 4 tests; 549 total.
+
 ### Added — manual stand-ins for all four hardware inputs
 
 - **A `Manual inputs` strip on the GM console: PLATE · CP 1 · CP 2 · STOP**,

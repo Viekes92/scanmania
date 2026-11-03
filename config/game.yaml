@@ -206,6 +206,28 @@ audio:
   cue_volume: 0.9          # 0.0-1.0
   fade_ms: 400             # crossfade when the bed changes. 0-5000.
 
+  # --- Mixer output format. MATCH THE SOUND CARD. ---------------------------
+  # These were hardcoded at 44100/512 against a card running 48000/1024, and
+  # that combination crackled progressively worse the longer the box ran:
+  #
+  #   * 44100 against a 48000 device inserts a resampler nothing needs. Five
+  #     of the six sound files are already 48 kHz, so they were converted DOWN
+  #     to 44.1 and straight back UP to 48, and the cheap resampler on the
+  #     second hop accumulates phase error across a continuous stream — which
+  #     is why it got worse with uptime instead of being bad from the start.
+  #   * 512-frame writes into a 1024-frame period, on a box also running two
+  #     Chromium kiosks and a vision loop, underran constantly.
+  #
+  # Read the card's REAL values while something is playing:
+  #     cat /proc/asound/card0/pcm0p/sub0/hw_params
+  # `rate` goes in frequency, `period_size` in buffer_frames. The boot log
+  # prints what SDL actually opened and warns if it differs from the request.
+  #
+  # frequency: 8000-192000 Hz. buffer_frames: 64-8192; bigger is safer on a
+  # busy box, at the cost of latency (1024 @ 48 kHz is ~21 ms).
+  frequency: 48000
+  buffer_frames: 1024
+
   music:
     ATTRACT:    ambient.mp3      # idle box, nobody playing
     REGISTERED: ambient.mp3      # player signed in, still idle

@@ -356,3 +356,107 @@ def test_a_superseded_one_shot_does_not_stamp_on_the_new_bed():
     p._follow_when_done(stale_gen, "ambient.mp3", 400)
     time.sleep(0.35)
     assert played == [], "a superseded sting overwrote the current bed"
+
+
+# ---------------------------------------------------------------------------
+# Mixer output format — it has to match the sound card
+#
+# Hardcoded at 44100/512 against a 48000/1024 USB card, this produced crackle
+# that got progressively worse with uptime: a resampler nothing needed (five
+# of six files are already 48 kHz, so they went DOWN to 44.1 and straight back
+# UP), plus 512-frame writes into a 1024-frame period on a box at load ~2.9.
+# ---------------------------------------------------------------------------
+
+def test_the_mixer_format_defaults_to_the_boxs_card():
+    """48000/1024 is what /proc/asound says this card runs at."""
+    from config.loader import AudioConfig
+    a = AudioConfig()
+    assert a.frequency == 48000
+    assert a.buffer_frames == 1024
+
+
+def test_the_mixer_format_is_configurable_and_range_checked():
+    """A venue with a different card must not need a code change."""
+    from config.loader import _parse_audio
+    a = _parse_audio({"frequency": 44100, "buffer_frames": 2048})
+    assert (a.frequency, a.buffer_frames) == (44100, 2048)
+
+    # Out of range clamps rather than raising: sound is decoration, and a typo
+    # must not stop the box booting into a playable state at a venue.
+    a = _parse_audio({"frequency": 3, "buffer_frames": 999_999})
+    assert a.frequency == 8_000
+    assert a.buffer_frames == 8_192
+
+    a = _parse_audio({"frequency": "forty-four one", "buffer_frames": None})
+    assert a.frequency == 48000
+    assert a.buffer_frames == 1024
+
+
+def test_the_player_asks_the_mixer_for_the_configured_format():
+    """
+    The whole bug was that these never reached pygame.mixer.init().
+
+    Asserted against the init kwargs rather than a real device, because CI and
+    a laptop have neither this card nor any card.
+    """
+    from audio.player import AudioPlayer
+
+    seen = {}
+
+    class _FakeMixer:
+        @staticmethod
+        def init(**kw): seen.update(kw)
+        @staticmethod
+        def set_num_channels(n): pass
+        @staticmethod
+        def get_init(): return (seen.get("frequency"), -16, 2)
+        class music:
+            @staticmethod
+            def set_volume(v): pass
+
+    import sys, types
+    fake_pygame = types.ModuleType("pygame")
+    fake_pygame.mixer = _FakeMixer
+    saved = sys.modules.get("pygame")
+    sys.modules["pygame"] = fake_pygame
+    try:
+        p = AudioPlayer(sounds_dir="/nonexistent", frequency=48000,
+                        buffer_frames=1024)
+        assert p.start() is True
+    finally:
+        if saved is None:
+            sys.modules.pop("pygame", None)
+        else:
+            sys.modules["pygame"] = saved
+
+    assert seen["frequency"] == 48000, "the card's rate must reach the mixer"
+    assert seen["buffer"] == 1024, "the card's period must reach the mixer"
+
+
+def test_the_soundtrack_is_levelled_and_not_clipping():
+    """
+    Every file at one loudness, nothing over the ceiling, all at the card rate.
+
+    The mix lives in game.yaml (music_volume / cue_volume), not in the files —
+    so the files have to agree with each other or those two knobs cannot
+    balance anything. end.mp3 also true-peaked at +2.8 dBTP, i.e. it clipped
+    on playback.
+
+    Skipped where the audio is not checked out: sounds/ is gitignored and a
+    fresh clone has none of it.
+    """
+    import subprocess
+    from pathlib import Path
+
+    sounds = Path(__file__).resolve().parents[1] / "sounds"
+    ffprobe = Path("/usr/local/bin/ffprobe")
+    files = sorted(sounds.glob("*.mp3"))
+    if not files or not ffprobe.exists():
+        pytest.skip("soundtrack or ffprobe not available here")
+
+    for f in files:
+        rate = subprocess.run(
+            [str(ffprobe), "-v", "error", "-select_streams", "a:0",
+             "-show_entries", "stream=sample_rate", "-of", "default=nw=1:nk=1",
+             str(f)], capture_output=True, text=True).stdout.strip()
+        assert rate == "48000", f"{f.name} is {rate} Hz, not the card's 48000"

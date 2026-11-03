@@ -342,6 +342,12 @@ class AudioConfig:
     music_volume: float = 0.6        # 0.0-1.0
     cue_volume: float = 0.9          # 0.0-1.0
     fade_ms: int = 400               # crossfade on a bed change. 0-5000 ms.
+    # Mixer output format. MUST match the sound card, or there is a resampler
+    # in the path that nothing needs and that crackles with uptime. Read the
+    # card's real values from /proc/asound/card0/pcm0p/sub0/hw_params while
+    # something is playing. 8000-192000 Hz, buffer 64-8192 frames.
+    frequency: int = 48000
+    buffer_frames: int = 1024
     # FSM state -> filename. A state absent from `music` keeps whatever is
     # playing; "silence" is how you ask for quiet.
     music: dict[str, str] = field(default_factory=dict)
@@ -929,6 +935,10 @@ def _parse_audio(d: dict) -> AudioConfig:
         music_volume=_vol("music_volume", 0.6),
         cue_volume=_vol("cue_volume", 0.9),
         fade_ms=_ranged(d.get("fade_ms", 400), 0, 5_000, 400, "audio.fade_ms"),
+        frequency=_ranged(d.get("frequency", 48000), 8_000, 192_000, 48000,
+                          "audio.frequency"),
+        buffer_frames=_ranged(d.get("buffer_frames", 1024), 64, 8_192, 1024,
+                              "audio.buffer_frames"),
         music=_names("music"),
         cues=_names("cues"),
         penalty_cue=str(d.get("penalty_cue", "break.mp3") or ""),

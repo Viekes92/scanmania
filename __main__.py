@@ -401,6 +401,8 @@ async def async_main(args: argparse.Namespace) -> int:
                 cue_volume=acfg.cue_volume,
                 device=acfg.device,
                 enabled=acfg.enabled,
+                frequency=acfg.frequency,
+                buffer_frames=acfg.buffer_frames,
             )
         # Decode the one-shots now: a checkpoint sting must not wait on a disk
         # read while someone is running.

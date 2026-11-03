@@ -1,12 +1,14 @@
 # Grand prize mode
 
-Branch `grand-prize`. Three changes to the shipping game, each independently
-switchable, for a final where the times must stay secret until the prize is
-awarded.
+Three changes to the shipping game, each independently switchable, for a final
+where the times must stay secret until the prize is awarded. Merged to `main`;
+originally the `grand-prize` branch.
 
-Everything here is **opt-in**. A checkout with none of it configured behaves
-exactly like `main`: times on screen, runs dark, the start plate the only way
-into ARM.
+Everything here is **opt-in**, and the defaults in git are OFF — these are
+settings for a day, not a release. A box with nothing set behaves exactly as
+normal: times on screen, runs dark, the start plate the only way into ARM.
+Set them on the box via **Admin → Config**, which validates, audits and live-
+reloads, and which you undo from the same screen.
 
 ---
 
@@ -158,5 +160,5 @@ scaled down inside the row. Every button still keeps its column in every state
 
 Set `display.hide_times: false` and `run_level: 0` from the admin config
 editor. Both take effect live — the screens unseal on the next broadcast and
-the next run is dark again. Switching back to `main` is a redeploy, and is not
-needed for this.
+the next run is dark again. No redeploy, and nothing to merge or revert: git
+already holds the off values, so this is only ever undoing box config.

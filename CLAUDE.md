@@ -1,25 +1,28 @@
 # CLAUDE.md — ScanMania
 
-## BRANCH: grand-prize
+## Grand-prize mode — three config-gated departures
 
-You are on `grand-prize`, not `main`. Three things below are **not true on this
-branch** — read `docs/grand-prize.md` before changing anything near them:
+Three features exist that each suspend something documented below. All three
+default **off**, so everything in this file is true of a box with no config
+set. Runbook: `docs/grand-prize.md`.
 
-1. **`/display/in` and `/display/out` show no times at all** when
-   `display.hide_times` is set in `game.yaml` — no clock, no result time, no
-   rank, and on the outdoor screen no leaderboard. Both pages ship sealed in
-   their markup and unseal only on a broadcast that says otherwise. The
+1. **`display.hide_times` (`game.yaml`)** — `/display/in` and `/display/out`
+   show no times at all: no clock, no result time, no rank, and on the outdoor
+   screen no leaderboard. Both pages ship sealed in their markup and unseal
+   only on a broadcast saying otherwise, so a kiosk restart fails sealed. The
    stopwatch, the run rows, the GM console and the admin portal are untouched.
-2. **A run is not necessarily dark.** `hazer.lights.run_level` in
-   `hardware.yaml` holds the house fixtures at one low level through COUNTDOWN
-   and the RUN segments so the run can be filmed. It is a deliberate trade
-   against camera detection — ADR 0012. The entrance is still dark, and a cue
-   still cannot touch those states.
-3. **The GM console has a PLATE button** that sends `PlateHigh` by hand, live
-   in REGISTERED only.
+2. **`hazer.lights.run_level` (`hardware.yaml`)** — holds the house fixtures at
+   one low level through COUNTDOWN and the RUN segments so the run can be
+   filmed, instead of the hard 0 the "RUN states are dark" invariant describes.
+   A deliberate trade against camera detection: **ADR 0012**, and it means
+   manual or assisted detection. The entrance is still dark, and neither a cue
+   nor the GM can move the level.
+3. **PLATE on the GM console** — sends `PlateHigh` by hand, live in REGISTERED
+   only. Always present; it is a button, not a flag.
 
-All three default to OFF, so the invariants below are what you get with no
-config. Keep it that way: this branch is meant to be mergeable.
+These are settings for a day, not a release. Set them on the box via
+Admin → Config (validated, audited, live-reloaded) rather than committing them
+here.
 
 ## What this is
 ScanMania is a laser-maze game in a shipping container. A camera watches the ceiling where each laser beam terminates as a bright dot; a dot disappearing means a beam was broken. A player runs from a start plate to a stop button — break a beam and the run is over, fastest clean run wins.

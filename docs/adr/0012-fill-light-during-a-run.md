@@ -2,8 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-11-02
-**Branch:** `grand-prize` — the key ships as `0` on `main`, which is the
-behaviour every earlier document describes.
+**Default:** `0` — the behaviour every earlier document describes.
 
 ## Context
 

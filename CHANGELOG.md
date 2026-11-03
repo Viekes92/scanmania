@@ -7,7 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Added — grand-prize mode (branch `grand-prize`)
+### Added — grand-prize mode
 
 Three changes for a final where the times must stay secret until the prize is
 awarded. All three default to OFF: with no config the box behaves exactly as

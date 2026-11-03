@@ -439,9 +439,24 @@ class Database:
         return clause, [like, like, like]
 
     async def list_runs(
-        self, limit: int = 50, offset: int = 0, q: str = ""
+        self, limit: int = 50, offset: int = 0, q: str = "",
+        scope: str = "all",
     ) -> list[dict]:
+        """
+        Runs, newest first. scope="daily" limits to the operating day.
+
+        EVERY outcome, unlike get_leaderboard(): this is the log of what
+        happened, not the ranking. Bounded on BOTH sides for the daily scope,
+        for the same reason the leaderboard is — with only a lower bound, a
+        session recorded while the clock was wrong pins junk rows to "today"
+        permanently.
+        """
         where_sql, params = self._run_search_clause(q)
+        if scope == "daily":
+            start, end = day_bounds()
+            joiner = "AND" if where_sql.strip() else "WHERE"
+            where_sql = f"{where_sql} {joiner} r.started_at >= ? AND r.started_at < ?"
+            params = (*params, start, end)
         async with self._db.execute(
             f"""SELECT r.*, p.nickname AS player_nickname
                 FROM runs r LEFT JOIN players p ON p.id = r.player_id

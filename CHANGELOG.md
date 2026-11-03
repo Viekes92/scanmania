@@ -18,18 +18,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   times. The GM console is busy with a run and the admin portal needs a
   password and shows forty other things.
 
-  One row per player (their best clean run, via `get_leaderboard`'s GROUP BY),
-  busted and aborted excluded, day-scoped server-side. Live over the displays'
-  WebSocket, seeded from `/api/admin/leaderboard` so a reload lands on the
-  answer rather than waiting for the next broadcast. While the seal is on it
-  shows a red reminder that the public screens are hiding times, so nobody
-  mistakes this page for one of them.
+  **Every run of the day, every outcome.** Clean runs are numbered and sorted
+  fastest-first — that is the prize — and busted, aborted and voided runs sit
+  below, dimmed and unnumbered with a badge saying which. Shown rather than
+  hidden because "why is my run not up there" is a question the operator has
+  to answer, and a missing row cannot. Every attempt, not one per player:
+  deliberately the opposite of `/display/out`'s board.
+
+  Fed by a new `scope=daily` on `/api/admin/runs` (and `db.list_runs`),
+  bounded on both ends like the leaderboard — with only a lower bound, a
+  session recorded while the clock was wrong pins junk rows to "today"
+  permanently. The WebSocket is a change signal only; its `leaderboard` is
+  the display board and a different shape. While the seal is on, the page
+  shows a red reminder that the public screens are hiding times.
 
   Unauthenticated, like `/gm` and like the endpoint it reads — so keep it off
   any screen the public can see during a final. Noted in the page header, the
   route docstring and the runbook.
 
-- 3 tests; 554 total.
+- 5 tests; 556 total.
 
 ### Fixed — audio crackle that got worse with uptime
 
@@ -133,6 +140,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   name and level, it is **not** refused during a run — it goes through the cue
   player rather than straight at the DMX, so the level is still one number for
   all four states and a cue still cannot move it (ADR 0012).
+
+- **A bigger Carrefour lockup on the sealed `/display/out`** — 44vw → 58vw,
+  ~500px tall on the panel. Sized against height because the mark is 1.25:1,
+  near enough square, so it grows about 4x faster per vw than the 4.8:1
+  wordmark does. That leaves ~960px for the middle, which is the real
+  constraint: the countdown digit alone is ~500px and must not be squeezed.
 
 - **The segment line on `/display/in` scales up when the screens are sealed.**
   `.segment` is sized as a subtitle for life under a 520px clock; with the

@@ -534,10 +534,19 @@ def register_routes(
         limit: int = Query(default=50, ge=1, le=500),
         offset: int = Query(default=0, ge=0),
         q: str = Query(default="", max_length=100),
+        scope: str = Query(default="all", pattern=r"^(all|daily)$"),
     ):
-        runs = await db.list_runs(limit=limit, offset=offset, q=q)
+        """
+        Runs, newest first, EVERY outcome.
+
+        scope=daily limits to the operating day (SCANMANIA_DAY_START_HOUR),
+        which /scoreboard uses — the day boundary is a server-side setting and
+        a browser has no business recomputing it.
+        """
+        runs = await db.list_runs(limit=limit, offset=offset, q=q, scope=scope)
         total = await db.count_runs(q=q)
-        return {"ok": True, "runs": runs, "count": len(runs), "total": total}
+        return {"ok": True, "runs": runs, "count": len(runs),
+                "total": total, "scope": scope}
 
     @router.get(
         "/api/admin/runs/{run_id}",

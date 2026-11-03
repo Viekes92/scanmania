@@ -19,14 +19,23 @@
   final, and do not link it from the display pages. It is served
   unauthenticated, like /gm — see docs/grand-prize.md.
 
-  Live over the same WebSocket the displays use, seeded from
-  /api/admin/leaderboard so a reload lands on the right answer immediately
-  rather than waiting for the next broadcast. Both are day-scoped server-side
-  (SCANMANIA_DAY_START_HOUR), so the 09:00 rollover is handled for us.
+  Data comes from /api/admin/runs?scope=daily — every run, every outcome —
+  NOT from the WebSocket's `leaderboard`, which is the display board and a
+  different shape. The socket is used only as a change signal: when it fires,
+  the page re-reads the day. scope=daily is resolved server-side from
+  SCANMANIA_DAY_START_HOUR, because the 09:00 rollover is not something a
+  browser should be recomputing.
 
-  One row per PLAYER, not per run — persist.db.get_leaderboard groups by
-  player and keeps their best clean run. Busted and aborted runs never appear:
-  a time nobody completed is not a score.
+  EVERY run of the operating day, every outcome — this is the log as well as
+  the ranking. Clean runs are numbered and sorted fastest-first, because that
+  is the prize; everything that did not complete (busted, aborted, voided)
+  sorts below them, unnumbered, so it is visible without ever looking like it
+  is competing.
+
+  That is deliberately NOT what /display/out's leaderboard does: that one is
+  one row per player, best clean run only, capped at leaderboard.max_entries.
+  This page is for the person awarding the prize, who needs to see a player's
+  second attempt and the run somebody voided.
 
   No build step, no CDN: a venue with no internet must still render this.
 -->
@@ -116,6 +125,32 @@
       letter-spacing: -0.01em;
     }
 
+    /* Did-not-complete rows: present, readable, obviously not in the running.
+       Dimmed rather than hidden — "why is my run not up there" is a question
+       the operator has to be able to answer, and a missing row cannot. */
+    .row.dnf { color: var(--sm-dim); font-size: clamp(15px, 3.4vw, 20px); font-weight: 600; }
+    .row.dnf .pos { color: #2a2f38; }
+    .row.dnf .tm { color: var(--sm-dim); }
+
+    .badge {
+      display: inline-block;
+      margin-left: 0.6em;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 0.56em;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      vertical-align: middle;
+      border: 1px solid currentColor;
+    }
+    .badge.busted  { color: var(--sm-red); }
+    .badge.aborted { color: var(--sm-dim); }
+    .badge.voided  { color: var(--sm-dim); text-decoration: line-through; }
+    .badge.in_progress { color: var(--sm-blue); }
+
+    .row.voided .nm { text-decoration: line-through; }
+
     .empty {
       padding: 40px 4px;
       color: var(--sm-dim);
@@ -189,59 +224,87 @@
 
   let lastSig = null;
 
-  function render(entries) {
-    const list = entries || [];
-    // Guard on a signature: this runs on every broadcast (~10 Hz) for a list
-    // that changes a few times an hour.
-    const sig = JSON.stringify(list.map(e => [e.player_nickname, e.elapsed_ms]));
+  /* Clean runs rank; nothing else does. Sorting is: completed runs by time
+     ascending, then everything else newest-first underneath. A run still in
+     progress has no time yet and sorts to the very bottom. */
+  function ordered(runs) {
+    const clean = runs.filter(r => r.outcome === "clean" && r.elapsed_ms != null)
+                      .sort((a, b) => a.elapsed_ms - b.elapsed_ms);
+    const rest = runs.filter(r => !(r.outcome === "clean" && r.elapsed_ms != null))
+                     .sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)));
+    return { clean, rest };
+  }
+
+  function row(r, rank) {
+    // textContent throughout: a nickname is public input, typed at sign-in.
+    const el = document.createElement("div");
+    const dnf = rank == null;
+    el.className = "row" + (rank === 1 ? " top" : "") + (dnf ? " dnf" : "")
+                 + (r.outcome === "voided" ? " voided" : "");
+
+    const pos = document.createElement("span");
+    pos.className = "pos";
+    pos.textContent = dnf ? "—" : rank + ".";
+
+    const nm = document.createElement("span");
+    nm.className = "nm";
+    nm.textContent = r.player_nickname || "—";
+    if (dnf) {
+      const b = document.createElement("span");
+      b.className = "badge " + (r.outcome || "unknown");
+      b.textContent = (r.outcome || "?").replace("_", " ");
+      nm.append(b);
+    }
+
+    const tm = document.createElement("span");
+    tm.className = "tm";
+    tm.textContent = fmt(r.elapsed_ms);
+
+    el.append(pos, nm, tm);
+    return el;
+  }
+
+  function render(runs) {
+    const list = runs || [];
+    const sig = JSON.stringify(list.map(
+      r => [r.id, r.player_nickname, r.elapsed_ms, r.outcome]));
     if (sig === lastSig) return;
     lastSig = sig;
 
+    const { clean, rest } = ordered(list);
     rowsEl.textContent = "";
+
     if (!list.length) {
       const d = document.createElement("div");
       d.className = "empty";
-      d.textContent = "No clean runs yet today.";
+      d.textContent = "No runs yet today.";
       rowsEl.append(d);
       countEl.textContent = "";
       return;
     }
 
-    list.forEach((e, i) => {
-      // textContent, never innerHTML: a nickname is public input, typed at
-      // sign-in by whoever is on the iPad.
-      const row = document.createElement("div");
-      row.className = "row" + (i === 0 ? " top" : "");
-      const pos = document.createElement("span");
-      pos.className = "pos";
-      pos.textContent = (i + 1) + ".";
-      const nm = document.createElement("span");
-      nm.className = "nm";
-      nm.textContent = e.player_nickname || "—";
-      const tm = document.createElement("span");
-      tm.className = "tm";
-      tm.textContent = fmt(e.elapsed_ms);
-      row.append(pos, nm, tm);
-      rowsEl.append(row);
-    });
+    clean.forEach((r, i) => rowsEl.append(row(r, i + 1)));
+    rest.forEach(r => rowsEl.append(row(r, null)));
 
-    countEl.textContent = list.length === 1
-      ? "1 player · best clean run each"
-      : `${list.length} players · best clean run each`;
+    countEl.textContent =
+      `${list.length} run${list.length === 1 ? "" : "s"} today · ` +
+      `${clean.length} clean · ${rest.length} did not count`;
   }
 
-  /* Seed immediately so a reload shows the answer without waiting for the
-     next broadcast. */
-  async function seed() {
+  /* Every run of the day, every outcome. scope=daily is resolved SERVER-side
+     from SCANMANIA_DAY_START_HOUR — the 09:00 rollover is not something a
+     browser should be recomputing. */
+  async function load() {
     try {
-      const r = await fetch("/api/admin/leaderboard");
+      const r = await fetch("/api/admin/runs?scope=daily&limit=500");
       if (!r.ok) return;
       const d = await r.json();
-      const rows = Array.isArray(d) ? d : (d.leaderboard || d.runs || []);
-      metaEl.textContent = (d.scope ? d.scope + " · " : "") + "clean runs, fastest first";
-      render(rows);
-    } catch (e) { /* the WebSocket will fill it in */ }
+      metaEl.textContent = "Today · every run, every outcome";
+      render(d.runs || []);
+    } catch (e) { /* leave whatever is on screen */ }
   }
+
+  let wsSig = null;
 
   function connect() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -251,7 +314,11 @@
     ws.onmessage = (ev) => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch (e) { return; }
-      if (Array.isArray(msg.leaderboard)) render(msg.leaderboard);
+      /* The broadcast carries the display leaderboard, which is a different
+         thing — one row per player, clean only. Use it purely as a signal
+         that something changed, and re-read the full day from the API. */
+      const sig = JSON.stringify(msg.leaderboard || []) + "|" + (msg.state || "");
+      if (sig !== wsSig) { wsSig = sig; load(); }
       // Mirror the seal only to warn about it. The board above is rendered
       // either way — that is the point of this page.
       sealEl.classList.toggle("on", !!msg.hide_times);
@@ -263,7 +330,7 @@
     ws.onerror = () => ws.close();
   }
 
-  seed();
+  load();
   connect();
 </script>
 

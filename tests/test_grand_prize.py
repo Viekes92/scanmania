@@ -496,7 +496,7 @@ def test_the_sealed_outdoor_screen_gives_the_room_to_the_logos():
     html = (Path(__file__).resolve().parents[1]
             / "web/static/display_out/index.html").read_text()
     assert "body.hide-times .logo    { width: min(90vw, 1000px); }" in html
-    assert "body.hide-times #sponsor { width: min(44vw, 500px); }" in html
+    assert "body.hide-times #sponsor { width: min(58vw, 660px); }" in html
     assert "justify-items: center;" in html
     # Unsealed, nothing moves: the clock and board still need that room.
     assert ".logo { width: min(74vw, 900px);" in html
@@ -532,7 +532,7 @@ def test_the_scoreboard_ignores_the_seal():
     assert "sealed-hide" not in html
     assert 'class="hide-times"' not in html
     # Times are rendered unconditionally.
-    assert "tm.textContent = fmt(e.elapsed_ms);" in html
+    assert "tm.textContent = fmt(r.elapsed_ms);" in html
     # The seal only drives a warning banner.
     assert 'sealEl.classList.toggle("on", !!msg.hide_times);' in html
 
@@ -545,4 +545,52 @@ def test_the_scoreboard_writes_nicknames_as_text():
     # The hazard is an ASSIGNMENT, not the word — the file's own comment
     # explains why it uses textContent, and that comment is not a bug.
     assert ".innerHTML" not in html.replace("never innerHTML", "")
-    assert "nm.textContent = e.player_nickname" in html
+    assert "nm.textContent = r.player_nickname" in html
+
+
+def test_the_scoreboard_shows_every_run_of_the_day():
+    """
+    All runs, not the display leaderboard.
+
+    /display/out's board is one row per player, best clean run, capped at
+    max_entries. The organiser needs the opposite: a player's second attempt
+    and the run somebody voided, or "why is my run not up there" has no
+    answer. Clean runs still rank; the rest sort below, unnumbered.
+    """
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "web/static/scoreboard/index.html").read_text()
+    assert '"/api/admin/runs?scope=daily&limit=500"' in html
+    # The socket is a change signal only — its leaderboard is a different shape.
+    assert "render(msg.leaderboard)" not in html
+    # Did-not-complete rows are shown, dimmed, and never numbered. The badge
+    # class is built as "badge " + outcome at runtime, so assert the CSS.
+    for cls in (".row.dnf", ".badge.busted", ".badge.aborted", ".badge.voided"):
+        assert cls in html, cls
+    assert 'pos.textContent = dnf ? "—" : rank + ".";' in html
+
+
+@pytest.mark.asyncio
+async def test_list_runs_daily_scope_is_bounded_both_ends(db):
+    """
+    Bounded on BOTH sides, like the leaderboard.
+
+    With only a lower bound, a session recorded while the clock was wrong
+    pins junk rows to "today" permanently.
+    """
+    import inspect
+    from persist.db import Database
+    src = inspect.getsource(Database.list_runs)
+    assert 'scope == "daily"' in src
+    assert "r.started_at >= ? AND r.started_at < ?" in src
+
+    # And it actually filters: an ancient run must not appear in the day.
+    await db.upsert_player(id="ghost", nickname="Ghost")
+    await db.insert_run({
+        "id": "ancient", "player_id": "ghost",
+        "started_at": "2020-01-01T00:00:00+00:00",
+        "outcome": "clean", "detection_mode": "manual", "elapsed_ms": 1234,
+    })
+    assert any(r["id"] == "ancient" for r in await db.list_runs(limit=50))
+    assert not any(r["id"] == "ancient"
+                   for r in await db.list_runs(limit=50, scope="daily"))

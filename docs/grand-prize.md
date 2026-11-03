@@ -184,11 +184,18 @@ what there is to beat, and somebody still has to read the times to award the
 prize. The GM console is busy with a run and the admin portal needs a password
 and shows forty other things; this is just the answer.
 
-- One row per **player**, not per run — their best clean run.
-- Busted and aborted runs never appear: a time nobody completed is not a score.
-- Day-scoped server-side, so the 09:00 rollover is handled.
-- Live over the same WebSocket as the displays, seeded from
-  `/api/admin/leaderboard` so a reload lands on the answer immediately.
+- **Every run of the day, every outcome.** Clean runs are numbered and sorted
+  fastest-first — that is the prize — and busted, aborted and voided runs sit
+  below them, dimmed and unnumbered, with a badge saying which. They are shown
+  rather than hidden because "why is my run not up there" is a question the
+  operator has to be able to answer, and a missing row cannot.
+- Every attempt, not one per player: a second run and a voided run both matter
+  when you are settling a prize. This is the opposite of `/display/out`'s
+  board, which is one row per player, best clean run, capped at `max_entries`.
+- Day-scoped **server-side** (`/api/admin/runs?scope=daily`), so the 09:00
+  rollover is handled and the browser never recomputes it.
+- The WebSocket is a change signal only — when it fires, the page re-reads the
+  day from the API.
 - While the seal is on it shows a red reminder that the public screens are
   hiding times, so nobody mistakes this page for one of them.
 

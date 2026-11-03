@@ -278,11 +278,12 @@
 
        Sized against HEIGHT, not width, because the two marks have very
        different shapes: sm-text-tp is 4.8:1 and cf is 1.25:1 — nearly square
-       — so matching them on width would make the sponsor tower over the
-       wordmark. At these values they are ~200px and ~400px tall on the
-       1080x1920 panel, which leaves ~1100px for #centre. That matters: the
+       — so the sponsor grows ~4x faster per vw than the wordmark does. At
+       these values they are ~200px and ~500px tall on the 1080x1920 panel,
+       leaving ~1010px for #centre. That headroom is the real constraint: the
        countdown digit is 46vw (~500px) and the verdict 17vw, and neither may
-       be squeezed by chrome.
+       be squeezed by chrome. Going much past 58vw on the sponsor starts
+       eating the digit.
 
        The sponsor centres rather than staying right. It was right-aligned
        only to hold its place when the leaderboard sat beside it; alone and at
@@ -294,7 +295,7 @@
       justify-items: center;
     }
     body.hide-times .logo    { width: min(90vw, 1000px); }
-    body.hide-times #sponsor { width: min(44vw, 500px); }
+    body.hide-times #sponsor { width: min(58vw, 660px); }
   </style>
 </head>
 <!-- Sealed until a broadcast says otherwise — see the CSS above. -->

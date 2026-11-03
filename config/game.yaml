@@ -271,5 +271,7 @@ audio:
 #   connects can never flash a time. See docs/grand-prize.md.
 #
 #   false = normal play, every time on screen as usual.
+#   Set on the box, not here: this is the normal game, and a final is a
+#   setting for the day. Admin → Config, or see docs/grand-prize.md.
 display:
-  hide_times: true
+  hide_times: false

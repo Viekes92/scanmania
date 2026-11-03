@@ -361,10 +361,12 @@ def test_a_superseded_one_shot_does_not_stamp_on_the_new_bed():
 # ---------------------------------------------------------------------------
 # Mixer output format — it has to match the sound card
 #
-# Hardcoded at 44100/512 against a 48000/1024 USB card, this produced crackle
-# that got progressively worse with uptime: a resampler nothing needed (five
-# of six files are already 48 kHz, so they went DOWN to 44.1 and straight back
-# UP), plus 512-frame writes into a 1024-frame period on a box at load ~2.9.
+# Hardcoded at 44100/512 against a 48000/1024 USB card. The rate mismatch is
+# what explains crackle that worsens with uptime: five of six files are already
+# 48 kHz, so they went DOWN to 44.1 and straight back UP, and the cheap second
+# hop accumulates phase error across a continuous stream. The buffer was
+# separately wrong — 512-frame writes straddle a 1024-frame period — but that
+# is correct chunking, not a starvation fix: the box is 8-core at ~40%.
 # ---------------------------------------------------------------------------
 
 def test_the_mixer_format_defaults_to_the_boxs_card():

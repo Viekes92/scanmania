@@ -17,10 +17,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     by ALSA's plug layer. That second hop accumulates phase error across a
     continuous stream, which is why it got worse the longer the box ran rather
     than being bad from the first second.
-  * **Constant underruns.** 512-frame writes into a 1024-frame period, on a
-    box also running two Chromium kiosks, a vision loop and a 50 ms Modbus
-    poll at load average ~2.9. `/proc/asound/.../status` read `avail_max`
-    2000x the hardware buffer size.
+  * **Mis-chunked writes.** 512-frame writes into a 1024-frame period
+    straddle every period boundary; matching the period is the correct
+    chunking. This is a correctness fix, not a starvation one — an earlier
+    reading of `avail_max` as evidence of underruns was wrong (it reads the
+    same on a fresh healthy stream, because that view does not track
+    `appl_ptr` for MMAP), and the box is 8-core at ~40% with 13 GB free.
+    The rate mismatch above is what explains the symptom.
 
   Both are now config — `audio.frequency` and `audio.buffer_frames`, defaulting
   to 48000/1024 — because the right values are a property of the venue's sound

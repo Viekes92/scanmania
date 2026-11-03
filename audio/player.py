@@ -109,10 +109,18 @@ class AudioPlayer:
             #     resampler on that second hop accumulates phase error over a
             #     continuous stream, which is why it got worse with uptime
             #     rather than being bad from the first second.
-            #   * 512-frame writes into a card whose period is 1024 frames,
-            #     on a box also running two Chromium kiosks, a vision loop and
-            #     a 50 ms Modbus poll (load average ~2.9), underran constantly:
-            #     avail_max read 2000x the hardware buffer size.
+            #   * 512-frame writes into a card whose period is 1024 frames.
+            #     Every write straddled a period boundary, so the card was
+            #     being fed in half-periods it then had to stitch. Matching
+            #     the period is simply the correct chunking.
+            #
+            #     NOT a CPU-starvation fix, despite how this first read:
+            #     avail_max in /proc/asound/.../status looked alarming
+            #     (2000x buffer_size) but reads identically on a fresh,
+            #     healthy stream — that view does not track appl_ptr for
+            #     MMAP streams. And the box is 8-core at ~40% with 13 GB
+            #     free. The rate mismatch above is the fault that explains
+            #     the symptom; this one is correctness, not relief.
             #
             # Check the device before changing these:
             #     cat /proc/asound/card0/pcm0p/sub0/hw_params

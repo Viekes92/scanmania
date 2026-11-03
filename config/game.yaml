@@ -215,8 +215,9 @@ audio:
   #     to 44.1 and straight back UP to 48, and the cheap resampler on the
   #     second hop accumulates phase error across a continuous stream — which
   #     is why it got worse with uptime instead of being bad from the start.
-  #   * 512-frame writes into a 1024-frame period, on a box also running two
-  #     Chromium kiosks and a vision loop, underran constantly.
+  #   * 512-frame writes into a 1024-frame period straddled every period
+  #     boundary. Matching the period is just the correct chunking — this is
+  #     not a CPU fix, the box is 8-core at ~40%.
   #
   # Read the card's REAL values while something is playing:
   #     cat /proc/asound/card0/pcm0p/sub0/hw_params

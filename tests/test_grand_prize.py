@@ -496,7 +496,7 @@ def test_the_sealed_outdoor_screen_gives_the_room_to_the_logos():
     html = (Path(__file__).resolve().parents[1]
             / "web/static/display_out/index.html").read_text()
     assert "body.hide-times .logo    { width: min(90vw, 1000px); }" in html
-    assert "body.hide-times #sponsor { width: min(58vw, 660px); }" in html
+    assert "body.hide-times #sponsor { width: min(80vw, 900px); }" in html
     assert "justify-items: center;" in html
     # Unsealed, nothing moves: the clock and board still need that room.
     assert ".logo { width: min(74vw, 900px);" in html

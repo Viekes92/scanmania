@@ -289,3 +289,131 @@ def test_the_outdoor_leaderboard_is_part_of_the_seal():
     html = (Path(__file__).resolve().parents[1]
             / "web/static/display_out/index.html").read_text()
     assert '<div id="leaderboard" class="sealed-hide">' in html
+
+
+# ===========================================================================
+# Tuning the fill light from the GM console
+# ===========================================================================
+
+def test_set_run_level_applies_to_the_state_we_are_already_in():
+    """
+    The whole point of the console control: it lands during the run you are
+    watching, not at the next transition. A level that waited would be
+    untunable, because the thing you are tuning against is the camera.
+    """
+    from iobackend.dmx import DmxController
+    from iobackend.lightshow import LightCuePlayer
+
+    dmx = DmxController(artnet_ip="127.0.0.1", universe=1, lights={
+        "fade_ms": 800,
+        "fixtures": {"left": {"channel": 3, "default": 255},
+                     "right": {"channel": 4, "default": 255},
+                     "entrance": {"channel": 5, "default": 255,
+                                  "always_on": True}}})
+    dmx._sock = type("S", (), {"sendto": lambda s, *a: 0, "close": lambda s: None})()
+
+    p = LightCuePlayer(dmx, {}, run_level=2)
+    p.set_state("RUN_SEG_2")
+    assert dmx.light_level("left") == 2
+
+    assert p.set_run_level(5) == 5
+    assert dmx.light_level("left") == 5, "must land without a state change"
+    assert dmx.light_level("entrance") == 0, "the entrance is never the fill"
+
+    assert p.set_run_level(0) == 0
+    assert dmx.light_level("left") == 0, "0 puts the run back to dark"
+
+
+def test_set_run_level_clamps_whatever_it_is_given():
+    """The console is not the only caller; tools/ and tests reach it too."""
+    from iobackend.lightshow import LightCuePlayer
+    p = LightCuePlayer(object(), {})
+    assert p.set_run_level(900) == 255
+    assert p.set_run_level(-5) == 0
+    assert p.set_run_level("bright") == 0
+
+
+def test_the_run_light_body_is_bounded_to_the_documented_band():
+    """
+    0-16, not the DMX 0-255.
+
+    The ceiling is the failure mode worth guarding: anything past ~10 on these
+    decoders is the house lights up through a run.
+    """
+    import pydantic
+    from web.routes_admin import RunLightBody
+
+    assert RunLightBody(level=0).level == 0
+    assert RunLightBody(level=16).level == 16
+    for bad in (-1, 17, 255):
+        with pytest.raises(pydantic.ValidationError):
+            RunLightBody(level=bad)
+
+
+def test_persisting_the_level_keeps_the_comments(tmp_path):
+    """
+    A yaml round-trip would delete most of hardware.yaml.
+
+    The file is mostly prose — the camera path notes, the haze dose reasoning,
+    the decoder range — and losing it to a light nudge would be a silent,
+    unreviewable deletion of the reasoning the next person needs.
+    """
+    import re
+    src = (loader.CONFIG_DIR / "hardware.yaml").read_text()
+    pattern = re.compile(r"^(\s*run_level:[ \t]*)(\d+)(.*)$", re.M)
+    assert len(pattern.findall(src)) == 1, "exactly one run_level line to edit"
+
+    out = pattern.sub(lambda m: f"{m.group(1)}7{m.group(3)}", src, count=1)
+    assert "run_level: 7" in out
+    assert out.count("#") == src.count("#"), "every comment survives"
+    assert len(out.splitlines()) == len(src.splitlines())
+
+    # And it still loads, with the new value.
+    (tmp_path / "hardware.yaml").write_text(out)
+    for name in ("game.yaml", "mazes.yaml", "beams.json"):
+        shutil.copy(loader.CONFIG_DIR / name, tmp_path / name)
+    original = loader.CONFIG_DIR
+    try:
+        loader.CONFIG_DIR = tmp_path
+        hw = loader.load_hardware()
+    finally:
+        loader.CONFIG_DIR = original
+    assert (hw.hazer or {})["lights"]["run_level"] == 7
+
+
+@pytest.mark.asyncio
+async def test_the_run_light_route_is_registered():
+    """The console POSTs it; a 404 would read as a dead button."""
+    import web.routes_admin as ra
+    import inspect
+    src = inspect.getsource(ra.register_routes)
+    assert '"/api/gm/run-light"' in src
+    # Unauthenticated on purpose, like the rest of /api/gm/* — assert it did
+    # not accidentally pick up the admin dependency the routes around it use.
+    i = src.index('"/api/gm/run-light"')
+    assert "_require_admin" not in src[i - 200:i + 200]
+
+
+def test_the_console_has_a_run_light_stepper():
+    """Cheap guard on a frontend with no build step: button, handler, both."""
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "web/static/gm/index.html").read_text()
+    for needle in ('id="hRunLightUp"', 'id="hRunLightDown"',
+                   'id="hRunLightValue"', '"/api/gm/run-light"',
+                   "nudgeRunLight(+1)", "nudgeRunLight(-1)"):
+        assert needle in html, needle
+
+
+def test_the_sealed_run_scene_scales_the_segment_up():
+    """
+    Sealed, the segment is the RUN scene's only content.
+
+    It is sized as a subtitle for life under a 520px clock; left that way it
+    was unreadable from the far end of a dark container.
+    """
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1]
+            / "web/static/display_in/index.html").read_text()
+    assert "body.hide-times .segment {" in html
+    assert "font-size: clamp(40px, 8.5vw, 200px);" in html

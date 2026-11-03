@@ -249,6 +249,17 @@ class LightsBody(BaseModel):
     level: int | None = Field(default=None, ge=0, le=255)
 
 
+class RunLightBody(BaseModel):
+    """
+    Fill-light level for COUNTDOWN and the RUN segments.
+
+    Bounded to the same 0-16 band config/loader.py checks, not the full DMX
+    0-255: the useful range on these decoders is 1-6 and anything past ~10 is
+    effectively the house lights up through a run.
+    """
+    level: int = Field(..., ge=0, le=16)
+
+
 class MaskBeamBody(BaseModel):
     masked: bool
 
@@ -1305,12 +1316,71 @@ def register_routes(
             # back to the state cues. Neither survives into a run.
             "work_lights": bool(player.work_lights) if player else None,
             "cue_state": getattr(player, "_state", None) if player else None,
+            # Fill light for COUNTDOWN and the RUN segments. 0 = a run is dark.
+            "run_level": getattr(player, "run_level", 0) if player else None,
         }
 
     @router.get("/api/gm/lights")
     async def gm_lights_status():
         """Unauthenticated, like the rest of /api/gm/* — the console has no password."""
         return await _lights_status()
+
+    def _persist_run_level(level: int) -> str:
+        """
+        Rewrite the ONE run_level line in hardware.yaml, in place.
+
+        Deliberately a targeted line edit on the raw text, never a
+        yaml.safe_load/safe_dump round-trip: hardware.yaml is mostly comments —
+        the camera path notes, the haze dose reasoning, the decoder range — and
+        a round-trip would silently delete all of it.
+
+        Returns a human-readable note; never raises. A level that applied live
+        but could not be written is worth a line in the response, not a failed
+        request: the GM is mid-tune and the live value is the one they are
+        looking at.
+        """
+        path = cfg_dir / "hardware.yaml"
+        try:
+            text = path.read_text(encoding="utf-8")
+            pattern = re.compile(r"^(\s*run_level:[ \t]*)(\d+)(.*)$", re.M)
+            hits = pattern.findall(text)
+            if len(hits) != 1:
+                return (f"not saved — found {len(hits)} run_level lines in "
+                        f"hardware.yaml, expected exactly 1")
+            _atomic_write(path, pattern.sub(
+                lambda m: f"{m.group(1)}{level}{m.group(3)}", text, count=1))
+            return "saved to hardware.yaml"
+        except OSError as exc:
+            return f"not saved — {exc}"
+
+    @router.post("/api/gm/run-light")
+    async def gm_run_light(body: RunLightBody):
+        """
+        Retune the fill light that COUNTDOWN and the RUN segments are held at.
+
+        Unauthenticated like the rest of /api/gm/* — the console has no
+        password, and this is strictly less dangerous than the abort and hazer
+        controls already there. It writes one bounded integer and never reads
+        the file back to the caller, so the RTSP credentials elsewhere in
+        hardware.yaml are not exposed.
+
+        Applied live AND persisted, because those are different failures: live
+        only would be lost to a reboot mid-event, and file only would be
+        invisible until the next restart — useless for tuning by eye.
+
+        Unlike POST /api/gm/lights with a name and level, this does not write
+        at the DMX directly and so is NOT refused during a run. That is the
+        point: the cue player still owns the level, it is still one number for
+        all four states, and a cue still cannot move it. See ADR 0012.
+        """
+        player = _cue_player()
+        if player is None or not hasattr(player, "set_run_level"):
+            raise HTTPException(status_code=503, detail="DMX lights not available")
+
+        applied = player.set_run_level(body.level)
+        note = await asyncio.to_thread(_persist_run_level, applied)
+        log.info("GM: run fill light -> %d (%s)", applied, note)
+        return {"ok": True, "run_level": applied, "persisted": note}
 
     @router.post("/api/gm/lights")
     async def gm_lights_set(body: LightsBody):

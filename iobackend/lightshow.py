@@ -92,7 +92,7 @@ class LightCuePlayer:
         # Clamped here as well as in the loader: this class is constructed
         # directly by tests and by tools, and a nonsense level must not reach
         # the fixtures.
-        self._run_level = max(0, min(255, int(run_level or 0)))
+        self._run_level = self._clamp_level(run_level)
         self._state: str | None = None
         self._task: asyncio.Task | None = None
         # "Work lights": the GM's solid-on override for loading and unloading.
@@ -125,6 +125,38 @@ class LightCuePlayer:
         """The fill level held through COUNTDOWN and the RUN segments."""
         return self._run_level
 
+    @staticmethod
+    def _clamp_level(level: Any) -> int:
+        """
+        Any caller's idea of a level, reduced to a DMX one.
+
+        Clamped here as well as in config/loader.py: this class is constructed
+        directly by tests and by tools/, and retuned live from the GM console,
+        so the loader is not on every path in.
+        """
+        try:
+            return max(0, min(255, int(level or 0)))
+        except (TypeError, ValueError):
+            log.warning("run level %r is not a number — using 0", level)
+            return 0
+
+    def set_run_level(self, level: int) -> int:
+        """
+        Retune the fill light and apply it to the state we are in RIGHT NOW.
+
+        This is the GM console's control, and it exists because the number is
+        meaningless on paper — the decoders here are effectively full past
+        about 10, so it is set by standing in the container, nudging it and
+        looking at what the camera sees. A level that only landed at the next
+        transition would be untunable during the run you are watching.
+
+        Returns the level actually applied, which is the clamped one.
+        """
+        self._run_level = self._clamp_level(level)
+        log.info("run fill light -> %d", self._run_level)
+        self._restart()
+        return self._run_level
+
     def reload(self, cues: dict[str, Any] | None = None,
                run_level: int | None = None) -> None:
         """
@@ -143,7 +175,7 @@ class LightCuePlayer:
         if cues is not None:
             self._cues = cues or {}
         if run_level is not None:
-            self._run_level = max(0, min(255, int(run_level or 0)))
+            self._run_level = self._clamp_level(run_level)
         state, self._state = self._state, None
         if state is not None:
             self.set_state(state)

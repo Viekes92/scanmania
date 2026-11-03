@@ -26,6 +26,7 @@ Sealed, the two public screens lose:
 | | `/display/in` | `/display/out` |
 |---|---|---|
 | running clock | gone | gone |
+| segment `n / 3` | **scaled up** — it is the only thing left on screen | — |
 | result time | gone | gone |
 | rank | gone | gone |
 | leaderboard | — | **whole block gone**, LAST RUN with it |
@@ -85,13 +86,18 @@ three RUN segments — the four states the lightshow otherwise forces to a hard
 
 ### Setting it
 
-**By eye, against the camera. The number means nothing on its own** — the D5
-DMX5125 decoders here are effectively full past about 10, so the whole useful
-band is **1-6**. Start at 2, look at the picture, go up by ones.
+**From the GM console: the `Run light − 2 +` pill in the Health strip.** Each
+tap applies immediately — including mid-run, which is the point — and saves to
+`hardware.yaml` so it survives a reboot. The file keeps all its comments; the
+endpoint rewrites one line, it does not round-trip the YAML.
 
-You do not need a restart: save `hardware.yaml` from **Admin → Config**, and
-`runner.reload_config()` re-applies the level to the state you are standing in.
-Values above 16 are clamped and logged.
+**Tune it by eye, against the camera. The number means nothing on its own** —
+the D5 DMX5125 decoders here are effectively full past about 10, so the whole
+useful band is **1-6**. Start at 2, look at the picture, go up by ones. The
+console stops at 16 and so does the server.
+
+`Admin → Config` still works if you would rather type it; `reload_config()`
+re-applies the level to the state you are standing in either way.
 
 Check the boot log to see what actually loaded:
 
@@ -153,7 +159,8 @@ scaled down inside the row. Every button still keeps its column in every state
    lit; the cameras are not to be believed.
 4. Walk the container out of MASTER with FORCE RESET, as always.
 5. Check both screens before the queue arrives: no clock, no leaderboard.
-6. Set `run_level` by eye against the actual camera, during a dry run.
+6. Dry run, and tune `Run light` from the console while it is running — you
+   are looking at the camera, not at the number.
 7. Settle the prize from **Admin → Runs**, or the day's CSV export.
 
 ### Going back to normal play

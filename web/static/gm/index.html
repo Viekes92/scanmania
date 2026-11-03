@@ -594,6 +594,31 @@
       -webkit-overflow-scrolling: touch;
     }
 
+    /* Run-light stepper. The two buttons have to be thumb-sized on an iPad
+       in a dark container, which is why they are 36px square inside a 48px
+       pill rather than the 14px glyphs they look like. */
+    .rl-step {
+      width: 36px; height: 36px;
+      flex: 0 0 36px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 900; line-height: 1;
+      font-family: var(--font-ui);
+      background: var(--surface);
+      color: var(--accent-text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .rl-step:active:not(:disabled) { background: var(--accent); color: #fff; }
+    .rl-step:disabled { opacity: 0.3; cursor: not-allowed; }
+    #hRunLightValue {
+      min-width: 1.6em;
+      text-align: center;
+      font-weight: 900;
+      color: var(--text);
+    }
+
     .health-item {
       display: flex;
       align-items: center;
@@ -1150,6 +1175,18 @@
                it was the only thing in the strip that was not a chip. -->
           <span id="hHazerLevel" style="font-size:11px;color:var(--muted);font-family:var(--font);margin-left:2px;"></span>
       </button>
+      <!-- Fill light for COUNTDOWN and the RUN segments — the states the
+           lightshow otherwise forces dark. Here rather than in the admin
+           portal because the number is meaningless on paper: you set it by
+           standing in the container, nudging it and watching the camera, and
+           this is the screen you are holding while you do that. Applied live
+           and saved to hardware.yaml. 0 = a run is dark, the normal game. -->
+      <div class="health-item" id="hRunLight" style="gap:6px;">
+        <button type="button" class="rl-step" id="hRunLightDown" aria-label="Run light down">&minus;</button>
+        <span>Run light</span>
+        <span id="hRunLightValue">0</span>
+        <button type="button" class="rl-step" id="hRunLightUp" aria-label="Run light up">+</button>
+      </div>
     </div>
     <!-- Haze output: a switch, nothing else.
          It gates DMX ch2 (haze volume) only. The blower on ch1 runs
@@ -1995,7 +2032,60 @@
                  ? !!d.work_lights : !!d.maze_on;
       setLed(hLightsLed, lightsOn ? "ok" : "off");
       hLightsLabel.textContent = lightsOn ? "Work lights" : "Show lights";
+
+      /* Run-light level. Skipped while a nudge is in flight: this renders
+         from the 5 s poll as well as from the POST reply, and a poll that
+         started before the write would otherwise snap the number back to the
+         old value under the operator's thumb. */
+      if (d.run_level != null && !runLightBusy) setRunLight(d.run_level);
     }
+
+    /* ---- run fill light -------------------------------------------------
+       The level COUNTDOWN and the RUN segments are held at, so the run is
+       visible on camera. 0 is the normal game: a run is dark, which is what
+       detection needs — above 0, put detection on MANUAL. The useful band on
+       these decoders is about 1-6; the server clamps at 16.              */
+    const RUN_LIGHT_MAX = 16;
+    const hRunLightValue = document.getElementById("hRunLightValue");
+    const hRunLightDown  = document.getElementById("hRunLightDown");
+    const hRunLightUp    = document.getElementById("hRunLightUp");
+    let runLight = 0;
+    let runLightBusy = false;
+
+    function setRunLight(n) {
+      runLight = Math.max(0, Math.min(RUN_LIGHT_MAX, n | 0));
+      hRunLightValue.textContent = runLight;
+      // Dim rather than hide at the ends, like every other control here.
+      hRunLightDown.disabled = runLightBusy || runLight <= 0;
+      hRunLightUp.disabled   = runLightBusy || runLight >= RUN_LIGHT_MAX;
+    }
+
+    async function nudgeRunLight(delta) {
+      const target = Math.max(0, Math.min(RUN_LIGHT_MAX, runLight + delta));
+      if (target === runLight) return;
+      runLightBusy = true;
+      setRunLight(target);                 // optimistic: the tap must feel instant
+      try {
+        const r = await fetch("/api/gm/run-light", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ level: target }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        runLightBusy = false;
+        setRunLight(d.run_level);          // the server's clamp is the truth
+        if (d.persisted && !/^saved/.test(d.persisted)) {
+          showGmFeedback(`RUN LIGHT ${d.run_level} — ${d.persisted}`, "err");
+        }
+      } catch (e) {
+        runLightBusy = false;
+        showGmFeedback(`RUN LIGHT FAILED: ${e.message}`, "err");
+        refreshLights();                   // snap back to whatever is real
+      }
+    }
+
+    hRunLightDown.addEventListener("click", () => nudgeRunLight(-1));
+    hRunLightUp.addEventListener("click",   () => nudgeRunLight(+1));
 
     async function refreshLights() {
       try { renderLights(await (await fetch("/api/gm/lights")).json()); }

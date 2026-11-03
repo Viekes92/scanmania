@@ -189,6 +189,21 @@
     body.hide-times .sealed-hide { display: none !important; }
     .sealed-show { display: none; }
     body.hide-times .sealed-show { display: block; }
+
+    /* Sealed, the segment is the RUN scene's ONLY content. `.segment` is
+       sized as a subtitle — right under a 520px clock, far too small as the
+       single thing on a 1920x1080 panel read from the far end of a dark
+       container through haze.
+
+       Tracking comes DOWN as the size goes up: 0.3em was readable on 46px,
+       but "SEGMENT 2 / 3" is 13 characters and at this size that spacing
+       overflows the stage. nowrap so it never breaks across "2 / 3".        */
+    body.hide-times .segment {
+      font-size: clamp(40px, 8.5vw, 200px);
+      letter-spacing: 0.12em;
+      white-space: nowrap;
+      margin-top: 0;
+    }
   </style>
 </head>
 <!-- Sealed until a broadcast says otherwise — see the CSS above. -->

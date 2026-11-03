@@ -7,6 +7,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — tuning the fill light from the console, and a readable segment
+
+- **`Run light − n +` in the GM console's Health strip**, posting to a new
+  `POST /api/gm/run-light`. The level is meaningless on paper — these decoders
+  are effectively full past about 10 — so it is set by standing in the
+  container, nudging it and watching what the camera sees. Editing
+  `hardware.yaml` in a text box was a parameter but not a tweakable one.
+
+  Applied live *and* persisted, because those fail differently: live-only is
+  lost to a reboot mid-event, file-only is invisible until the next restart.
+  The persist is a targeted one-line rewrite of the raw text, never a
+  `yaml.safe_load`/`safe_dump` round-trip — `hardware.yaml` is mostly comments
+  and a round-trip would silently delete the lot. A save that fails is a note
+  in the response, not a failed request: the GM is mid-tune and the live value
+  is the one they are looking at.
+
+  Unauthenticated like the rest of `/api/gm/*`, and strictly less dangerous
+  than the abort and hazer controls already there: it writes one bounded
+  integer and never reads the file back. Unlike `POST /api/gm/lights` with a
+  name and level, it is **not** refused during a run — it goes through the cue
+  player rather than straight at the DMX, so the level is still one number for
+  all four states and a cue still cannot move it (ADR 0012).
+
+- **The segment line on `/display/in` scales up when the screens are sealed.**
+  `.segment` is sized as a subtitle for life under a 520px clock; with the
+  clock gone it is the RUN scene's only content, and at `clamp(16px, 2.4vw,
+  58px)` it was unreadable from the far end of a dark container through haze.
+  Tracking comes down as the size goes up — 0.3em on a 13-character line at
+  the new size overflows the stage.
+
+- 7 tests; 542 total.
+
 ### Added — grand-prize mode
 
 Three changes for a final where the times must stay secret until the prize is
